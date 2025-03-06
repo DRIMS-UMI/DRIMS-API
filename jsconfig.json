@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "target": "ES2016",
+    "module": "NodeNext",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "exclude": ["node_modules", "dist"]
+}
