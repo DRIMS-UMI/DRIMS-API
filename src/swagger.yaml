@@ -1,0 +1,32 @@
+openapi: 3.0.0
+info:
+  title: UMI DRIMS API
+  description: API documentation for the Uganda Management Institute (UMI) DRIMS server
+  version: 1.0.0
+  contact:
+    email: jkimbareeba@yahoo.com
+
+servers:
+  - url: http://localhost:3000
+    description: Development server
+  - url: https://your-production-url.com
+    description: Production server
+
+paths:
+  /api/status:
+    get:
+      summary: Get server status
+      description: Returns the current status of the server
+      responses:
+        '200':
+          description: Server is running
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "running"
+
+# Add more endpoints here... 
