@@ -2,12 +2,19 @@
   "name": "umi-server",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "src/index.mjs",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "concurrently \"node esbuild.config.mjs --watch\" \"nodemon dist/index.cjs\"",
+    "ninja-watch": "console-ninja yarn --watch app.mjs",
+    "start": "node dist/index.cjs",
+    "build": "rimraf dist && NODE_ENV='production' node esbuild.config.mjs",
+    "postinstall": "prisma generate",
+    "postbuild":"prisma generate"
   },
   "keywords": [],
-  "author": "",
+  "author": "joshua Kimbareeba",
   "license": "ISC",
   "dependencies": {
     "@auth/express": "^0.9.0",
