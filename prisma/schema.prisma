@@ -1,0 +1,107 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "mongodb"
+    url = env("DATABASE_URL")
+}
+
+model Student {
+  id               String   @id @default(auto()) @map("_id")
+  name             String
+  email            String  @unique
+  statuses         StudentStatus[] // Tracks all status updates over time
+  admissionDate    DateTime @default(now())
+  supervisor       Supervisor? @relation(fields: [supervisorId], references: [id])
+  supervisorId     String?
+  proposals        Proposal[]
+  fieldWork        FieldWork?
+  viva             Viva?
+  notifications    Notification[]
+}
+
+model StudentStatus {
+  id          String   @id @default(auto()) @map("_id")
+  student     Student  @relation(fields: [studentId], references: [id])
+  studentId   String
+  status      String  // e.g., Workshop, Normal Progress, Proposal Review, etc.
+  startDate   DateTime @default(now())
+  endDate     DateTime?
+  conditions  String?  // Conditions or remarks (e.g., "Awaiting Supervisor Allocation")
+}
+
+model Supervisor {
+  id        String @id @default(auto()) @map("_id")
+  name      String
+  email     String @unique
+  students  Student[]
+}
+
+model Proposal {
+  id          String   @id @default(auto()) @map("_id")
+  student     Student  @relation(fields: [studentId], references: [id])
+  studentId   String
+  reviewers   Reviewer[]
+  status      String  // Pending Review, Reviewed, Defended, Graded-Passed, Graded-Failed
+  submittedAt DateTime @default(now())
+  defenseDate DateTime?
+  panelists   String[]
+  comments    String?
+  markRange   Int?
+  examiners   Examiner[]
+}
+
+model Reviewer {
+  id         String @id @default(auto()) @map("_id")
+  name       String
+  email      String @unique
+  proposal   Proposal? @relation(fields: [proposalId], references: [id])
+  proposalId String?
+}
+
+model Examiner {
+  id          String @id @default(auto()) @map("_id")
+  name        String
+  email       String @unique
+  type        String // Internal or External
+  proposal    Proposal? @relation(fields: [proposalId], references: [id])
+  proposalId  String?
+  submittedAt DateTime?
+  marks       Int?
+}
+
+model FieldWork {
+  id         String   @id @default(auto()) @map("_id")
+  student    Student  @relation(fields: [studentId], references: [id])
+  studentId  String
+  status     String  // Ongoing, Completed
+  startDate  DateTime
+  endDate    DateTime?
+  letterReceived Boolean @default(false)
+}
+
+model Viva {
+  id           String   @id @default(auto()) @map("_id")
+  student      Student  @relation(fields: [studentId], references: [id])
+  studentId    String
+  scheduledAt  DateTime
+  status       String  // Pending, Passed, Failed
+  panelists    String[]
+  verdict      String?
+  minutesPending Boolean @default(true)
+}
+
+model Notification {
+  id        String   @id @default(auto()) @map("_id")
+  recipient String   // Student or Admin Email
+  message   String
+  createdAt DateTime @default(now())
+  sent      Boolean @default(false)
+}

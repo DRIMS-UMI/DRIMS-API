@@ -10,7 +10,10 @@ import swaggerUi from 'swagger-ui-express';
 import swaggerJSDoc from 'swagger-jsdoc';
 import YAML from 'yamljs';
 import path from 'path';
-import {fileURLToPath} from 'url';
+
+   // Serve Swagger UI
+    // Get directory name in ES modules
+    const __dirname = path.resolve();
 
 const htmlTemplate = `<!DOCTYPE html>
 <html lang="en">
@@ -56,7 +59,7 @@ const htmlTemplate = `<!DOCTYPE html>
 </head>
 <body>
     <div class="status">
-        <img src="https://ik.imagekit.io/nyatimot/Pages/Universal+Home/Logos/Logo1.svg?updatedAt=1724072184503" alt="UMI Logo">
+        <img src="https://ik.imagekit.io/dk30bxu4rix/UMI/Favicon/Logo%20main_VR0w6t60R.svg?updatedAt=1741448365030" alt="UMI Logo">
         <h1>UMI DRIMS Server is Live</h1> <!-- Updated Message -->
         <p>The UMI DRIMS server is up and running.</p>
         <p>For any inquiries, contact us at <a href="mailto:jkimbareeba@yahoo.com">jkimbareeba@yahoo.com</a></p>
@@ -109,21 +112,60 @@ export default function customizeApp(app) {
     // Serve Static Files from the public directory
     app.use(express.static(path.join(__dirname, 'public')));    
     
+    app.get('/', (req, res) => {
+        res.status(200).send(htmlTemplate);
+    });
     // Serve the Status Page
     app.get('/status', (req, res) => {
         res.status(200).send(htmlTemplate);
     });
 
-    // Serve Swagger UI
-    // Get directory name in ES modules
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = path.dirname(__filename);
-
     // Load Swagger YAML file (swagger.yaml)   
-    const swaggerDocument = YAML.load(path.join(__dirname, 'swagger.yaml'));
+    const swaggerDocument = YAML.load(path.join(__dirname, "src/swagger.yaml"));
+    console.log('Swagger Document:', swaggerDocument);
 
+    const swaggerOptions = {
+        definition: {
+            openapi: '3.0.0',
+            info: {
+                title: 'UMI DRIMS API Documentation',
+                version: '1.0.0',
+                description: 'API documentation for the Uganda Management Institute (UMI) DRIMS server',
+                contact: {
+                    email: "joshuakimbareeba@gmail.com",
+                    phone: "0787785114"
+                }
+            },
+            servers: [
+                {
+                    url: 'http://localhost:5000', // Update this with your server URL
+                    description: 'Development server',
+                },
+                {
+                    url: 'https://your-production-url.com', // Update this with your server URL
+                    description: 'Production server',
+                },
+            ],
+        },
+        apis: ['./src/routes/*.js', './src/models/*.js'], // Path to the API docs
+    };
+
+    const swaggerSpec = swaggerJSDoc(swaggerOptions);
     // Serve Swagger UI at /api-docs
-    app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+    app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+        explorer: true,
+        customCss: ".swagger-ui .topbar {display:none}",
+        swaggerOptions: {
+            url: "/api-docs.json",
+            docExpansion: 'none'
+        }
+    }));
+
+    //server the Swagger JSON
+    app.get("/api-docs.json", (req, res)=>{
+        res.setHeader("Content-Type", "application/json");
+        res.send(swaggerDocument)
+    })
 
     // API Routes
     app.use('/api', api);
