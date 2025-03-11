@@ -11,15 +11,18 @@
     "start": "node dist/index.cjs",
     "build": "rimraf dist && NODE_ENV='production' node esbuild.config.mjs",
     "postinstall": "prisma generate",
-    "postbuild":"prisma generate"
+    "postbuild": "prisma generate"
   },
   "keywords": [],
   "author": "joshua Kimbareeba",
   "license": "ISC",
   "dependencies": {
     "@auth/express": "^0.9.0",
-    "@prisma/client": "^6.4.1",
+    "@prisma/client": "^6.5.0",
     "@t3-oss/env-core": "^0.12.0",
+    "bcrypt": "^5.1.1",
+    "compression": "^1.8.0",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "date-fns": "^4.1.0",
     "dotenv": "^16.4.7",
@@ -30,7 +33,6 @@
     "mongodb": "^6.14.2",
     "mongoose": "^8.12.1",
     "nodemailer": "^6.10.0",
-    "prisma": "^6.4.1",
     "socket.io": "^4.8.1",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
@@ -39,7 +41,10 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "concurrently": "^9.1.2",
     "esbuild": "^0.25.0",
-    "nodemon": "^3.1.9"
+    "nodemon": "^3.1.9",
+    "prisma": "^6.5.0",
+    "rimraf": "^6.0.1"
   }
 }

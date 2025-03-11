@@ -13,15 +13,15 @@ datasource db {
     url = env("DATABASE_URL")
 }
 
-model User {
-  id        String   @id @default(auto()) @map("_id")
+model user {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
   name      String
   email     String   @unique
   password  String
   role      Role     // Defines user roles
-  activities UserActivity[]
-  schoolMember SchoolMember?
-
+  activities userActivity[]
+  schoolMember schoolMember?
+  student     student? 
 }
 
 enum Role {
@@ -33,43 +33,42 @@ enum Role {
   STUDENT          // Views details, accepts dates, and sees notifications
 }
 
-model UserActivity {
-  id          String   @id @default(auto()) @map("_id")
-  user        User     @relation(fields: [userId], references: [id])
-  userId      String
+model userActivity {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  user        user?     @relation(fields: [userId], references: [id])
+  userId      String?   @db.ObjectId
   action      String   // e.g., "Updated Proposal Status", "Assigned Supervisor"
   entityType  String   // e.g., "Proposal", "Student", "Viva"
   entityId    String   // ID of the affected entity
   timestamp   DateTime @default(now())
 }
 
-model Student {
-  currentBook  Book? @relation(fields: [currentBookId], references: [id])
-  currentBookId String?
-  currentProposal  Proposal? @relation(fields: [currentProposalId], references: [id])
-  currentProposalId String?
-  currentStatus StudentStatus? @relation("CurrentStatus", fields: [currentStatusId], references: [id])
-  currentStatusId String?
-  id               String   @id @default(auto()) @map("_id")
-  name             String
-  email            String  @unique
-  statuses         StudentStatus[] // Tracks all status updates over time
-  admissionDate    DateTime @default(now())
-  supervisor       Supervisor? @relation(fields: [supervisorId], references: [id])
-  supervisorId     String?
-  proposals        Proposal[]
-  fieldWork        FieldWork?
-  viva             Viva?
-  notifications    Notification[]
-  user             User    @relation(fields: [userId], references: [id])
-  userId           String  @unique
-  books            Book[]
+model student {
+  id                    String         @id @default(auto()) @map("_id") @db.ObjectId
+  name                  String
+  email                 String         @unique
+  admissionDate        DateTime       @default(now())
   expectedCompletionDate DateTime?
-  totalDuration    Int?    // Total duration in days since admission
+  totalDuration        Int?           // Total duration in days since admission
+ 
+  fieldWork            fieldWork[]     
+  
+  user                 user?          @relation(fields: [userId], references: [id])
+  userId               String?        @unique @db.ObjectId
+
+  // Arrays
+  statuses             studentStatus[] 
+  proposals            proposal[]     
+  notifications        notification[]   
+  supervisorIds        String[]       @db.ObjectId
+  supervisors          supervisor[]     @relation(fields: [supervisorIds], references:[id])
+  
+  books                book[]         
+  vivas                 viva[]       
 }
 
-model StatusDefinition {
-  id              String   @id @default(auto()) @map("_id")
+model statusDefinition {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
   name            String   @unique  // e.g., "BREAK", "WORKSHOP", etc.
   description     String
   expectedDuration Int     // Expected duration in days
@@ -79,31 +78,31 @@ model StatusDefinition {
   isActive        Boolean @default(true)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-  studentStatuses StudentStatus[] // All student statuses using this definition
+  studentStatuses studentStatus[] // All student statuses using this definition
 }
 
-model StudentStatus {
-  id          String   @id @default(auto()) @map("_id")
-  student     Student  @relation(fields: [studentId], references: [id])
-  studentId   String
-  definition  StatusDefinition @relation(fields: [definitionId], references: [id])
-  definitionId String
-  startDate   DateTime @default(now())
-  endDate     DateTime?
-  duration    Int?     // Actual duration in days
-  conditions  String?  // Conditions or remarks
-  isActive    Boolean @default(true)
-  notificationsSent NotificationLog[] // Track which notifications were sent
-  currentForStudent Student? @relation("CurrentStatus")
+model studentStatus {
+  id                String           @id @default(auto()) @map("_id") @db.ObjectId
+  student           student?         @relation(fields: [studentId], references: [id])
+  studentId         String?          @db.ObjectId
+  definition        statusDefinition? @relation(fields: [definitionId], references: [id])
+  definitionId      String?             @db.ObjectId
+  startDate         DateTime         @default(now())
+  endDate           DateTime?
+  duration          Int?             // Actual duration in days
+  conditions        String?          // Conditions or remarks
+  isActive          Boolean          @default(true)
+  notificationsSent notificationLog[] // Track which notifications were sent
+  isCurrent          Boolean          @default(true)
 }
 
-model NotificationLog {
-  id            String   @id @default(auto()) @map("_id")
-  studentStatus StudentStatus @relation(fields: [statusId], references: [id])
-  statusId      String
+model notificationLog {
+  id            String          @id @default(auto()) @map("_id") @db.ObjectId
+  studentStatus studentStatus   @relation(fields: [statusId], references: [id])
+  statusId      String          @db.ObjectId
   type          NotificationType
-  sentAt        DateTime @default(now())
-  recipients    String[] // List of email addresses notified
+  sentAt        DateTime        @default(now())
+  recipients    String[]        // List of email addresses notified
   message       String
 }
 
@@ -113,81 +112,81 @@ enum NotificationType {
   INFO       // General information
 }
 
-model Proposal {
-  isCurrent  Boolean @default(false)
-  id          String   @id @default(auto()) @map("_id")
-  student     Student  @relation(fields: [studentId], references: [id])
-  studentId   String
-  reviewers   Reviewer[]
-  status      String  // Pending Review, Reviewed, Defended, Graded-Passed, Graded-Failed
-  submittedAt DateTime @default(now())
+model proposal {
+  id          String            @id @default(auto()) @map("_id") @db.ObjectId
+  isCurrent   Boolean          @default(false)
+  student     student?          @relation( fields: [studentId], references: [id])
+  studentId   String?           @db.ObjectId
+  reviewerIds String[]          @db.ObjectId
+  reviewers   reviewer[]       @relation( fields: [reviewerIds], references: [id])
+  status      String           // Pending Review, Reviewed, Defended, Graded-Passed, Graded-Failed
+  submittedAt DateTime         @default(now())
   defenseDate DateTime?
-  panelists    String[]
+  panelists   String[]
   comments    String?
   markRange   Int?
 }
 
-model Book {
-  externalSubmissionDate DateTime?
-  internalSubmissionDate DateTime?
-  isCurrent  Boolean @default(false)
+model book {
+  id                           String    @id @default(auto()) @map("_id") @db.ObjectId
+  student                      student?   @relation(fields: [studentId], references: [id])
+  studentId                    String?    @db.ObjectId
+  submittedAt                  DateTime  @default(now())
+  externalSubmissionDate       DateTime?
+  internalSubmissionDate       DateTime?
   externalReportSubmissionDate DateTime?
   internalReportSubmissionDate DateTime?
-  submissionCondition String // Normal or Resubmission
-  id           String   @id @default(auto()) @map("_id")
-  student      Student  @relation(fields: [studentId], references: [id])
-  studentId    String
-  submittedAt  DateTime @default(now())
-  researchAdminUpdated Boolean @default(false)
-  externalExaminer Examiner? @relation(fields: [externalExaminerId], references: [id])
-  externalExaminerId String?
-  internalExaminer Examiner? @relation(fields: [internalExaminerId], references: [id])
-  internalExaminerId String?
-  externalMarks Int?
-  internalMarks Int?
-  finalGrade    Float?  // Average of external and internal marks
-  status       String // Under Examination, Passed, Failed, Resubmission Required
+  isCurrent                    Boolean   @default(false)
+  submissionCondition         String    // Normal or Resubmission
+  researchAdminUpdated        Boolean   @default(false)
+  examiner            examiner[] @relation(fields: [examinerIds], references: [id])
+  examinerIds          String[]   @db.ObjectId
+  externalMarks               Int?
+  internalMarks               Int?
+  finalGrade                  Float?    // Average of external and internal marks
+  status                      String    // Under Examination, Passed, Failed, Resubmission Required
 }
 
-model Examiner {
-  books       Book[]  @relation(fields: [], references: [])
-  id          String @id @default(auto()) @map("_id")
+model examiner {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
   name        String
-  email       String @unique
-  type        String // Internal or External
+  email       String    @unique
+  type        String    // Internal or External
   submittedAt DateTime?
-  
+  bookIds     String[]  @db.ObjectId
+  books       book[]    @relation(fields: [bookIds], references: [id])
 }
 
-model Supervisor {
-  id        String @id @default(auto()) @map("_id")
+model supervisor {
+  id       String    @id @default(auto()) @map("_id") @db.ObjectId
+  name     String
+  email    String    @unique
+  studentIds String[]  @db.ObjectId
+  students student[] @relation(fields: [studentIds], references:[id])
+}
+
+model fieldWork {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  student        student?  @relation(fields: [studentId], references: [id])
+  studentId      String?   @db.ObjectId
+  status         String   // Ongoing, Completed
+  startDate      DateTime
+  endDate        DateTime?
+  letterReceived Boolean  @default(false)
+}
+
+model reviewer {
+  id        String             @id @default(auto()) @map("_id") @db.ObjectId
   name      String
-  email     String @unique
-  students  Student[]
+  email     String             @unique
+  proposalIds String[]         @db.ObjectId
+  proposals proposal[]          @relation(fields: [proposalIds], references: [id])
 }
 
-model FieldWork {
-  id         String   @id @default(auto()) @map("_id")
-  student    Student  @relation(fields: [studentId], references: [id])
-  studentId  String
-  status     String  // Ongoing, Completed
-  startDate  DateTime
-  endDate    DateTime?
-  letterReceived Boolean @default(false)
-}
-
-model Reviewer {
-  id         String @id @default(auto()) @map("_id")
-  name       String
-  email      String @unique
-  proposals  Proposal[]
-  
-}
-
-model Viva {
-  id           String   @id @default(auto()) @map("_id")
-  student      Student  @relation(fields: [studentId], references: [id])
-  studentId    String
+model viva {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  student      student?  @relation(fields: [studentId], references: [id])
+  studentId    String?  @db.ObjectId
   scheduledAt  DateTime
   status       String  // Pending, Passed, Failed
   panelists    String[]
@@ -195,43 +194,47 @@ model Viva {
   minutesPending Boolean @default(true)
 }
 
-model Notification {
-  id        String   @id @default(auto()) @map("_id")
+model notification {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
   recipient String   // Student or Admin Email
   message   String
   createdAt DateTime @default(now())
   sent      Boolean @default(false)
+  student     student?  @relation(fields: [studentId], references: [id])
+  studentId   String?   @db.ObjectId
 }
 
-model School {
-  id          String   @id @default(auto()) @map("_id")
+model school {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
   name        String
   code        String   @unique
   url         String?
   branch      String
-  members     SchoolMember[]
-  departments Department[]
+  members     schoolMember[] 
+  departments department[]    
 }
 
-model SchoolMember {
-  id        String   @id @default(auto()) @map("_id")
-  school    School   @relation(fields: [schoolId], references: [id])
-  schoolId  String
+model schoolMember {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  school    school?   @relation(fields: [schoolId], references: [id])
+  schoolId  String?    @db.ObjectId
   name      String
   contact   String
   email     String @unique
   role      String // Dean, Personal Assistant, School Admin
-  user      User    @relation(fields: [userId], references: [id])
-  userId    String  @unique
+  user      user?    @relation(fields: [userId], references: [id])
+  userId    String?  @db.ObjectId @unique
 }
 
-model Department {
-  id        String   @id @default(auto()) @map("_id")
-  school    School   @relation(fields: [schoolId], references: [id])
-  schoolId  String
+model department {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  school    school?   @relation(fields: [schoolId], references: [id])
+  schoolId  String?    @db.ObjectId
   name      String
   url       String?
   adminName String
   contact   String
   email     String @unique
 }
+
+

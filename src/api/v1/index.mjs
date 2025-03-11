@@ -1,9 +1,11 @@
 import express from "express";
+import managementRoutes from './routes/managementRoutes.js'
+import { requestLogger } from "./middleware/requestLogger.mjs";
 
 const router = express.Router();
 
 const endpoints = [
-    {path: 'admin', router: adminRoutes}
+    {path: '/management', router: managementRoutes}
 ];
 
 endpoints.forEach((endpoint)=> router.use(endpoint.path, requestLogger, endpoint.router));
