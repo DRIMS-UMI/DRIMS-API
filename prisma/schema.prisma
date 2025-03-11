@@ -13,7 +13,43 @@ datasource db {
     url = env("DATABASE_URL")
 }
 
+model User {
+  id        String   @id @default(auto()) @map("_id")
+  name      String
+  email     String   @unique
+  password  String
+  role      Role     // Defines user roles
+  activities UserActivity[]
+  schoolMember SchoolMember?
+
+}
+
+enum Role {
+  SUPERADMIN        // Manages all users, IT administration, system management
+  RESEARCH_ADMIN    // Same as SuperAdmin but without form editing access
+  SCHOOL_ADMIN      // Manages students from the proposal submission stage onwards
+  DEAN             // School Dean with school admin privileges
+  SCHOOL_PA        // Personal Assistant with school admin privileges
+  STUDENT          // Views details, accepts dates, and sees notifications
+}
+
+model UserActivity {
+  id          String   @id @default(auto()) @map("_id")
+  user        User     @relation(fields: [userId], references: [id])
+  userId      String
+  action      String   // e.g., "Updated Proposal Status", "Assigned Supervisor"
+  entityType  String   // e.g., "Proposal", "Student", "Viva"
+  entityId    String   // ID of the affected entity
+  timestamp   DateTime @default(now())
+}
+
 model Student {
+  currentBook  Book? @relation(fields: [currentBookId], references: [id])
+  currentBookId String?
+  currentProposal  Proposal? @relation(fields: [currentProposalId], references: [id])
+  currentProposalId String?
+  currentStatus StudentStatus? @relation("CurrentStatus", fields: [currentStatusId], references: [id])
+  currentStatusId String?
   id               String   @id @default(auto()) @map("_id")
   name             String
   email            String  @unique
@@ -25,26 +61,60 @@ model Student {
   fieldWork        FieldWork?
   viva             Viva?
   notifications    Notification[]
+  user             User    @relation(fields: [userId], references: [id])
+  userId           String  @unique
+  books            Book[]
+  expectedCompletionDate DateTime?
+  totalDuration    Int?    // Total duration in days since admission
+}
+
+model StatusDefinition {
+  id              String   @id @default(auto()) @map("_id")
+  name            String   @unique  // e.g., "BREAK", "WORKSHOP", etc.
+  description     String
+  expectedDuration Int     // Expected duration in days
+  warningDays     Int     // Days before expected end to send warning
+  criticalDays    Int     // Days after expected end to send critical notification
+  notifyRoles     Role[]  // Which roles to notify
+  isActive        Boolean @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  studentStatuses StudentStatus[] // All student statuses using this definition
 }
 
 model StudentStatus {
   id          String   @id @default(auto()) @map("_id")
   student     Student  @relation(fields: [studentId], references: [id])
   studentId   String
-  status      String  // e.g., Workshop, Normal Progress, Proposal Review, etc.
+  definition  StatusDefinition @relation(fields: [definitionId], references: [id])
+  definitionId String
   startDate   DateTime @default(now())
   endDate     DateTime?
-  conditions  String?  // Conditions or remarks (e.g., "Awaiting Supervisor Allocation")
+  duration    Int?     // Actual duration in days
+  conditions  String?  // Conditions or remarks
+  isActive    Boolean @default(true)
+  notificationsSent NotificationLog[] // Track which notifications were sent
+  currentForStudent Student? @relation("CurrentStatus")
 }
 
-model Supervisor {
-  id        String @id @default(auto()) @map("_id")
-  name      String
-  email     String @unique
-  students  Student[]
+model NotificationLog {
+  id            String   @id @default(auto()) @map("_id")
+  studentStatus StudentStatus @relation(fields: [statusId], references: [id])
+  statusId      String
+  type          NotificationType
+  sentAt        DateTime @default(now())
+  recipients    String[] // List of email addresses notified
+  message       String
+}
+
+enum NotificationType {
+  WARNING    // Approaching deadline
+  CRITICAL   // Past deadline
+  INFO       // General information
 }
 
 model Proposal {
+  isCurrent  Boolean @default(false)
   id          String   @id @default(auto()) @map("_id")
   student     Student  @relation(fields: [studentId], references: [id])
   studentId   String
@@ -52,29 +122,48 @@ model Proposal {
   status      String  // Pending Review, Reviewed, Defended, Graded-Passed, Graded-Failed
   submittedAt DateTime @default(now())
   defenseDate DateTime?
-  panelists   String[]
+  panelists    String[]
   comments    String?
   markRange   Int?
-  examiners   Examiner[]
 }
 
-model Reviewer {
-  id         String @id @default(auto()) @map("_id")
-  name       String
-  email      String @unique
-  proposal   Proposal? @relation(fields: [proposalId], references: [id])
-  proposalId String?
+model Book {
+  externalSubmissionDate DateTime?
+  internalSubmissionDate DateTime?
+  isCurrent  Boolean @default(false)
+  externalReportSubmissionDate DateTime?
+  internalReportSubmissionDate DateTime?
+  submissionCondition String // Normal or Resubmission
+  id           String   @id @default(auto()) @map("_id")
+  student      Student  @relation(fields: [studentId], references: [id])
+  studentId    String
+  submittedAt  DateTime @default(now())
+  researchAdminUpdated Boolean @default(false)
+  externalExaminer Examiner? @relation(fields: [externalExaminerId], references: [id])
+  externalExaminerId String?
+  internalExaminer Examiner? @relation(fields: [internalExaminerId], references: [id])
+  internalExaminerId String?
+  externalMarks Int?
+  internalMarks Int?
+  finalGrade    Float?  // Average of external and internal marks
+  status       String // Under Examination, Passed, Failed, Resubmission Required
 }
 
 model Examiner {
+  books       Book[]  @relation(fields: [], references: [])
   id          String @id @default(auto()) @map("_id")
   name        String
   email       String @unique
   type        String // Internal or External
-  proposal    Proposal? @relation(fields: [proposalId], references: [id])
-  proposalId  String?
   submittedAt DateTime?
-  marks       Int?
+  
+}
+
+model Supervisor {
+  id        String @id @default(auto()) @map("_id")
+  name      String
+  email     String @unique
+  students  Student[]
 }
 
 model FieldWork {
@@ -85,6 +174,14 @@ model FieldWork {
   startDate  DateTime
   endDate    DateTime?
   letterReceived Boolean @default(false)
+}
+
+model Reviewer {
+  id         String @id @default(auto()) @map("_id")
+  name       String
+  email      String @unique
+  proposals  Proposal[]
+  
 }
 
 model Viva {
@@ -104,4 +201,37 @@ model Notification {
   message   String
   createdAt DateTime @default(now())
   sent      Boolean @default(false)
+}
+
+model School {
+  id          String   @id @default(auto()) @map("_id")
+  name        String
+  code        String   @unique
+  url         String?
+  branch      String
+  members     SchoolMember[]
+  departments Department[]
+}
+
+model SchoolMember {
+  id        String   @id @default(auto()) @map("_id")
+  school    School   @relation(fields: [schoolId], references: [id])
+  schoolId  String
+  name      String
+  contact   String
+  email     String @unique
+  role      String // Dean, Personal Assistant, School Admin
+  user      User    @relation(fields: [userId], references: [id])
+  userId    String  @unique
+}
+
+model Department {
+  id        String   @id @default(auto()) @map("_id")
+  school    School   @relation(fields: [schoolId], references: [id])
+  schoolId  String
+  name      String
+  url       String?
+  adminName String
+  contact   String
+  email     String @unique
 }
