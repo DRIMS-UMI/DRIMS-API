@@ -22,6 +22,8 @@ export const registerSuperAdmin = async (req, res) => {
             data: {
                 name: req.body.name,
                 email: req.body.email,
+                phone: req.body.phone,
+                designation: req.body.designation,
                 password: hashedPassword,
                 role: 'SUPERADMIN'
             }
