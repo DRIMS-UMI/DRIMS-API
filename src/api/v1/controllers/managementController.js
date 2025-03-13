@@ -3,7 +3,7 @@ import prisma from '../../../utils/db.mjs';
 
 
 // Controller for registering a SuperAdmin
-export const registerSuperAdmin = async (req, res) => {
+export const registerSuperAdmin = async (req, res, next) => {
     try {
         // Check if a SuperAdmin already exists
         const existingSuperAdmin = await prisma.user.findFirst({
@@ -11,7 +11,9 @@ export const registerSuperAdmin = async (req, res) => {
         });
 
         if (existingSuperAdmin) {
-            return res.status(403).json({ message: 'SuperAdmin already exists.' });
+            const error = new Error('SuperAdmin already exists.');
+            error.statusCode = 403;
+            throw error;
         }
 
         // Hash the password
@@ -21,6 +23,7 @@ export const registerSuperAdmin = async (req, res) => {
         const superAdmin = await prisma.user.create({
             data: {
                 name: req.body.name,
+                title: req.body.title,
                 email: req.body.email,
                 phone: req.body.phone,
                 designation: req.body.designation,
@@ -31,7 +34,10 @@ export const registerSuperAdmin = async (req, res) => {
 
         res.status(201).json({ message: 'SuperAdmin registered successfully.', superAdmin });
     } catch (error) {
-        res.status(500).json({ message: 'Internal server error.', error });
+        if(!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
     }
 };
 
