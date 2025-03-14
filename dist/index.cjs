@@ -32268,7 +32268,12 @@ var require_client = __commonJS({
       name: "name",
       code: "code",
       url: "url",
-      branch: "branch"
+      campusId: "campusId"
+    };
+    exports2.Prisma.CampusScalarFieldEnum = {
+      id: "id",
+      name: "name",
+      location: "location"
     };
     exports2.Prisma.SchoolMemberScalarFieldEnum = {
       id: "id",
@@ -32277,7 +32282,8 @@ var require_client = __commonJS({
       contact: "contact",
       email: "email",
       role: "role",
-      userId: "userId"
+      userId: "userId",
+      isCurrent: "isCurrent"
     };
     exports2.Prisma.DepartmentScalarFieldEnum = {
       id: "id",
@@ -32285,8 +32291,8 @@ var require_client = __commonJS({
       name: "name",
       url: "url",
       adminName: "adminName",
-      contact: "contact",
-      email: "email"
+      adminContact: "adminContact",
+      adminEmail: "adminEmail"
     };
     exports2.Prisma.SortOrder = {
       asc: "asc",
@@ -32325,6 +32331,7 @@ var require_client = __commonJS({
       viva: "viva",
       notification: "notification",
       school: "school",
+      campus: "campus",
       schoolMember: "schoolMember",
       department: "department"
     };
@@ -32363,7 +32370,6 @@ var require_client = __commonJS({
         "db"
       ],
       "activeProvider": "mongodb",
-      "postinstall": false,
       "inlineDatasources": {
         "db": {
           "url": {
@@ -32372,8 +32378,8 @@ var require_client = __commonJS({
           }
         }
       },
-      "inlineSchema": '// This is your Prisma schema file,\n// learn more about it in the docs: https://pris.ly/d/prisma-schema\n\n// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?\n// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init\n\ngenerator client {\n  provider = "prisma-client-js"\n}\n\ndatasource db {\n  provider = "mongodb"\n  url      = env("DATABASE_URL")\n}\n\nmodel user {\n  id           String         @id @default(auto()) @map("_id") @db.ObjectId\n  name         String\n  title        String?\n  email        String         @unique\n  password     String\n  phone        String?\n  designation  String?\n  role         Role // Defines user roles\n  activities   userActivity[]\n  schoolMember schoolMember?\n  student      student?\n  createdAt    DateTime?      @default(now())\n  updatedAt    DateTime?      @updatedAt\n}\n\nenum Role {\n  SUPERADMIN // Manages all users, IT administration, system management\n  RESEARCH_ADMIN // Same as SuperAdmin but without form editing access\n  SCHOOL_ADMIN // Manages students from the proposal submission stage onwards\n  DEAN // School Dean with school admin privileges\n  SCHOOL_PA // Personal Assistant with school admin privileges\n  STUDENT // Views details, accepts dates, and sees notifications\n}\n\nmodel userActivity {\n  id         String   @id @default(auto()) @map("_id") @db.ObjectId\n  user       user?    @relation(fields: [userId], references: [id])\n  userId     String?  @db.ObjectId\n  action     String // e.g., "Updated Proposal Status", "Assigned Supervisor"\n  entityType String // e.g., "Proposal", "Student", "Viva"\n  entityId   String // ID of the affected entity\n  timestamp  DateTime @default(now())\n}\n\nmodel student {\n  id                     String    @id @default(auto()) @map("_id") @db.ObjectId\n  name                   String\n  email                  String    @unique\n  admissionDate          DateTime  @default(now())\n  expectedCompletionDate DateTime?\n  totalDuration          Int? // Total duration in days since admission\n\n  fieldWork fieldWork[]\n\n  user   user?   @relation(fields: [userId], references: [id])\n  userId String? @unique @db.ObjectId\n\n  // Arrays\n  statuses      studentStatus[]\n  proposals     proposal[]\n  notifications notification[]\n  supervisorIds String[]        @db.ObjectId\n  supervisors   supervisor[]    @relation(fields: [supervisorIds], references: [id])\n\n  books book[]\n  vivas viva[]\n}\n\nmodel statusDefinition {\n  id               String          @id @default(auto()) @map("_id") @db.ObjectId\n  name             String          @unique // e.g., "BREAK", "WORKSHOP", etc.\n  description      String\n  expectedDuration Int // Expected duration in days\n  warningDays      Int // Days before expected end to send warning\n  criticalDays     Int // Days after expected end to send critical notification\n  notifyRoles      Role[] // Which roles to notify\n  isActive         Boolean         @default(true)\n  createdAt        DateTime        @default(now())\n  updatedAt        DateTime        @updatedAt\n  studentStatuses  studentStatus[] // All student statuses using this definition\n}\n\nmodel studentStatus {\n  id                String            @id @default(auto()) @map("_id") @db.ObjectId\n  student           student?          @relation(fields: [studentId], references: [id])\n  studentId         String?           @db.ObjectId\n  definition        statusDefinition? @relation(fields: [definitionId], references: [id])\n  definitionId      String?           @db.ObjectId\n  startDate         DateTime          @default(now())\n  endDate           DateTime?\n  duration          Int? // Actual duration in days\n  conditions        String? // Conditions or remarks\n  isActive          Boolean           @default(true)\n  notificationsSent notificationLog[] // Track which notifications were sent\n  isCurrent         Boolean           @default(true)\n}\n\nmodel notificationLog {\n  id            String           @id @default(auto()) @map("_id") @db.ObjectId\n  studentStatus studentStatus    @relation(fields: [statusId], references: [id])\n  statusId      String           @db.ObjectId\n  type          NotificationType\n  sentAt        DateTime         @default(now())\n  recipients    String[] // List of email addresses notified\n  message       String\n}\n\nenum NotificationType {\n  WARNING // Approaching deadline\n  CRITICAL // Past deadline\n  INFO // General information\n}\n\nmodel proposal {\n  id          String     @id @default(auto()) @map("_id") @db.ObjectId\n  isCurrent   Boolean    @default(false)\n  student     student?   @relation(fields: [studentId], references: [id])\n  studentId   String?    @db.ObjectId\n  reviewerIds String[]   @db.ObjectId\n  reviewers   reviewer[] @relation(fields: [reviewerIds], references: [id])\n  status      String // Pending Review, Reviewed, Defended, Graded-Passed, Graded-Failed\n  submittedAt DateTime   @default(now())\n  defenseDate DateTime?\n  panelists   String[]\n  comments    String?\n  markRange   Int?\n}\n\nmodel book {\n  id                           String     @id @default(auto()) @map("_id") @db.ObjectId\n  student                      student?   @relation(fields: [studentId], references: [id])\n  studentId                    String?    @db.ObjectId\n  submittedAt                  DateTime   @default(now())\n  externalSubmissionDate       DateTime?\n  internalSubmissionDate       DateTime?\n  externalReportSubmissionDate DateTime?\n  internalReportSubmissionDate DateTime?\n  isCurrent                    Boolean    @default(false)\n  submissionCondition          String // Normal or Resubmission\n  researchAdminUpdated         Boolean    @default(false)\n  examiner                     examiner[] @relation(fields: [examinerIds], references: [id])\n  examinerIds                  String[]   @db.ObjectId\n  externalMarks                Int?\n  internalMarks                Int?\n  finalGrade                   Float? // Average of external and internal marks\n  status                       String // Under Examination, Passed, Failed, Resubmission Required\n}\n\nmodel examiner {\n  id          String    @id @default(auto()) @map("_id") @db.ObjectId\n  name        String\n  email       String    @unique\n  type        String // Internal or External\n  submittedAt DateTime?\n  bookIds     String[]  @db.ObjectId\n  books       book[]    @relation(fields: [bookIds], references: [id])\n}\n\nmodel supervisor {\n  id         String    @id @default(auto()) @map("_id") @db.ObjectId\n  name       String\n  email      String    @unique\n  studentIds String[]  @db.ObjectId\n  students   student[] @relation(fields: [studentIds], references: [id])\n}\n\nmodel fieldWork {\n  id             String    @id @default(auto()) @map("_id") @db.ObjectId\n  student        student?  @relation(fields: [studentId], references: [id])\n  studentId      String?   @db.ObjectId\n  status         String // Ongoing, Completed\n  startDate      DateTime\n  endDate        DateTime?\n  letterReceived Boolean   @default(false)\n}\n\nmodel reviewer {\n  id          String     @id @default(auto()) @map("_id") @db.ObjectId\n  name        String\n  email       String     @unique\n  proposalIds String[]   @db.ObjectId\n  proposals   proposal[] @relation(fields: [proposalIds], references: [id])\n}\n\nmodel viva {\n  id             String   @id @default(auto()) @map("_id") @db.ObjectId\n  student        student? @relation(fields: [studentId], references: [id])\n  studentId      String?  @db.ObjectId\n  scheduledAt    DateTime\n  status         String // Pending, Passed, Failed\n  panelists      String[]\n  verdict        String?\n  minutesPending Boolean  @default(true)\n}\n\nmodel notification {\n  id        String   @id @default(auto()) @map("_id") @db.ObjectId\n  recipient String // Student or Admin Email\n  message   String\n  createdAt DateTime @default(now())\n  sent      Boolean  @default(false)\n  student   student? @relation(fields: [studentId], references: [id])\n  studentId String?  @db.ObjectId\n}\n\nmodel school {\n  id          String         @id @default(auto()) @map("_id") @db.ObjectId\n  name        String\n  code        String         @unique\n  url         String?\n  branch      String\n  members     schoolMember[]\n  departments department[]\n}\n\nmodel schoolMember {\n  id       String  @id @default(auto()) @map("_id") @db.ObjectId\n  school   school? @relation(fields: [schoolId], references: [id])\n  schoolId String? @db.ObjectId\n  name     String\n  contact  String\n  email    String  @unique\n  role     String // Dean, Personal Assistant, School Admin\n  user     user?   @relation(fields: [userId], references: [id])\n  userId   String? @unique @db.ObjectId\n}\n\nmodel department {\n  id        String  @id @default(auto()) @map("_id") @db.ObjectId\n  school    school? @relation(fields: [schoolId], references: [id])\n  schoolId  String? @db.ObjectId\n  name      String\n  url       String?\n  adminName String\n  contact   String\n  email     String  @unique\n}\n',
-      "inlineSchemaHash": "39347df42793df7d3a3efbdfd64e28a816582748ef4530503ee19da1db3db2cf",
+      "inlineSchema": '// This is your Prisma schema file,\n// learn more about it in the docs: https://pris.ly/d/prisma-schema\n\n// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?\n// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init\n\ngenerator client {\n  provider = "prisma-client-js"\n}\n\ndatasource db {\n  provider = "mongodb"\n  url      = env("DATABASE_URL")\n}\n\nmodel user {\n  id           String         @id @default(auto()) @map("_id") @db.ObjectId\n  name         String\n  title        String?\n  email        String         @unique\n  password     String\n  phone        String?\n  designation  String?\n  role         Role // Defines user roles\n  activities   userActivity[]\n  schoolMember schoolMember?\n  student      student?\n  createdAt    DateTime?      @default(now())\n  updatedAt    DateTime?      @updatedAt\n}\n\nenum Role {\n  SUPERADMIN // Manages all users, IT administration, system management\n  RESEARCH_ADMIN // Same as SuperAdmin but without form editing access\n  SCHOOL_ADMIN // Manages students from the proposal submission stage onwards\n  DEAN // School Dean with school admin privileges\n  SCHOOL_PA // Personal Assistant with school admin privileges\n  STUDENT // Views details, accepts dates, and sees notifications\n}\n\nmodel userActivity {\n  id         String   @id @default(auto()) @map("_id") @db.ObjectId\n  user       user?    @relation(fields: [userId], references: [id])\n  userId     String?  @db.ObjectId\n  action     String // e.g., "Updated Proposal Status", "Assigned Supervisor"\n  entityType String // e.g., "Proposal", "Student", "Viva"\n  entityId   String // ID of the affected entity\n  timestamp  DateTime @default(now())\n}\n\nmodel student {\n  id                     String    @id @default(auto()) @map("_id") @db.ObjectId\n  name                   String\n  email                  String    @unique\n  admissionDate          DateTime  @default(now())\n  expectedCompletionDate DateTime?\n  totalDuration          Int? // Total duration in days since admission\n\n  fieldWork fieldWork[]\n\n  user   user?   @relation(fields: [userId], references: [id])\n  userId String? @unique @db.ObjectId\n\n  // Arrays\n  statuses      studentStatus[]\n  proposals     proposal[]\n  notifications notification[]\n  supervisorIds String[]        @db.ObjectId\n  supervisors   supervisor[]    @relation(fields: [supervisorIds], references: [id])\n\n  books book[]\n  vivas viva[]\n}\n\nmodel statusDefinition {\n  id               String          @id @default(auto()) @map("_id") @db.ObjectId\n  name             String          @unique // e.g., "BREAK", "WORKSHOP", etc.\n  description      String\n  expectedDuration Int // Expected duration in days\n  warningDays      Int // Days before expected end to send warning\n  criticalDays     Int // Days after expected end to send critical notification\n  notifyRoles      Role[] // Which roles to notify\n  isActive         Boolean         @default(true)\n  createdAt        DateTime        @default(now())\n  updatedAt        DateTime        @updatedAt\n  studentStatuses  studentStatus[] // All student statuses using this definition\n}\n\nmodel studentStatus {\n  id                String            @id @default(auto()) @map("_id") @db.ObjectId\n  student           student?          @relation(fields: [studentId], references: [id])\n  studentId         String?           @db.ObjectId\n  definition        statusDefinition? @relation(fields: [definitionId], references: [id])\n  definitionId      String?           @db.ObjectId\n  startDate         DateTime          @default(now())\n  endDate           DateTime?\n  duration          Int? // Actual duration in days\n  conditions        String? // Conditions or remarks\n  isActive          Boolean           @default(true)\n  notificationsSent notificationLog[] // Track which notifications were sent\n  isCurrent         Boolean           @default(true)\n}\n\nmodel notificationLog {\n  id            String           @id @default(auto()) @map("_id") @db.ObjectId\n  studentStatus studentStatus    @relation(fields: [statusId], references: [id])\n  statusId      String           @db.ObjectId\n  type          NotificationType\n  sentAt        DateTime         @default(now())\n  recipients    String[] // List of email addresses notified\n  message       String\n}\n\nenum NotificationType {\n  WARNING // Approaching deadline\n  CRITICAL // Past deadline\n  INFO // General information\n}\n\nmodel proposal {\n  id          String     @id @default(auto()) @map("_id") @db.ObjectId\n  isCurrent   Boolean    @default(false)\n  student     student?   @relation(fields: [studentId], references: [id])\n  studentId   String?    @db.ObjectId\n  reviewerIds String[]   @db.ObjectId\n  reviewers   reviewer[] @relation(fields: [reviewerIds], references: [id])\n  status      String // Pending Review, Reviewed, Defended, Graded-Passed, Graded-Failed\n  submittedAt DateTime   @default(now())\n  defenseDate DateTime?\n  panelists   String[]\n  comments    String?\n  markRange   Int?\n}\n\nmodel book {\n  id                           String     @id @default(auto()) @map("_id") @db.ObjectId\n  student                      student?   @relation(fields: [studentId], references: [id])\n  studentId                    String?    @db.ObjectId\n  submittedAt                  DateTime   @default(now())\n  externalSubmissionDate       DateTime?\n  internalSubmissionDate       DateTime?\n  externalReportSubmissionDate DateTime?\n  internalReportSubmissionDate DateTime?\n  isCurrent                    Boolean    @default(false)\n  submissionCondition          String // Normal or Resubmission\n  researchAdminUpdated         Boolean    @default(false)\n  examiner                     examiner[] @relation(fields: [examinerIds], references: [id])\n  examinerIds                  String[]   @db.ObjectId\n  externalMarks                Int?\n  internalMarks                Int?\n  finalGrade                   Float? // Average of external and internal marks\n  status                       String // Under Examination, Passed, Failed, Resubmission Required\n}\n\nmodel examiner {\n  id          String    @id @default(auto()) @map("_id") @db.ObjectId\n  name        String\n  email       String    @unique\n  type        String // Internal or External\n  submittedAt DateTime?\n  bookIds     String[]  @db.ObjectId\n  books       book[]    @relation(fields: [bookIds], references: [id])\n}\n\nmodel supervisor {\n  id         String    @id @default(auto()) @map("_id") @db.ObjectId\n  name       String\n  email      String    @unique\n  studentIds String[]  @db.ObjectId\n  students   student[] @relation(fields: [studentIds], references: [id])\n}\n\nmodel fieldWork {\n  id             String    @id @default(auto()) @map("_id") @db.ObjectId\n  student        student?  @relation(fields: [studentId], references: [id])\n  studentId      String?   @db.ObjectId\n  status         String // Ongoing, Completed\n  startDate      DateTime\n  endDate        DateTime?\n  letterReceived Boolean   @default(false)\n}\n\nmodel reviewer {\n  id          String     @id @default(auto()) @map("_id") @db.ObjectId\n  name        String\n  email       String     @unique\n  proposalIds String[]   @db.ObjectId\n  proposals   proposal[] @relation(fields: [proposalIds], references: [id])\n}\n\nmodel viva {\n  id             String   @id @default(auto()) @map("_id") @db.ObjectId\n  student        student? @relation(fields: [studentId], references: [id])\n  studentId      String?  @db.ObjectId\n  scheduledAt    DateTime\n  status         String // Pending, Passed, Failed\n  panelists      String[]\n  verdict        String?\n  minutesPending Boolean  @default(true)\n}\n\nmodel notification {\n  id        String   @id @default(auto()) @map("_id") @db.ObjectId\n  recipient String // Student or Admin Email\n  message   String\n  createdAt DateTime @default(now())\n  sent      Boolean  @default(false)\n  student   student? @relation(fields: [studentId], references: [id])\n  studentId String?  @db.ObjectId\n}\n\nmodel school {\n  id          String         @id @default(auto()) @map("_id") @db.ObjectId\n  name        String\n  code        String         @unique\n  url         String?\n  campus      campus         @relation(fields: [campusId], references: [id])\n  campusId    String         @db.ObjectId\n  members     schoolMember[]\n  departments department[]\n}\n\nmodel campus {\n  id       String   @id @default(auto()) @map("_id") @db.ObjectId\n  name     String\n  location String\n  schools  school[]\n}\n\nmodel schoolMember {\n  id        String  @id @default(auto()) @map("_id") @db.ObjectId\n  school    school? @relation(fields: [schoolId], references: [id])\n  schoolId  String? @db.ObjectId\n  name      String\n  contact   String\n  email     String  @unique\n  role      String // Dean, Personal Assistant, School Admin\n  user      user?   @relation(fields: [userId], references: [id])\n  userId    String? @unique @db.ObjectId\n  isCurrent Boolean @default(true)\n}\n\nmodel department {\n  id           String  @id @default(auto()) @map("_id") @db.ObjectId\n  school       school? @relation(fields: [schoolId], references: [id])\n  schoolId     String? @db.ObjectId\n  name         String\n  url          String?\n  adminName    String\n  adminContact String\n  adminEmail   String  @unique\n}\n',
+      "inlineSchemaHash": "adc73c8e2e0d1a880949d890f1bc32a9a308d69664ab5e36b73adba50d2f077c",
       "copyEngine": true
     };
     var fs = require("fs");
@@ -32389,7 +32395,7 @@ var require_client = __commonJS({
       config2.dirname = path2.join(process.cwd(), alternativePath);
       config2.isBundled = true;
     }
-    config2.runtimeDataModel = JSON.parse('{"models":{"user":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"title","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"email","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"password","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"phone","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"designation","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"role","kind":"enum","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Role","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"activities","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"userActivity","nativeType":null,"relationName":"userTouserActivity","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"schoolMember","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"schoolMember","nativeType":null,"relationName":"schoolMemberTouser","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"student","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"studentTouser","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"createdAt","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"updatedAt","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":true}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"userActivity":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"user","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"user","nativeType":null,"relationName":"userTouserActivity","relationFromFields":["userId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"userId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"action","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"entityType","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"entityId","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"timestamp","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"student":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"email","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"admissionDate","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"expectedCompletionDate","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"totalDuration","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"fieldWork","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"fieldWork","nativeType":null,"relationName":"fieldWorkTostudent","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"user","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"user","nativeType":null,"relationName":"studentTouser","relationFromFields":["userId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"userId","kind":"scalar","isList":false,"isRequired":false,"isUnique":true,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"statuses","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"studentStatus","nativeType":null,"relationName":"studentTostudentStatus","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"proposals","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"proposal","nativeType":null,"relationName":"proposalTostudent","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"notifications","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"notification","nativeType":null,"relationName":"notificationTostudent","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"supervisorIds","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"supervisors","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"supervisor","nativeType":null,"relationName":"studentTosupervisor","relationFromFields":["supervisorIds"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"books","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"book","nativeType":null,"relationName":"bookTostudent","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"vivas","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"viva","nativeType":null,"relationName":"studentToviva","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"statusDefinition":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"description","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"expectedDuration","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"warningDays","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"criticalDays","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"notifyRoles","kind":"enum","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Role","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"isActive","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":true,"isGenerated":false,"isUpdatedAt":false},{"name":"createdAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"updatedAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":true},{"name":"studentStatuses","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"studentStatus","nativeType":null,"relationName":"statusDefinitionTostudentStatus","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"studentStatus":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"student","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"studentTostudentStatus","relationFromFields":["studentId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"studentId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"definition","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"statusDefinition","nativeType":null,"relationName":"statusDefinitionTostudentStatus","relationFromFields":["definitionId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"definitionId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"startDate","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"endDate","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"duration","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"conditions","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"isActive","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":true,"isGenerated":false,"isUpdatedAt":false},{"name":"notificationsSent","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"notificationLog","nativeType":null,"relationName":"notificationLogTostudentStatus","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"isCurrent","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":true,"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"notificationLog":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"studentStatus","kind":"object","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"studentStatus","nativeType":null,"relationName":"notificationLogTostudentStatus","relationFromFields":["statusId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"statusId","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"type","kind":"enum","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"NotificationType","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"sentAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"recipients","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"message","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"proposal":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"isCurrent","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":false,"isGenerated":false,"isUpdatedAt":false},{"name":"student","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"proposalTostudent","relationFromFields":["studentId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"studentId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"reviewerIds","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"reviewers","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"reviewer","nativeType":null,"relationName":"proposalToreviewer","relationFromFields":["reviewerIds"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"status","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"submittedAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"defenseDate","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"panelists","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"comments","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"markRange","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"book":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"student","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"bookTostudent","relationFromFields":["studentId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"studentId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"submittedAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"externalSubmissionDate","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"internalSubmissionDate","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"externalReportSubmissionDate","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"internalReportSubmissionDate","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"isCurrent","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":false,"isGenerated":false,"isUpdatedAt":false},{"name":"submissionCondition","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"researchAdminUpdated","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":false,"isGenerated":false,"isUpdatedAt":false},{"name":"examiner","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"examiner","nativeType":null,"relationName":"bookToexaminer","relationFromFields":["examinerIds"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"examinerIds","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"externalMarks","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"internalMarks","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"finalGrade","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Float","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"status","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"examiner":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"email","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"type","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"submittedAt","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"bookIds","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"books","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"book","nativeType":null,"relationName":"bookToexaminer","relationFromFields":["bookIds"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"supervisor":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"email","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"studentIds","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"students","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"studentTosupervisor","relationFromFields":["studentIds"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"fieldWork":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"student","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"fieldWorkTostudent","relationFromFields":["studentId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"studentId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"status","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"startDate","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"endDate","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"letterReceived","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":false,"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"reviewer":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"email","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"proposalIds","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"proposals","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"proposal","nativeType":null,"relationName":"proposalToreviewer","relationFromFields":["proposalIds"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"viva":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"student","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"studentToviva","relationFromFields":["studentId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"studentId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"scheduledAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"status","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"panelists","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"verdict","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"minutesPending","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":true,"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"notification":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"recipient","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"message","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"createdAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"sent","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":false,"isGenerated":false,"isUpdatedAt":false},{"name":"student","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"notificationTostudent","relationFromFields":["studentId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"studentId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"school":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"code","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"url","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"branch","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"members","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"schoolMember","nativeType":null,"relationName":"schoolToschoolMember","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"departments","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"department","nativeType":null,"relationName":"departmentToschool","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"schoolMember":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"school","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"school","nativeType":null,"relationName":"schoolToschoolMember","relationFromFields":["schoolId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"schoolId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"contact","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"email","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"role","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"user","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"user","nativeType":null,"relationName":"schoolMemberTouser","relationFromFields":["userId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"userId","kind":"scalar","isList":false,"isRequired":false,"isUnique":true,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"department":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"school","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"school","nativeType":null,"relationName":"departmentToschool","relationFromFields":["schoolId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"schoolId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"url","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"adminName","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"contact","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"email","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false}},"enums":{"Role":{"values":[{"name":"SUPERADMIN","dbName":null},{"name":"RESEARCH_ADMIN","dbName":null},{"name":"SCHOOL_ADMIN","dbName":null},{"name":"DEAN","dbName":null},{"name":"SCHOOL_PA","dbName":null},{"name":"STUDENT","dbName":null}],"dbName":null},"NotificationType":{"values":[{"name":"WARNING","dbName":null},{"name":"CRITICAL","dbName":null},{"name":"INFO","dbName":null}],"dbName":null}},"types":{}}');
+    config2.runtimeDataModel = JSON.parse('{"models":{"user":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"title","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"email","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"password","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"phone","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"designation","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"role","kind":"enum","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Role","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"activities","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"userActivity","nativeType":null,"relationName":"userTouserActivity","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"schoolMember","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"schoolMember","nativeType":null,"relationName":"schoolMemberTouser","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"student","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"studentTouser","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"createdAt","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"updatedAt","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":true}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"userActivity":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"user","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"user","nativeType":null,"relationName":"userTouserActivity","relationFromFields":["userId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"userId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"action","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"entityType","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"entityId","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"timestamp","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"student":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"email","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"admissionDate","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"expectedCompletionDate","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"totalDuration","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"fieldWork","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"fieldWork","nativeType":null,"relationName":"fieldWorkTostudent","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"user","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"user","nativeType":null,"relationName":"studentTouser","relationFromFields":["userId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"userId","kind":"scalar","isList":false,"isRequired":false,"isUnique":true,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"statuses","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"studentStatus","nativeType":null,"relationName":"studentTostudentStatus","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"proposals","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"proposal","nativeType":null,"relationName":"proposalTostudent","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"notifications","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"notification","nativeType":null,"relationName":"notificationTostudent","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"supervisorIds","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"supervisors","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"supervisor","nativeType":null,"relationName":"studentTosupervisor","relationFromFields":["supervisorIds"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"books","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"book","nativeType":null,"relationName":"bookTostudent","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"vivas","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"viva","nativeType":null,"relationName":"studentToviva","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"statusDefinition":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"description","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"expectedDuration","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"warningDays","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"criticalDays","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"notifyRoles","kind":"enum","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Role","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"isActive","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":true,"isGenerated":false,"isUpdatedAt":false},{"name":"createdAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"updatedAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":true},{"name":"studentStatuses","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"studentStatus","nativeType":null,"relationName":"statusDefinitionTostudentStatus","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"studentStatus":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"student","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"studentTostudentStatus","relationFromFields":["studentId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"studentId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"definition","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"statusDefinition","nativeType":null,"relationName":"statusDefinitionTostudentStatus","relationFromFields":["definitionId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"definitionId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"startDate","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"endDate","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"duration","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"conditions","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"isActive","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":true,"isGenerated":false,"isUpdatedAt":false},{"name":"notificationsSent","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"notificationLog","nativeType":null,"relationName":"notificationLogTostudentStatus","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"isCurrent","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":true,"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"notificationLog":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"studentStatus","kind":"object","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"studentStatus","nativeType":null,"relationName":"notificationLogTostudentStatus","relationFromFields":["statusId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"statusId","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"type","kind":"enum","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"NotificationType","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"sentAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"recipients","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"message","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"proposal":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"isCurrent","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":false,"isGenerated":false,"isUpdatedAt":false},{"name":"student","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"proposalTostudent","relationFromFields":["studentId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"studentId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"reviewerIds","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"reviewers","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"reviewer","nativeType":null,"relationName":"proposalToreviewer","relationFromFields":["reviewerIds"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"status","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"submittedAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"defenseDate","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"panelists","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"comments","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"markRange","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"book":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"student","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"bookTostudent","relationFromFields":["studentId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"studentId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"submittedAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"externalSubmissionDate","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"internalSubmissionDate","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"externalReportSubmissionDate","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"internalReportSubmissionDate","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"isCurrent","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":false,"isGenerated":false,"isUpdatedAt":false},{"name":"submissionCondition","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"researchAdminUpdated","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":false,"isGenerated":false,"isUpdatedAt":false},{"name":"examiner","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"examiner","nativeType":null,"relationName":"bookToexaminer","relationFromFields":["examinerIds"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"examinerIds","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"externalMarks","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"internalMarks","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"finalGrade","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Float","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"status","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"examiner":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"email","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"type","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"submittedAt","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"bookIds","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"books","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"book","nativeType":null,"relationName":"bookToexaminer","relationFromFields":["bookIds"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"supervisor":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"email","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"studentIds","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"students","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"studentTosupervisor","relationFromFields":["studentIds"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"fieldWork":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"student","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"fieldWorkTostudent","relationFromFields":["studentId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"studentId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"status","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"startDate","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"endDate","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"letterReceived","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":false,"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"reviewer":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"email","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"proposalIds","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"proposals","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"proposal","nativeType":null,"relationName":"proposalToreviewer","relationFromFields":["proposalIds"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"viva":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"student","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"studentToviva","relationFromFields":["studentId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"studentId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"scheduledAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"status","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"panelists","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"verdict","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"minutesPending","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":true,"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"notification":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"recipient","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"message","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"createdAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"sent","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":false,"isGenerated":false,"isUpdatedAt":false},{"name":"student","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"notificationTostudent","relationFromFields":["studentId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"studentId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"school":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"code","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"url","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"campus","kind":"object","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"campus","nativeType":null,"relationName":"campusToschool","relationFromFields":["campusId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"campusId","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"members","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"schoolMember","nativeType":null,"relationName":"schoolToschoolMember","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"departments","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"department","nativeType":null,"relationName":"departmentToschool","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"campus":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"location","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"schools","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"school","nativeType":null,"relationName":"campusToschool","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"schoolMember":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"school","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"school","nativeType":null,"relationName":"schoolToschoolMember","relationFromFields":["schoolId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"schoolId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"contact","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"email","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"role","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"user","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"user","nativeType":null,"relationName":"schoolMemberTouser","relationFromFields":["userId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"userId","kind":"scalar","isList":false,"isRequired":false,"isUnique":true,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"isCurrent","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":true,"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"department":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"school","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"school","nativeType":null,"relationName":"departmentToschool","relationFromFields":["schoolId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"schoolId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"url","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"adminName","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"adminContact","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"adminEmail","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false}},"enums":{"Role":{"values":[{"name":"SUPERADMIN","dbName":null},{"name":"RESEARCH_ADMIN","dbName":null},{"name":"SCHOOL_ADMIN","dbName":null},{"name":"DEAN","dbName":null},{"name":"SCHOOL_PA","dbName":null},{"name":"STUDENT","dbName":null}],"dbName":null},"NotificationType":{"values":[{"name":"WARNING","dbName":null},{"name":"CRITICAL","dbName":null},{"name":"INFO","dbName":null}],"dbName":null}},"types":{}}');
     defineDmmfProperty2(exports2.Prisma, config2.runtimeDataModel);
     config2.engineWasm = void 0;
     config2.compilerWasm = void 0;
@@ -96389,6 +96395,534 @@ var getLoggedInUserDetails = async (req, res, next) => {
     next(error);
   }
 };
+var createCampus = async (req, res, next) => {
+  try {
+    const { name, location: location2 } = req.body;
+    const existingCampus = await db_default.campus.findFirst({
+      where: {
+        AND: [
+          { name },
+          { location: location2 }
+        ]
+      }
+    });
+    if (existingCampus) {
+      const error = new Error("Campus with this name and location already exists");
+      error.statusCode = 400;
+      throw error;
+    }
+    const campus = await db_default.campus.create({
+      data: {
+        name,
+        location: location2
+      }
+    });
+    res.status(201).json({
+      message: "Campus created successfully",
+      campus
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var getAllCampuses = async (req, res, next) => {
+  try {
+    const campuses = await db_default.campus.findMany({
+      include: {
+        schools: true
+      }
+    });
+    res.status(200).json({
+      message: "Campuses fetched successfully",
+      campuses
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var getCampus = async (req, res, next) => {
+  try {
+    const { id: id2 } = req.params;
+    const campus = await db_default.campus.findUnique({
+      where: { id: id2 },
+      include: {
+        schools: true
+      }
+    });
+    if (!campus) {
+      const error = new Error("Campus not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    res.status(200).json({
+      message: "Campus fetched successfully",
+      campus
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var updateCampus = async (req, res, next) => {
+  try {
+    const { campusId } = req.params;
+    const { name, location: location2 } = req.body;
+    const campus = await db_default.campus.update({
+      where: { id: campusId },
+      data: {
+        name,
+        location: location2
+      }
+    });
+    res.status(200).json({
+      message: "Campus updated successfully",
+      campus
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var deleteCampus = async (req, res, next) => {
+  try {
+    const { campusId } = req.params;
+    await db_default.campus.delete({
+      where: { id: campusId }
+    });
+    res.status(200).json({
+      message: "Campus deleted successfully"
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var addSchool = async (req, res, next) => {
+  try {
+    const { name, code, url, campusId } = req.body;
+    const existingSchool = await db_default.school.findFirst({
+      where: {
+        AND: [
+          { code },
+          { campusId }
+        ]
+      }
+    });
+    if (existingSchool) {
+      const error = new Error("School with this code already exists in this campus");
+      error.statusCode = 400;
+      throw error;
+    }
+    const school = await db_default.school.create({
+      data: {
+        name,
+        code,
+        url,
+        campusId
+      }
+    });
+    await db_default.campus.update({
+      where: { id: campusId },
+      data: {
+        schools: {
+          connect: { id: school.id }
+        }
+      }
+    });
+    res.status(201).json({
+      message: "School created successfully",
+      school
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var addSchoolMembers = async (req, res, next) => {
+  try {
+    const { schoolId } = req.params;
+    const { dean, pa: pa2 } = req.body;
+    console.log("schoolId", schoolId);
+    const school = await db_default.school.findUnique({
+      where: { id: schoolId }
+    });
+    if (!school) {
+      const error = new Error("School not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    const existingDean = await db_default.schoolMember.findFirst({
+      where: { email: dean.email }
+    });
+    if (existingDean) {
+      const error = new Error("Dean with this email already exists");
+      error.statusCode = 400;
+      throw error;
+    }
+    if (pa2) {
+      const existingPA = await db_default.schoolMember.findFirst({
+        where: { email: pa2.email }
+      });
+      if (existingPA) {
+        const error = new Error("PA with this email already exists");
+        error.statusCode = 400;
+        throw error;
+      }
+    }
+    const currentDean = await db_default.schoolMember.findFirst({
+      where: {
+        schoolId,
+        role: "Dean",
+        isCurrent: true
+      }
+    });
+    if (currentDean) {
+      await db_default.schoolMember.update({
+        where: { id: currentDean.id },
+        data: { isCurrent: false }
+      });
+    }
+    const deanMember = await db_default.schoolMember.create({
+      data: {
+        schoolId,
+        name: dean.name,
+        contact: dean.contact,
+        email: dean.email,
+        role: "Dean",
+        isCurrent: dean.isCurrent || true
+      }
+    });
+    let paMember = null;
+    if (pa2) {
+      paMember = await db_default.schoolMember.create({
+        data: {
+          schoolId,
+          name: pa2.name,
+          contact: pa2.contact,
+          email: pa2.email,
+          role: "Personal Assistant",
+          isCurrent: pa2.isCurrent || true
+        }
+      });
+    }
+    res.status(201).json({
+      message: "School members added successfully",
+      dean: deanMember,
+      ...paMember && { pa: paMember }
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var addDepartment = async (req, res, next) => {
+  try {
+    const { schoolId } = req.params;
+    const { name, url, adminName, adminContact, adminEmail } = req.body;
+    const school = await db_default.school.findUnique({
+      where: { id: schoolId }
+    });
+    if (!school) {
+      const error = new Error("School not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    const existingDepartment = await db_default.department.findFirst({
+      where: {
+        name,
+        schoolId
+      }
+    });
+    if (existingDepartment) {
+      const error = new Error("Department with this name already exists in this school");
+      error.statusCode = 400;
+      throw error;
+    }
+    const department = await db_default.department.create({
+      data: {
+        name,
+        url,
+        adminName,
+        adminContact,
+        adminEmail,
+        schoolId
+      }
+    });
+    res.status(201).json({
+      message: "Department created successfully",
+      department
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var getAllDepartments = async (req, res, next) => {
+  try {
+    const { schoolId } = req.params;
+    const school = await db_default.school.findUnique({
+      where: { id: schoolId }
+    });
+    if (!school) {
+      const error = new Error("School not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    const departments = await db_default.department.findMany({
+      where: { schoolId },
+      include: {
+        school: true
+      }
+    });
+    res.status(200).json({
+      message: "Departments fetched successfully",
+      departments
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var getDepartment = async (req, res, next) => {
+  try {
+    const { schoolId, departmentId } = req.params;
+    const department = await db_default.department.findFirst({
+      where: {
+        AND: [
+          { id: departmentId },
+          { schoolId }
+        ]
+      },
+      include: {
+        school: true
+      }
+    });
+    if (!department) {
+      const error = new Error("Department not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    res.status(200).json({
+      message: "Department fetched successfully",
+      department
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var updateDepartment = async (req, res, next) => {
+  try {
+    const { schoolId, departmentId } = req.params;
+    const { name, url, adminName, adminContact, adminEmail } = req.body;
+    const existingDepartment = await db_default.department.findFirst({
+      where: {
+        AND: [
+          { id: departmentId },
+          { schoolId }
+        ]
+      }
+    });
+    if (!existingDepartment) {
+      const error = new Error("Department not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    if (name && name !== existingDepartment.name) {
+      const duplicateDepartment = await db_default.department.findFirst({
+        where: {
+          AND: [
+            { name },
+            { schoolId },
+            { id: { not: departmentId } }
+          ]
+        }
+      });
+      if (duplicateDepartment) {
+        const error = new Error("Department with this name already exists in this school");
+        error.statusCode = 400;
+        throw error;
+      }
+    }
+    const updatedDepartment = await db_default.department.update({
+      where: { id: departmentId },
+      data: {
+        name,
+        url,
+        adminName,
+        adminContact,
+        adminEmail
+      }
+    });
+    res.status(200).json({
+      message: "Department updated successfully",
+      department: updatedDepartment
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var deleteDepartment = async (req, res, next) => {
+  try {
+    const { schoolId, departmentId } = req.params;
+    const department = await db_default.department.findFirst({
+      where: {
+        AND: [
+          { id: departmentId },
+          { schoolId }
+        ]
+      }
+    });
+    if (!department) {
+      const error = new Error("Department not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    await db_default.department.delete({
+      where: { id: departmentId }
+    });
+    res.status(200).json({
+      message: "Department deleted successfully"
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var getAllSchools = async (req, res, next) => {
+  try {
+    const schools = await db_default.school.findMany({
+      include: {
+        campus: true,
+        departments: true,
+        members: true
+      }
+    });
+    res.status(200).json({
+      message: "Schools fetched successfully",
+      schools
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var getSchool = async (req, res, next) => {
+  try {
+    const { schoolId } = req.params;
+    const school = await db_default.school.findUnique({
+      where: { id: schoolId },
+      include: {
+        campus: true,
+        departments: true,
+        members: true
+      }
+    });
+    if (!school) {
+      const error = new Error("School not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    res.status(200).json({
+      message: "School fetched successfully",
+      school
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var updateSchool = async (req, res, next) => {
+  try {
+    const { schoolId } = req.params;
+    const { name, url } = req.body;
+    const updatedSchool = await db_default.school.update({
+      where: { id: schoolId },
+      data: {
+        name,
+        url
+      },
+      include: {
+        campus: true,
+        departments: true,
+        members: true
+      }
+    });
+    res.status(200).json({
+      message: "School updated successfully",
+      school: updatedSchool
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var deleteSchool = async (req, res, next) => {
+  try {
+    const { schoolId } = req.params;
+    const school = await db_default.school.findUnique({
+      where: { id: schoolId },
+      select: { campusId: true }
+    });
+    await db_default.campus.update({
+      where: { id: school.campusId },
+      data: {
+        schoolIds: {
+          set: await db_default.campus.findUnique({
+            where: { id: school.campusId },
+            select: { schoolIds: true }
+          }).then(
+            (campus) => campus.schoolIds.filter((id2) => id2 !== schoolId)
+          )
+        }
+      }
+    });
+    await db_default.school.delete({
+      where: { id: schoolId }
+    });
+    res.status(200).json({
+      message: "School deleted successfully"
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
 var accessManagementPortal = (req, res) => {
   res.send("Welcome to the Management Portal");
 };
@@ -96399,6 +96933,22 @@ router.post("/register-superadmin", registerSuperAdmin);
 router.post("/login/super-admin", loginSuperAdmin);
 router.post("/login/research-centre-admin", loginResearchCentreAdmin);
 router.get("/user/details", authentication_default, getLoggedInUserDetails);
+router.post("/schools", authentication_default, roleAuthorization_default("SUPERADMIN"), addSchool);
+router.post("/schools/:schoolId/members", authentication_default, roleAuthorization_default("SUPERADMIN"), addSchoolMembers);
+router.get("/schools", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), getAllSchools);
+router.get("/schools/:schoolId", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), getSchool);
+router.put("/schools/:schoolId", authentication_default, roleAuthorization_default("SUPERADMIN"), updateSchool);
+router.delete("/schools/:schoolId", authentication_default, roleAuthorization_default("SUPERADMIN"), deleteSchool);
+router.post("/campuses", authentication_default, roleAuthorization_default("SUPERADMIN"), createCampus);
+router.get("/campuses", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), getAllCampuses);
+router.get("/campuses/:campusId", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), getCampus);
+router.put("/campuses/:campusId", authentication_default, roleAuthorization_default("SUPERADMIN"), updateCampus);
+router.delete("/campuses/:campusId", authentication_default, roleAuthorization_default("SUPERADMIN"), deleteCampus);
+router.post("/schools/:schoolId/departments", authentication_default, roleAuthorization_default("SUPERADMIN"), addDepartment);
+router.get("/schools/:schoolId/departments", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), getAllDepartments);
+router.get("/schools/:schoolId/departments/:departmentId", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), getDepartment);
+router.put("/schools/:schoolId/departments/:departmentId", authentication_default, roleAuthorization_default("SUPERADMIN"), updateDepartment);
+router.delete("/schools/:schoolId/departments/:departmentId", authentication_default, roleAuthorization_default("SUPERADMIN"), deleteDepartment);
 router.get("/management", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), accessManagementPortal);
 var managementRoutes_default = router;
 

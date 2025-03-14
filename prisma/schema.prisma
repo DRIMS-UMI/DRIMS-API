@@ -214,9 +214,17 @@ model school {
   name        String
   code        String   @unique
   url         String?
-  branch      String
+  campus      campus   @relation(fields: [campusId], references: [id])
+  campusId    String   @db.ObjectId
   members     schoolMember[] 
   departments department[]    
+}
+
+model campus {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  location    String
+  schools     school[] 
 }
 
 model schoolMember {
@@ -229,6 +237,7 @@ model schoolMember {
   role      String // Dean, Personal Assistant, School Admin
   user      user?    @relation(fields: [userId], references: [id])
   userId    String?  @db.ObjectId @unique
+  isCurrent Boolean @default(true)
 }
 
 model department {
@@ -238,8 +247,9 @@ model department {
   name      String
   url       String?
   adminName String
-  contact   String
-  email     String @unique
+  adminContact   String
+  adminEmail     String @unique
 }
+
 
 

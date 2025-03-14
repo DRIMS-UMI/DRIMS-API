@@ -175,6 +175,666 @@ export const getLoggedInUserDetails = async (req, res, next) => {
     }
 };
 
+// Controller for creating a new campus - working
+export const createCampus = async (req, res, next) => {
+    try {
+        const { name, location } = req.body;
+
+        // Check if campus with same name and location already exists
+        const existingCampus = await prisma.campus.findFirst({
+            where: {
+                AND: [
+                    { name },
+                    { location }
+                ]
+            }
+        });
+
+        if (existingCampus) {
+            const error = new Error('Campus with this name and location already exists');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Create new campus
+        const campus = await prisma.campus.create({
+            data: {
+                name,
+                location
+            }
+        });
+
+        res.status(201).json({
+            message: 'Campus created successfully',
+            campus
+        });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for getting all campuses - working
+export const getAllCampuses = async (req, res, next) => {
+    try {
+        const campuses = await prisma.campus.findMany({
+            include: {
+                schools: true
+            }
+        });
+
+        res.status(200).json({
+            message: 'Campuses fetched successfully',
+            campuses
+        });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for getting a single campus
+export const getCampus = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+
+        const campus = await prisma.campus.findUnique({
+            where: { id },
+            include: {
+                schools: true
+            }
+        });
+
+        if (!campus) {
+            const error = new Error('Campus not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        res.status(200).json({
+            message: 'Campus fetched successfully',
+            campus
+        });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for updating a campus
+export const updateCampus = async (req, res, next) => {
+    try {
+        const { campusId } = req.params;
+        const { name, location } = req.body;
+
+        const campus = await prisma.campus.update({
+            where: { id: campusId },
+            data: {
+                name,
+                location
+            }
+        });
+
+        res.status(200).json({
+            message: 'Campus updated successfully',
+            campus
+        });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for deleting a campus
+export const deleteCampus = async (req, res, next) => {
+    try {
+        const { campusId } = req.params;
+
+        await prisma.campus.delete({
+            where: { id: campusId }
+        });
+
+        res.status(200).json({
+            message: 'Campus deleted successfully'
+        });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+
+// Controller for adding a new school
+export const addSchool = async (req, res, next) => {
+    try {
+        const { name, code, url, campusId } = req.body;
+
+        // Check if school with code and campus already exists
+        const existingSchool = await prisma.school.findFirst({
+            where: { 
+                AND: [
+                    { code },
+                    { campusId }
+                ]
+            }
+        });
+
+        if (existingSchool) {
+            const error = new Error('School with this code already exists in this campus');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Create new school and update campus
+        const school = await prisma.school.create({
+            data: {
+                name,
+                code,
+                url,
+                campusId
+            }
+        });
+
+        // Update campus with the new school
+        await prisma.campus.update({
+            where: { id: campusId },
+            data: {
+                schools: {
+                    connect: { id: school.id }
+                }
+            }
+        });
+
+        res.status(201).json({
+            message: 'School created successfully',
+            school
+        });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for adding Dean and PA to a school
+export const addSchoolMembers = async (req, res, next) => {
+    try {
+        const { schoolId } = req.params;
+        const { dean, pa } = req.body;
+
+        console.log('schoolId', schoolId);
+        // Check if school exists
+        const school = await prisma.school.findUnique({
+            where: { id: schoolId }
+        });
+
+        if (!school) {
+            const error = new Error('School not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Check if dean email already exists
+        const existingDean = await prisma.schoolMember.findFirst({
+            where: { email: dean.email }
+        });
+
+        if (existingDean) {
+            const error = new Error('Dean with this email already exists');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if PA email already exists if PA details provided
+        if (pa) {
+            const existingPA = await prisma.schoolMember.findFirst({
+                where: { email: pa.email }
+            });
+
+            if (existingPA) {
+                const error = new Error('PA with this email already exists');
+                error.statusCode = 400;
+                throw error;
+            }
+        }
+
+        // Find current dean if exists and make them not current
+        const currentDean = await prisma.schoolMember.findFirst({
+            where: {
+                schoolId,
+                role: 'Dean',
+                isCurrent: true
+            }
+        });
+
+        if (currentDean) {
+            await prisma.schoolMember.update({
+                where: { id: currentDean.id },
+                data: { isCurrent: false }
+            });
+        }
+
+        // Create Dean
+        const deanMember = await prisma.schoolMember.create({
+            data: {
+                schoolId,
+                name: dean.name,
+                contact: dean.contact,
+                email: dean.email,
+                role: 'Dean',
+                isCurrent: dean.isCurrent || true
+            }
+        });
+
+        let paMember = null;
+        // Create PA only if PA details are provided
+        if (pa) {
+            paMember = await prisma.schoolMember.create({
+                data: {
+                    schoolId,
+                    name: pa.name,
+                    contact: pa.contact,
+                    email: pa.email,
+                    role: 'Personal Assistant',
+                    isCurrent: pa.isCurrent || true
+                }
+            });
+        }
+
+        res.status(201).json({
+            message: 'School members added successfully',
+            dean: deanMember,
+            ...(paMember && { pa: paMember })
+        });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+
+// Controller for adding a new department to a school
+export const addDepartment = async (req, res, next) => {
+    try {
+        const { schoolId } = req.params;
+        const { name, url, adminName, adminContact, adminEmail } = req.body;
+
+        // Check if school exists
+        const school = await prisma.school.findUnique({
+            where: { id: schoolId }
+        });
+
+        if (!school) {
+            const error = new Error('School not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Check if department with same name already exists in this school
+        const existingDepartment = await prisma.department.findFirst({
+            where: { 
+                name,
+                schoolId
+            }
+        });
+
+        if (existingDepartment) {   
+            const error = new Error('Department with this name already exists in this school');
+            error.statusCode = 400;
+            throw error;
+        }   
+
+        // Create new department
+        const department = await prisma.department.create({
+            data: { 
+                name,
+                url,
+                adminName,
+                adminContact, 
+                adminEmail,
+                schoolId
+            }
+        }); 
+
+        res.status(201).json({
+            message: 'Department created successfully',
+            department
+        });     
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for getting all departments of a school
+export const getAllDepartments = async (req, res, next) => {
+    try {
+        const { schoolId } = req.params;
+
+        // Check if school exists
+        const school = await prisma.school.findUnique({
+            where: { id: schoolId }
+        });
+
+        if (!school) {
+            const error = new Error('School not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        const departments = await prisma.department.findMany({
+            where: { schoolId },
+            include: {
+                school: true
+            }
+        });
+
+        res.status(200).json({
+            message: 'Departments fetched successfully',
+            departments
+        });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for getting a specific department
+export const getDepartment = async (req, res, next) => {
+    try {
+        const { schoolId, departmentId } = req.params;
+
+        const department = await prisma.department.findFirst({
+            where: {
+                AND: [
+                    { id: departmentId },
+                    { schoolId }
+                ]
+            },
+            include: {
+                school: true
+            }
+        });
+
+        if (!department) {
+            const error = new Error('Department not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        res.status(200).json({
+            message: 'Department fetched successfully',
+            department
+        });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for updating a department
+export const updateDepartment = async (req, res, next) => {
+    try {
+        const { schoolId, departmentId } = req.params;
+        const { name, url, adminName, adminContact, adminEmail } = req.body;
+
+        // Check if department exists
+        const existingDepartment = await prisma.department.findFirst({
+            where: {
+                AND: [
+                    { id: departmentId },
+                    { schoolId }
+                ]
+            }
+        });
+
+        if (!existingDepartment) {
+            const error = new Error('Department not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Check if new name conflicts with another department in same school
+        if (name && name !== existingDepartment.name) {
+            const duplicateDepartment = await prisma.department.findFirst({
+                where: {
+                    AND: [
+                        { name },
+                        { schoolId },
+                        { id: { not: departmentId } }
+                    ]
+                }
+            });
+
+            if (duplicateDepartment) {
+                const error = new Error('Department with this name already exists in this school');
+                error.statusCode = 400;
+                throw error;
+            }
+        }
+
+        // Update department
+        const updatedDepartment = await prisma.department.update({
+            where: { id: departmentId },
+            data: {
+                name,
+                url,
+                adminName,
+                adminContact,
+                adminEmail
+            }
+        });
+
+        res.status(200).json({
+            message: 'Department updated successfully',
+            department: updatedDepartment
+        });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for deleting a department
+export const deleteDepartment = async (req, res, next) => {
+    try {
+        const { schoolId, departmentId } = req.params;
+
+        // Check if department exists
+        const department = await prisma.department.findFirst({
+            where: {
+                AND: [
+                    { id: departmentId },
+                    { schoolId }
+                ]
+            }
+        });
+
+        if (!department) {
+            const error = new Error('Department not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Delete department
+        await prisma.department.delete({
+            where: { id: departmentId }
+        });
+
+        res.status(200).json({
+            message: 'Department deleted successfully'
+        });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+
+// Controller for getting all schools
+export const getAllSchools = async (req, res, next) => {
+    try {
+        const schools = await prisma.school.findMany({
+            include: {
+                campus: true,
+                departments: true,
+                members: true
+            }
+        });
+
+        res.status(200).json({
+            message: 'Schools fetched successfully',
+            schools
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for getting a specific school
+export const getSchool = async (req, res, next) => {
+    try {
+        const { schoolId } = req.params;
+
+        const school = await prisma.school.findUnique({
+            where: { id: schoolId },
+            include: {
+                campus: true,
+                departments: true,
+                members: true
+            }
+        });
+
+        if (!school) {
+            const error = new Error('School not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        res.status(200).json({
+            message: 'School fetched successfully',
+            school
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for updating a school
+export const updateSchool = async (req, res, next) => {
+    try {
+        const { schoolId } = req.params;
+        const { name, url } = req.body;
+
+        const updatedSchool = await prisma.school.update({
+            where: { id: schoolId },
+            data: {
+                name,
+                url
+            },
+            include: {
+                campus: true,
+                departments: true,
+                members: true
+            }
+        });
+
+        res.status(200).json({
+            message: 'School updated successfully',
+            school: updatedSchool
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for deleting a school
+export const deleteSchool = async (req, res, next) => {
+    try {
+        const { schoolId } = req.params;
+
+        // First remove the school reference from campus
+        const school = await prisma.school.findUnique({
+            where: { id: schoolId },
+            select: { campusId: true }
+        });
+
+        await prisma.campus.update({
+            where: { id: school.campusId },
+            data: {
+                schoolIds: {
+                    set: await prisma.campus.findUnique({
+                        where: { id: school.campusId },
+                        select: { schoolIds: true }
+                    }).then(campus => 
+                        campus.schoolIds.filter(id => id !== schoolId)
+                    )
+                }
+            }
+        });
+
+        // Then delete the school
+        await prisma.school.delete({
+            where: { id: schoolId }
+        });
+
+        res.status(200).json({
+            message: 'School deleted successfully'
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+
+
 
 // Controller for accessing the management portal
 export const accessManagementPortal = (req, res) => {
