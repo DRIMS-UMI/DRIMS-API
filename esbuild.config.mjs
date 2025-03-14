@@ -5,10 +5,10 @@ const isProduction = process.env.NODE_ENV === "production";
 
 async function build() {
   try {
-    const config = {
+    const context = await esbuild.context({
         entryPoints: ["src/index.mjs"],
         alias: {
-            "@": "./src",
+            "@": "./src/*",
         },
         platform: "node",
         bundle: true,
@@ -19,17 +19,16 @@ async function build() {
         target: 'node18',
         format: 'cjs',
         logLevel: "info",
-    }
+    })
 
     if (isProduction) {
-        await esbuild.build(config);
-         console.log('✨ Build succeeded & disposed the context.');
-        
-    }else {
-        const context = await esbuild.context(config);
-        await context.watch();
-        console.log('✨ Build succeeded & watching the files.');
-    }
+      await context.rebuild();
+      context.dispose();
+      console.log('✨ Build succeeded & disposed the context.');
+   } else {
+      await context.watch();
+      console.log('✨ Build succeeded & watching the files.');
+   }
   } catch (error) {
     console.error("Build: failed", error);
     process.exit(1);
