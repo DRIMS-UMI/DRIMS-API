@@ -949,6 +949,172 @@ export const deleteSchool = async (req, res, next) => {
     }
 };
 
+// Controller for creating a faculty member
+export const createFacultyMember = async (req, res, next) => {
+    try {
+        const { name, email, phone, designation, schoolId, isAdmin, role } = req.body;
+
+        // Check if faculty member already exists
+        const existingFaculty = await prisma.facultyMember.findUnique({
+            where: { email }
+        });
+
+        if (existingFaculty) {
+            const error = new Error('Faculty member with this email already exists');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if user exists
+        const existingUser = await prisma.user.findUnique({
+            where: { email }
+        });
+
+        if (existingUser) {
+            const error = new Error('User with this email already exists');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Create user first
+        const user = await prisma.user.create({
+            data: {
+                name,
+                email,
+                password: Math.random().toString(36).slice(-8), // Generate random password
+                phone,
+                designation,
+                role
+            }
+        });
+
+        // Create faculty member and link user
+        const facultyMember = await prisma.facultyMember.create({
+            data: {
+                name,
+                email,
+                phone,
+                designation,
+                schoolId,
+                role,
+                isAdmin: isAdmin || false,
+                userId: user.id
+            }
+        });
+
+        res.status(201).json({
+            message: 'Faculty member created successfully',
+            facultyMember
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for getting all faculty members
+export const getAllFacultyMembers = async (req, res, next) => {
+    try {
+        const facultyMembers = await prisma.facultyMember.findMany({
+            include: {
+                school: true,
+                user: true
+            }
+        });
+
+        res.status(200).json({
+            facultyMembers
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for getting a single faculty member
+export const getFacultyMember = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+
+        const facultyMember = await prisma.facultyMember.findUnique({
+            where: { id },
+            include: {
+                school: true,
+                user: true
+            }
+        });
+
+        if (!facultyMember) {
+            const error = new Error('Faculty member not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        res.status(200).json({
+            facultyMember
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for updating a faculty member
+export const updateFacultyMember = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { name, email, phone, designation, schoolId, isAdmin } = req.body;
+
+        const updatedFacultyMember = await prisma.facultyMember.update({
+            where: { id },
+            data: {
+                name,
+                email,
+                phone,
+                designation,
+                schoolId,
+                isAdmin
+            }
+        });
+
+        res.status(200).json({
+            message: 'Faculty member updated successfully',
+            facultyMember: updatedFacultyMember
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for deleting a faculty member
+export const deleteFacultyMember = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+
+        await prisma.facultyMember.delete({
+            where: { id }
+        });
+
+        res.status(200).json({
+            message: 'Faculty member deleted successfully'
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
 
 
 
