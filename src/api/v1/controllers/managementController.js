@@ -709,6 +709,8 @@ export const deleteDepartment = async (req, res, next) => {
 // Controller for getting all schools
 export const getAllSchools = async (req, res, next) => {
     try {
+
+        console.log('getAllSchools');
         const schools = await prisma.school.findMany({
             include: {
                 campus: true,
