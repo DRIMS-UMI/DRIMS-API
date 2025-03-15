@@ -96564,47 +96564,40 @@ var addSchoolMembers = async (req, res, next) => {
       error.statusCode = 404;
       throw error;
     }
-    const existingDean = await db_default.schoolMember.findFirst({
-      where: { email: dean.email }
-    });
-    if (existingDean) {
-      const error = new Error("Dean with this email already exists");
-      error.statusCode = 400;
-      throw error;
-    }
-    if (pa2) {
-      const existingPA = await db_default.schoolMember.findFirst({
-        where: { email: pa2.email }
+    let deanMember = null;
+    if (dean && dean.email) {
+      const existingDean = await db_default.schoolMember.findFirst({
+        where: { email: dean.email }
       });
-      if (existingPA) {
-        const error = new Error("PA with this email already exists");
+      if (existingDean) {
+        const error = new Error("Dean with this email already exists");
         error.statusCode = 400;
         throw error;
       }
-    }
-    const currentDean = await db_default.schoolMember.findFirst({
-      where: {
-        schoolId,
-        role: "Dean",
-        isCurrent: true
+      const currentDean = await db_default.schoolMember.findFirst({
+        where: {
+          schoolId,
+          role: "Dean",
+          isCurrent: true
+        }
+      });
+      if (currentDean) {
+        await db_default.schoolMember.update({
+          where: { id: currentDean.id },
+          data: { isCurrent: false }
+        });
       }
-    });
-    if (currentDean) {
-      await db_default.schoolMember.update({
-        where: { id: currentDean.id },
-        data: { isCurrent: false }
+      deanMember = await db_default.schoolMember.create({
+        data: {
+          schoolId,
+          name: dean.name,
+          contact: dean.contact,
+          email: dean.email,
+          role: "Dean",
+          isCurrent: dean.isCurrent || true
+        }
       });
     }
-    const deanMember = await db_default.schoolMember.create({
-      data: {
-        schoolId,
-        name: dean.name,
-        contact: dean.contact,
-        email: dean.email,
-        role: "Dean",
-        isCurrent: dean.isCurrent || true
-      }
-    });
     let paMember = null;
     if (pa2) {
       paMember = await db_default.schoolMember.create({
@@ -96620,8 +96613,108 @@ var addSchoolMembers = async (req, res, next) => {
     }
     res.status(201).json({
       message: "School members added successfully",
-      dean: deanMember,
+      ...deanMember && { dean: deanMember },
       ...paMember && { pa: paMember }
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var updateSchoolMembers = async (req, res, next) => {
+  try {
+    const { schoolId } = req.params;
+    const { dean, pa: pa2 } = req.body;
+    console.log("dean", dean);
+    if (dean) {
+      const existingDean = await db_default.schoolMember.findUnique({
+        where: { email: dean.email }
+      });
+      if (existingDean) {
+        if (existingDean.role !== "Dean" || existingDean.schoolId !== schoolId) {
+          await db_default.schoolMember.update({
+            where: { id: existingDean.id },
+            data: {
+              schoolId,
+              name: dean.name,
+              contact: dean.contact,
+              role: "Dean",
+              isCurrent: true
+            }
+          });
+        } else {
+          await db_default.schoolMember.update({
+            where: { id: existingDean.id },
+            data: {
+              name: dean.name,
+              contact: dean.contact,
+              isCurrent: true
+            }
+          });
+        }
+      } else {
+        await db_default.schoolMember.create({
+          data: {
+            schoolId,
+            name: dean.name,
+            contact: dean.contact,
+            email: dean.email,
+            role: "Dean",
+            isCurrent: true
+          }
+        });
+      }
+    }
+    if (pa2) {
+      const existingPA = await db_default.schoolMember.findUnique({
+        where: { email: pa2.email }
+      });
+      if (existingPA) {
+        if (existingPA.role !== "Personal Assistant" || existingPA.schoolId !== schoolId) {
+          await db_default.schoolMember.update({
+            where: { id: existingPA.id },
+            data: {
+              schoolId,
+              name: pa2.name,
+              contact: pa2.contact,
+              role: "Personal Assistant",
+              isCurrent: true
+            }
+          });
+        } else {
+          await db_default.schoolMember.update({
+            where: { id: existingPA.id },
+            data: {
+              name: pa2.name,
+              contact: pa2.contact,
+              isCurrent: true
+            }
+          });
+        }
+      } else {
+        await db_default.schoolMember.create({
+          data: {
+            schoolId,
+            name: pa2.name,
+            contact: pa2.contact,
+            email: pa2.email,
+            role: "Personal Assistant",
+            isCurrent: true
+          }
+        });
+      }
+    }
+    const updatedMembers = await db_default.schoolMember.findMany({
+      where: {
+        schoolId,
+        isCurrent: true
+      }
+    });
+    res.status(200).json({
+      message: "School members updated successfully",
+      members: updatedMembers
     });
   } catch (error) {
     if (!error.statusCode) {
@@ -96866,11 +96959,12 @@ var getSchool = async (req, res, next) => {
 var updateSchool = async (req, res, next) => {
   try {
     const { schoolId } = req.params;
-    const { name, url } = req.body;
+    const { name, code, url } = req.body;
     const updatedSchool = await db_default.school.update({
       where: { id: schoolId },
       data: {
         name,
+        code,
         url
       },
       include: {
@@ -96935,6 +97029,7 @@ router.post("/login/research-centre-admin", loginResearchCentreAdmin);
 router.get("/user/details", authentication_default, getLoggedInUserDetails);
 router.post("/schools", authentication_default, roleAuthorization_default("SUPERADMIN"), addSchool);
 router.post("/schools/:schoolId/members", authentication_default, roleAuthorization_default("SUPERADMIN"), addSchoolMembers);
+router.put("/schools/:schoolId/members", authentication_default, roleAuthorization_default("SUPERADMIN"), updateSchoolMembers);
 router.get("/schools", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), getAllSchools);
 router.get("/schools/:schoolId", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), getSchool);
 router.put("/schools/:schoolId", authentication_default, roleAuthorization_default("SUPERADMIN"), updateSchool);

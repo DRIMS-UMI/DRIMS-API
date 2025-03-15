@@ -391,57 +391,48 @@ export const addSchoolMembers = async (req, res, next) => {
             throw error;
         }
 
-        // Check if dean email already exists
-        const existingDean = await prisma.schoolMember.findFirst({
-            where: { email: dean.email }
-        });
-
-        if (existingDean) {
-            const error = new Error('Dean with this email already exists');
-            error.statusCode = 400;
-            throw error;
-        }
-
-        // Check if PA email already exists if PA details provided
-        if (pa) {
-            const existingPA = await prisma.schoolMember.findFirst({
-                where: { email: pa.email }
+        let deanMember = null;
+        // Only process dean if details provided
+        if (dean && dean.email) {
+            // Check if dean email already exists
+            const existingDean = await prisma.schoolMember.findFirst({
+                where: { email: dean.email }
             });
 
-            if (existingPA) {
-                const error = new Error('PA with this email already exists');
+            if (existingDean) {
+                const error = new Error('Dean with this email already exists');
                 error.statusCode = 400;
                 throw error;
             }
-        }
 
-        // Find current dean if exists and make them not current
-        const currentDean = await prisma.schoolMember.findFirst({
-            where: {
-                schoolId,
-                role: 'Dean',
-                isCurrent: true
+            // Find current dean if exists and make them not current
+            const currentDean = await prisma.schoolMember.findFirst({
+                where: {
+                    schoolId,
+                    role: 'Dean',
+                    isCurrent: true
+                }
+            });
+
+            if (currentDean) {
+                await prisma.schoolMember.update({
+                    where: { id: currentDean.id },
+                    data: { isCurrent: false }
+                });
             }
-        });
 
-        if (currentDean) {
-            await prisma.schoolMember.update({
-                where: { id: currentDean.id },
-                data: { isCurrent: false }
+            // Create Dean
+            deanMember = await prisma.schoolMember.create({
+                data: {
+                    schoolId,
+                    name: dean.name,
+                    contact: dean.contact,
+                    email: dean.email,
+                    role: 'Dean',
+                    isCurrent: dean.isCurrent || true
+                }
             });
         }
-
-        // Create Dean
-        const deanMember = await prisma.schoolMember.create({
-            data: {
-                schoolId,
-                name: dean.name,
-                contact: dean.contact,
-                email: dean.email,
-                role: 'Dean',
-                isCurrent: dean.isCurrent || true
-            }
-        });
 
         let paMember = null;
         // Create PA only if PA details are provided
@@ -460,7 +451,7 @@ export const addSchoolMembers = async (req, res, next) => {
 
         res.status(201).json({
             message: 'School members added successfully',
-            dean: deanMember,
+            ...(deanMember && { dean: deanMember }),
             ...(paMember && { pa: paMember })
         });
 
@@ -471,6 +462,128 @@ export const addSchoolMembers = async (req, res, next) => {
         next(error);
     }
 };
+
+// Controller for updating school members
+export const updateSchoolMembers = async (req, res, next) => {
+    try {
+        const { schoolId } = req.params;
+        const { dean, pa } = req.body;
+
+        console.log('dean', dean);
+
+        // Update Dean
+        if (dean) {
+            // Check if a school member with the given email already exists
+            const existingDean = await prisma.schoolMember.findUnique({
+                where: { email: dean.email }
+            });
+
+            if (existingDean) {
+                // If the existing member is not the current dean, update their details
+                if (existingDean.role !== 'Dean' || existingDean.schoolId !== schoolId) {
+                    await prisma.schoolMember.update({
+                        where: { id: existingDean.id },
+                        data: {
+                            schoolId,
+                            name: dean.name,
+                            contact: dean.contact,
+                            role: 'Dean',
+                            isCurrent: true
+                        }
+                    });
+                } else {
+                    // If the existing member is already the current dean, update their details
+                    await prisma.schoolMember.update({
+                        where: { id: existingDean.id },
+                        data: {
+                            name: dean.name,
+                            contact: dean.contact,
+                            isCurrent: true
+                        }
+                    });
+                }
+            } else {
+                // If no member with the email exists, create a new dean
+                await prisma.schoolMember.create({
+                    data: {
+                        schoolId,
+                        name: dean.name,
+                        contact: dean.contact,
+                        email: dean.email,
+                        role: 'Dean',
+                        isCurrent: true
+                    }
+                });
+            }
+        }
+
+        // Update PA
+        if (pa) {
+            // Check if a school member with the given email already exists
+            const existingPA = await prisma.schoolMember.findUnique({
+                where: { email: pa.email }
+            });
+
+            if (existingPA) {
+                // If the existing member is not the current PA, update their details
+                if (existingPA.role !== 'Personal Assistant' || existingPA.schoolId !== schoolId) {
+                    await prisma.schoolMember.update({
+                        where: { id: existingPA.id },
+                        data: {
+                            schoolId,
+                            name: pa.name,
+                            contact: pa.contact,
+                            role: 'Personal Assistant',
+                            isCurrent: true
+                        }
+                    });
+                } else {
+                    // If the existing member is already the current PA, update their details
+                    await prisma.schoolMember.update({
+                        where: { id: existingPA.id },
+                        data: {
+                            name: pa.name,
+                            contact: pa.contact,
+                            isCurrent: true
+                        }
+                    });
+                }
+            } else {
+                // If no member with the email exists, create a new PA
+                await prisma.schoolMember.create({
+                    data: {
+                        schoolId,
+                        name: pa.name,
+                        contact: pa.contact,
+                        email: pa.email,
+                        role: 'Personal Assistant',
+                        isCurrent: true
+                    }
+                });
+            }
+        }
+
+        // Get updated school members
+        const updatedMembers = await prisma.schoolMember.findMany({
+            where: {
+                schoolId,
+                isCurrent: true
+            }
+        });
+
+        res.status(200).json({
+            message: 'School members updated successfully',
+            members: updatedMembers
+        });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
 
 
 // Controller for adding a new department to a school
@@ -767,12 +880,13 @@ export const getSchool = async (req, res, next) => {
 export const updateSchool = async (req, res, next) => {
     try {
         const { schoolId } = req.params;
-        const { name, url } = req.body;
+        const { name, code, url } = req.body;
 
         const updatedSchool = await prisma.school.update({
             where: { id: schoolId },
             data: {
                 name,
+                code,
                 url
             },
             include: {
