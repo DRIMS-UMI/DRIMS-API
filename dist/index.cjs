@@ -97187,15 +97187,27 @@ var createSupervisor = async (req, res, next) => {
 };
 var getAllFacultyMembers = async (req, res, next) => {
   try {
-    const facultyMembers = await db_default.facultyMember.findMany({
-      include: {
-        school: true,
-        user: true
-      }
-    });
-    res.status(200).json({
-      facultyMembers
-    });
+    const [facultyMembers, supervisors] = await Promise.all([
+      db_default.facultyMember.findMany({
+        include: {
+          school: true,
+          campus: true
+        }
+      }),
+      db_default.supervisor.findMany({
+        include: {
+          school: true,
+          campus: true,
+          department: true
+        }
+      })
+    ]);
+    res.status(200).json(
+      { facultyMembers: [
+        ...facultyMembers,
+        ...supervisors
+      ] }
+    );
   } catch (error) {
     if (!error.statusCode) {
       error.statusCode = 500;

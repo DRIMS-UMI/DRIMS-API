@@ -1120,16 +1120,27 @@ export const createSupervisor = async (req, res, next) => {
 // Controller for getting all faculty members
 export const getAllFacultyMembers = async (req, res, next) => {
     try {
-        const facultyMembers = await prisma.facultyMember.findMany({
-            include: {
-                school: true,
-                user: true
-            }
-        });
+        const [facultyMembers, supervisors] = await Promise.all([
+            prisma.facultyMember.findMany({
+                include: {
+                    school: true,
+                    campus: true
+                }
+            }),
+            prisma.supervisor.findMany({
+                include: {
+                    school: true,
+                    campus: true,
+                    department: true
+                }
+            })
+        ]);
 
-        res.status(200).json({
-            facultyMembers
-        });
+        res.status(200).json({facultyMembers: [
+            ...facultyMembers,
+            ...supervisors
+        ]}
+          );
     } catch (error) {
         if (!error.statusCode) {
             error.statusCode = 500;
