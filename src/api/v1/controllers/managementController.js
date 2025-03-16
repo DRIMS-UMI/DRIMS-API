@@ -952,22 +952,35 @@ export const deleteSchool = async (req, res, next) => {
 // Controller for creating a faculty member
 export const createFacultyMember = async (req, res, next) => {
     try {
-        const { name, email, phone, designation, schoolId, isAdmin, role } = req.body;
+        const { 
+            name,
+            workEmail,
+            personalEmail,
+            primaryPhone,
+            secondaryPhone,
+            designation,
+            schoolId,
+            campusId,
+            facultyType,
+          
+            employeeId,
+            password 
+        } = req.body;
 
         // Check if faculty member already exists
         const existingFaculty = await prisma.facultyMember.findUnique({
-            where: { email }
+            where: { workEmail }
         });
 
         if (existingFaculty) {
-            const error = new Error('Faculty member with this email already exists');
+            const error = new Error('Faculty member with this work email already exists');
             error.statusCode = 400;
             throw error;
         }
 
         // Check if user exists
         const existingUser = await prisma.user.findUnique({
-            where: { email }
+            where: { email: workEmail }
         });
 
         if (existingUser) {
@@ -976,15 +989,30 @@ export const createFacultyMember = async (req, res, next) => {
             throw error;
         }
 
+        // Hash the password
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        // Determine role based on facultyType
+        let role;
+        if (facultyType === 'dean') {
+            role = 'DEAN';
+        } else if (facultyType === 'school pa') {
+            role = 'SCHOOL_PA';
+        } else if (facultyType === 'school admin') {
+            role = 'SCHOOL_ADMIN';
+        } else {
+            role = 'FACULTY';
+        }
+
         // Create user first
         const user = await prisma.user.create({
             data: {
                 name,
-                email,
-                password: Math.random().toString(36).slice(-8), // Generate random password
-                phone,
+                email: workEmail,
                 designation,
-                role
+                password: hashedPassword,
+                role,
+                phone: primaryPhone
             }
         });
 
@@ -992,15 +1020,21 @@ export const createFacultyMember = async (req, res, next) => {
         const facultyMember = await prisma.facultyMember.create({
             data: {
                 name,
-                email,
-                phone,
+                workEmail,
+                personalEmail,
+                primaryPhone,
+                secondaryPhone,
                 designation,
-                schoolId,
+                school: { connect: { id: schoolId } },
+                campus: { connect: { id: campusId } },
+                facultyType,
                 role,
-                isAdmin: isAdmin || false,
-                userId: user.id
+                isAdmin: facultyType === 'school admin' ? true : false,
+                employeeId,
+                user: { connect: { id: user.id } }
             }
         });
+
 
         res.status(201).json({
             message: 'Faculty member created successfully',
@@ -1013,6 +1047,75 @@ export const createFacultyMember = async (req, res, next) => {
         next(error);
     }
 };
+
+// Controller for creating a supervisor
+export const createSupervisor = async (req, res, next) => {
+    try {
+        const {
+            name,
+            workEmail,
+            personalEmail,
+            primaryPhone,
+            secondaryPhone,
+            designation,
+            schoolId,
+            campusId,
+            departmentId,
+            facultyType,
+            employeeId,
+            password
+        } = req.body;
+
+        // Hash password
+        const hashedPassword = await bcrypt.hash(password, 12);
+
+        // Set role based on faculty type
+        let role = 'SUPERVISOR';
+
+        // Create user first
+        const user = await prisma.user.create({
+            data: {
+                name,
+                email: workEmail,
+                designation,
+                password: hashedPassword,
+                role,
+                phone: primaryPhone
+            }
+        });
+
+        // Create supervisor and link user
+        const supervisor = await prisma.supervisor.create({
+            data: {
+                name,
+                workEmail,
+                personalEmail,
+                primaryPhone,
+                secondaryPhone,
+                designation,
+                school: { connect: { id: schoolId } },
+                campus: { connect: { id: campusId } },
+                department: { connect: { id: departmentId } },
+                facultyType,
+                role,
+                employeeId,
+                user: { connect: { id: user.id } }
+            }
+        });
+
+        res.status(201).json({
+            message: 'Supervisor created successfully',
+            supervisor
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+
 
 // Controller for getting all faculty members
 export const getAllFacultyMembers = async (req, res, next) => {
