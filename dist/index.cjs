@@ -97282,6 +97282,154 @@ var deleteFacultyMember = async (req, res, next) => {
     next(error);
   }
 };
+var createStudent = async (req, res, next) => {
+  try {
+    const { name, email, expectedCompletionDate, supervisorIds } = req.body;
+    const student = await db_default.student.create({
+      data: {
+        name,
+        email,
+        expectedCompletionDate: expectedCompletionDate ? new Date(expectedCompletionDate) : null,
+        supervisorIds: supervisorIds || [],
+        statuses: {
+          create: [{
+            status: "ADMITTED",
+            startDate: /* @__PURE__ */ new Date(),
+            remarks: "Initial admission"
+          }]
+        }
+      },
+      include: {
+        statuses: true,
+        supervisors: true
+      }
+    });
+    await db_default.userActivity.create({
+      data: {
+        action: "Created Student",
+        entityType: "Student",
+        entityId: student.id,
+        userId: req.user?.id
+      }
+    });
+    res.status(201).json({
+      message: "Student created successfully",
+      student
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var updateStudent = async (req, res, next) => {
+  try {
+    const { id: id2 } = req.params;
+    const { name, email, expectedCompletionDate, supervisorIds } = req.body;
+    const updatedStudent = await db_default.student.update({
+      where: { id: id2 },
+      data: {
+        name,
+        email,
+        expectedCompletionDate: expectedCompletionDate ? new Date(expectedCompletionDate) : void 0,
+        supervisorIds: supervisorIds || void 0
+      },
+      include: {
+        statuses: true,
+        supervisors: true
+      }
+    });
+    await db_default.userActivity.create({
+      data: {
+        action: "Updated Student",
+        entityType: "Student",
+        entityId: id2,
+        userId: req.user?.id
+      }
+    });
+    res.status(200).json({
+      message: "Student updated successfully",
+      student: updatedStudent
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var deleteStudent = async (req, res, next) => {
+  try {
+    const { id: id2 } = req.params;
+    await db_default.student.delete({
+      where: { id: id2 }
+    });
+    await db_default.userActivity.create({
+      data: {
+        action: "Deleted Student",
+        entityType: "Student",
+        entityId: id2,
+        userId: req.user?.id
+      }
+    });
+    res.status(200).json({
+      message: "Student deleted successfully"
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var getStudent = async (req, res, next) => {
+  try {
+    const { id: id2 } = req.params;
+    const student = await db_default.student.findUnique({
+      where: { id: id2 },
+      include: {
+        statuses: true,
+        supervisors: true,
+        proposals: true,
+        notifications: true,
+        fieldWork: true,
+        vivas: true
+      }
+    });
+    if (!student) {
+      const error = new Error("Student not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    res.status(200).json({
+      student
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var getAllStudents = async (req, res, next) => {
+  try {
+    const students = await db_default.student.findMany({
+      include: {
+        statuses: true,
+        supervisors: true
+      }
+    });
+    res.status(200).json({
+      students
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
 var accessManagementPortal = (req, res) => {
   res.send("Welcome to the Management Portal");
 };
@@ -97315,6 +97463,11 @@ router.get("/faculty/:facultyId", authentication_default, roleAuthorization_defa
 router.put("/faculty/:facultyId", authentication_default, roleAuthorization_default("SUPERADMIN"), updateFacultyMember);
 router.delete("/faculty/:facultyId", authentication_default, roleAuthorization_default("SUPERADMIN"), deleteFacultyMember);
 router.post("/supervisor", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), createSupervisor);
+router.post("/students", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), createStudent);
+router.put("/students/:studentId", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), updateStudent);
+router.delete("/students/:studentId", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), deleteStudent);
+router.get("/students/:studentId", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), getStudent);
+router.get("/students", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), getAllStudents);
 router.get("/management", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), accessManagementPortal);
 var managementRoutes_default = router;
 

@@ -1230,6 +1230,178 @@ export const deleteFacultyMember = async (req, res, next) => {
 };
 
 
+// Controller for creating a new student
+export const createStudent = async (req, res, next) => {
+    try {
+        const { name, email, expectedCompletionDate, supervisorIds } = req.body;
+
+        const student = await prisma.student.create({
+            data: {
+                name,
+                email,
+                expectedCompletionDate: expectedCompletionDate ? new Date(expectedCompletionDate) : null,
+                supervisorIds: supervisorIds || [],
+                statuses: {
+                    create: [{
+                        status: "ADMITTED",
+                        startDate: new Date(),
+                        remarks: "Initial admission"
+                    }]
+                }
+            },
+            include: {
+                statuses: true,
+                supervisors: true
+            }
+        });
+
+        // Create user activity log
+        await prisma.userActivity.create({
+            data: {
+                action: "Created Student",
+                entityType: "Student",
+                entityId: student.id,
+                userId: req.user?.id
+            }
+        });
+
+        res.status(201).json({
+            message: 'Student created successfully',
+            student
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+export const updateStudent = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { name, email, expectedCompletionDate, supervisorIds } = req.body;
+
+        const updatedStudent = await prisma.student.update({
+            where: { id },
+            data: {
+                name,
+                email,
+                expectedCompletionDate: expectedCompletionDate ? new Date(expectedCompletionDate) : undefined,
+                supervisorIds: supervisorIds || undefined
+            },
+            include: {
+                statuses: true,
+                supervisors: true
+            }
+        });
+
+        // Create user activity log
+        await prisma.userActivity.create({
+            data: {
+                action: "Updated Student",
+                entityType: "Student",
+                entityId: id,
+                userId: req.user?.id
+            }
+        });
+
+        res.status(200).json({
+            message: 'Student updated successfully',
+            student: updatedStudent
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+export const deleteStudent = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+
+        await prisma.student.delete({
+            where: { id }
+        });
+
+        // Create user activity log
+        await prisma.userActivity.create({
+            data: {
+                action: "Deleted Student",
+                entityType: "Student", 
+                entityId: id,
+                userId: req.user?.id
+            }
+        });
+
+        res.status(200).json({
+            message: 'Student deleted successfully'
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+export const getStudent = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+
+        const student = await prisma.student.findUnique({
+            where: { id },
+            include: {
+                statuses: true,
+                supervisors: true,
+                proposals: true,
+                notifications: true,
+                fieldWork: true,
+                vivas: true
+            }
+        });
+
+        if (!student) {
+            const error = new Error('Student not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        res.status(200).json({
+            student
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+export const getAllStudents = async (req, res, next) => {
+    try {
+        const students = await prisma.student.findMany({
+            include: {
+                statuses: true,
+                supervisors: true
+            }
+        });
+
+        res.status(200).json({
+            students
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+
+
 
 
 // Controller for accessing the management portal
