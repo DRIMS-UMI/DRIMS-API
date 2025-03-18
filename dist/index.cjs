@@ -97526,7 +97526,10 @@ var getAllStudents = async (req, res, next) => {
     const students = await db_default.student.findMany({
       include: {
         statuses: true,
-        supervisors: true
+        supervisors: true,
+        school: true,
+        campus: true,
+        department: true
       }
     });
     res.status(200).json({
