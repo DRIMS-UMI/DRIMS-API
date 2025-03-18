@@ -1232,26 +1232,127 @@ export const deleteFacultyMember = async (req, res, next) => {
 
 // Controller for creating a new student
 export const createStudent = async (req, res, next) => {
+    let createdUser = null;
     try {
-        const { name, email, expectedCompletionDate, supervisorIds } = req.body;
+        const {
+            title,
+            firstName,
+            lastName,
+            email,
+            phoneNumber,
+            dateOfBirth,
+            gender,
+            campusId,
+            schoolId,
+            departmentId,
+            academicYear,
+            studyMode,
+            intakePeriod,
+            programLevel,
+            specialization,
+            completionTime,
+            expectedCompletionDate,
+            password
+        } = req.body;
 
+        // Check if user already exists
+        const existingUser = await prisma.user.findUnique({
+            where: { email }
+        });
+
+        if (existingUser) {
+            const error = new Error('User with this email already exists');
+            error.statusCode = 409;
+            throw error;
+        }
+
+        // Check if student already exists
+        const existingStudent = await prisma.student.findUnique({
+            where: { email }
+        });
+
+        if (existingStudent) {
+            const error = new Error('Student with this email already exists');
+            error.statusCode = 409;
+            throw error;
+        }
+
+
+        // Ensure statusDefinition exists or create it
+        let statusDefinition = await prisma.statusDefinition.findUnique({
+            where: { name: "ADMITTED" }
+        });
+
+        if (!statusDefinition) {
+            statusDefinition = await prisma.statusDefinition.create({
+                data: {
+                    name: "ADMITTED",
+                    description: "Student has been admitted to the system"
+                }
+            });
+        }
+
+        // Create user first
+        const user = await prisma.user.create({
+            data: {
+                name: `${firstName} ${lastName}`,
+                email,
+                password,
+                phone: phoneNumber,
+                role: "STUDENT"
+            }
+        });
+
+        createdUser = user;
+
+        // Then create student with user connection
         const student = await prisma.student.create({
             data: {
-                name,
+                title,
+                firstName,
+                lastName,
                 email,
+                phoneNumber,
+                dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
+                gender,
+                campus: {
+                    connect: { id: campusId }
+                },
+                school: {
+                    connect: { id: schoolId }
+                },
+                department: {
+                    connect: { id: departmentId }
+                },
+                academicYear,
+                studyMode,
+                intakePeriod,
+                programLevel,
+                specialization,
+                completionTime : completionTime ? parseInt(completionTime) : null,
+                
                 expectedCompletionDate: expectedCompletionDate ? new Date(expectedCompletionDate) : null,
-                supervisorIds: supervisorIds || [],
+                currentStatus: "ADMITTED",
+                user: {
+                    connect: { id: user.id }
+                },
                 statuses: {
                     create: [{
-                        status: "ADMITTED",
+                        definition: {
+                            connect: { id: statusDefinition.id }
+                        },
                         startDate: new Date(),
-                        remarks: "Initial admission"
+                        conditions: "Initial admission"
                     }]
                 }
             },
             include: {
+                campus: true,
+                school: true,
+                department: true,
                 statuses: true,
-                supervisors: true
+                supervisors: true,
+                user: true
             }
         });
 
@@ -1272,6 +1373,11 @@ export const createStudent = async (req, res, next) => {
     } catch (error) {
         if (!error.statusCode) {
             error.statusCode = 500;
+        }
+        if (createdUser) {
+            await prisma.user.delete({
+                where: { id: createdUser.id }
+            });
         }
         next(error);
     }

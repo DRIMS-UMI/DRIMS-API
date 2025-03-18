@@ -54,11 +54,33 @@ model userActivity {
 
 model student {
   id                    String         @id @default(auto()) @map("_id") @db.ObjectId
-  name                  String
+  title                 String?
+  firstName             String
+  lastName              String
   email                 String         @unique
+  phoneNumber          String?
+  dateOfBirth          DateTime?
+  gender               String?        // "male" or "female"
+  
+  campus               campus?        @relation(fields: [campusId], references: [id])
+  campusId             String?        @db.ObjectId
+  school               school?        @relation(fields: [schoolId], references: [id])
+  schoolId             String?        @db.ObjectId
+  department           department?    @relation(fields: [departmentId], references: [id])
+  departmentId         String?        @db.ObjectId
+  
+  academicYear         String?
+  studyMode            String?        // "Full Time" or "Part Time"
+  intakePeriod         String?
+  programLevel         String?        // "Masters" or "PhD"
+  specialization       String?
+  completionTime       Int?           // Expected completion time in months
+  
   admissionDate        DateTime       @default(now())
   expectedCompletionDate DateTime?
   totalDuration        Int?           // Total duration in days since admission
+  currentStatus        String?        // Current status of the student
+  isActive            Boolean        @default(true)
  
   fieldWork            fieldWork[]     
   
@@ -73,16 +95,20 @@ model student {
   supervisors          supervisor[]     @relation(fields: [supervisorIds], references:[id])
   
   books                book[]         
-  vivas                 viva[]       
+  vivas                viva[]       
+
+  // Timestamps
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
 }
 
 model statusDefinition {
   id              String   @id @default(auto()) @map("_id") @db.ObjectId
   name            String   @unique  // e.g., "BREAK", "WORKSHOP", etc.
   description     String
-  expectedDuration Int     // Expected duration in days
-  warningDays     Int     // Days before expected end to send warning
-  criticalDays    Int     // Days after expected end to send critical notification
+  expectedDuration Int?     // Expected duration in days
+  warningDays     Int?     // Days before expected end to send warning
+  criticalDays    Int?     // Days after expected end to send critical notification
   notifyRoles     Role[]  // Which roles to notify
   isActive        Boolean @default(true)
   createdAt       DateTime @default(now())
@@ -239,6 +265,7 @@ model school {
   departments department[]    
   facultyMembers facultyMember[]
   supervisors supervisor[]
+  students    student[]
 }
 
 model campus {
@@ -248,6 +275,7 @@ model campus {
   schools     school[] 
   facultyMembers facultyMember[]
   supervisors supervisor[]
+  students    student[]
 }
 
 model schoolMember {
@@ -271,6 +299,7 @@ model department {
   adminContact   String
   adminEmail     String @unique
   supervisors supervisor[]
+  students    student[]
 }
 
 model facultyMember {
