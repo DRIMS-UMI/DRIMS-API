@@ -97616,6 +97616,114 @@ var getAllStudents = async (req, res, next) => {
     next(error);
   }
 };
+var createStatusDefinition = async (req, res, next) => {
+  try {
+    const { name } = req.body;
+    const statusDefinition = await db_default.statusDefinition.create({
+      data: {
+        name
+      }
+    });
+    res.status(201).json({
+      message: "Status definition created successfully",
+      statusDefinition
+    });
+  } catch (error) {
+    if (error.code === "P2002") {
+      const err = new Error("A status with this name already exists");
+      err.statusCode = 409;
+      next(err);
+      return;
+    }
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var getAllStatusDefinitions = async (req, res, next) => {
+  try {
+    const statusDefinitions = await db_default.statusDefinition.findMany();
+    res.status(200).json({
+      statusDefinitions
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var getStatusDefinition = async (req, res, next) => {
+  try {
+    const { id: id2 } = req.params;
+    const statusDefinition = await db_default.statusDefinition.findUnique({
+      where: {
+        id: id2
+      }
+    });
+    if (!statusDefinition) {
+      const error = new Error("Status definition not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    res.status(200).json({
+      statusDefinition
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var updateStatusDefinition = async (req, res, next) => {
+  try {
+    const { id: id2 } = req.params;
+    const { name } = req.body;
+    const statusDefinition = await db_default.statusDefinition.update({
+      where: {
+        id: id2
+      },
+      data: {
+        name
+      }
+    });
+    res.status(200).json({
+      message: "Status definition updated successfully",
+      statusDefinition
+    });
+  } catch (error) {
+    if (error.code === "P2002") {
+      const err = new Error("A status with this name already exists");
+      err.statusCode = 409;
+      next(err);
+      return;
+    }
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var deleteStatusDefinition = async (req, res, next) => {
+  try {
+    const { id: id2 } = req.params;
+    await db_default.statusDefinition.delete({
+      where: {
+        id: id2
+      }
+    });
+    res.status(200).json({
+      message: "Status definition deleted successfully"
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
 var accessManagementPortal = (req, res) => {
   res.send("Welcome to the Management Portal");
 };
@@ -97655,6 +97763,11 @@ router.delete("/students/:studentId", authentication_default, roleAuthorization_
 router.get("/students/:studentId", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), getStudent);
 router.get("/students", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), getAllStudents);
 router.put("/students/:studentId/password", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), changeStudentPassword);
+router.post("/status-definitions", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), createStatusDefinition);
+router.get("/status-definitions", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), getAllStatusDefinitions);
+router.get("/status-definitions/:id", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), getStatusDefinition);
+router.put("/status-definitions/:id", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), updateStatusDefinition);
+router.delete("/status-definitions/:id", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), deleteStatusDefinition);
 router.get("/management", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), accessManagementPortal);
 var managementRoutes_default = router;
 

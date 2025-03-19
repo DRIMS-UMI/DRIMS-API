@@ -1599,6 +1599,134 @@ export const getAllStudents = async (req, res, next) => {
     }
 };
 
+// Controller for creating a status definition
+// Create a new status definition
+export const createStatusDefinition = async (req, res, next) => {
+    try {
+        const { name } = req.body;
+
+        const statusDefinition = await prisma.statusDefinition.create({
+            data: {
+                name: name
+            }
+        });
+
+        res.status(201).json({
+            message: 'Status definition created successfully',
+            statusDefinition
+        });
+    } catch (error) {
+        if (error.code === 'P2002') {
+            const err = new Error('A status with this name already exists');
+            err.statusCode = 409;
+            next(err);
+            return;
+        }
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Get all status definitions
+export const getAllStatusDefinitions = async (req, res, next) => {
+    try {
+        const statusDefinitions = await prisma.statusDefinition.findMany();
+
+        res.status(200).json({
+            statusDefinitions
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Get a single status definition by ID
+export const getStatusDefinition = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+
+        const statusDefinition = await prisma.statusDefinition.findUnique({
+            where: {
+                id: id
+            }
+        });
+
+        if (!statusDefinition) {
+            const error = new Error('Status definition not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        res.status(200).json({
+            statusDefinition
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Update a status definition
+export const updateStatusDefinition = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { name } = req.body;
+
+        const statusDefinition = await prisma.statusDefinition.update({
+            where: {
+                id: id
+            },
+            data: {
+                name: name
+            }
+        });
+
+        res.status(200).json({
+            message: 'Status definition updated successfully',
+            statusDefinition
+        });
+    } catch (error) {
+        if (error.code === 'P2002') {
+            const err = new Error('A status with this name already exists');
+            err.statusCode = 409;
+            next(err);
+            return;
+        }
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Delete a status definition
+export const deleteStatusDefinition = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+
+        await prisma.statusDefinition.delete({
+            where: {
+                id: id
+            }
+        });
+
+        res.status(200).json({
+            message: 'Status definition deleted successfully'
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
 
 
 
