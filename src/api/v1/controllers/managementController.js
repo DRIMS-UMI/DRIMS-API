@@ -1238,6 +1238,7 @@ export const createStudent = async (req, res, next) => {
             title,
             firstName,
             lastName,
+            course,
             email,
             phoneNumber,
             dateOfBirth,
@@ -1312,6 +1313,7 @@ export const createStudent = async (req, res, next) => {
                 firstName,
                 lastName,
                 email,
+                course,
                 phoneNumber,
                 dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
                 gender,
@@ -1385,36 +1387,60 @@ export const createStudent = async (req, res, next) => {
 
 export const updateStudent = async (req, res, next) => {
     try {
-        const { id } = req.params;
-        const { name, email, expectedCompletionDate, supervisorIds } = req.body;
+        const { studentId } = req.params;
+        const updateData = req.body;
 
-        const updatedStudent = await prisma.student.update({
-            where: { id },
-            data: {
-                name,
-                email,
-                expectedCompletionDate: expectedCompletionDate ? new Date(expectedCompletionDate) : undefined,
-                supervisorIds: supervisorIds || undefined
-            },
-            include: {
-                statuses: true,
-                supervisors: true
+        // Get current student data to compare changes
+        const currentStudent = await prisma.student.findUnique({
+            where: { id: studentId }
+        });
+
+        // Track changes
+        const changes = [];
+        Object.keys(updateData).forEach(key => {
+            if (updateData[key] !== currentStudent[key]) {
+                changes.push({
+                    field: key,
+                    oldValue: currentStudent[key],
+                    newValue: updateData[key]
+                });
             }
         });
 
-        // Create user activity log
+        // Update student with all fields from request body
+        const updatedStudent = await prisma.student.update({
+            where: { id: studentId },
+            data: {
+                ...updateData,
+                // Handle date fields specifically
+                dateOfBirth: updateData.dateOfBirth ? new Date(updateData.dateOfBirth) : undefined,
+                expectedCompletionDate: updateData.expectedCompletionDate ? new Date(updateData.expectedCompletionDate) : undefined
+            },
+            include: {
+                campus: true,
+                school: true,
+                department: true,
+                statuses: true,
+                supervisors: true,
+                user: true
+            }
+        });
+
+        // Create user activity log with tracked changes
         await prisma.userActivity.create({
             data: {
                 action: "Updated Student",
                 entityType: "Student",
-                entityId: id,
-                userId: req.user?.id
+                entityId: studentId,
+                userId: req.user?.id,
+                details: JSON.stringify(changes) // Store the tracked changes
             }
         });
 
         res.status(200).json({
             message: 'Student updated successfully',
-            student: updatedStudent
+            student: updatedStudent,
+            changes // Include changes in response
         });
     } catch (error) {
         if (!error.statusCode) {
@@ -1424,12 +1450,76 @@ export const updateStudent = async (req, res, next) => {
     }
 };
 
+export const changeStudentPassword = async (req, res, next) => {
+    try {
+        const { studentId } = req.params;
+        const { newPassword } = req.body;
+
+        if (!newPassword) {
+            const error = new Error('New password is required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Get student with associated user
+        const student = await prisma.student.findUnique({
+            where: { id: studentId },
+            include: { user: true }
+        });
+
+        if (!student) {
+            const error = new Error('Student not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        if (!student.user) {
+            const error = new Error('No user account associated with this student');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Hash the new password
+        const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+        // Update user password
+        await prisma.user.update({
+            where: { id: student.user.id },
+            data: { password: hashedPassword }
+        });
+
+        // Create user activity log
+        await prisma.userActivity.create({
+            data: {
+                action: "Changed Student Password",
+                entityType: "Student",
+                entityId: studentId,
+                userId: req.user?.id,
+                details: JSON.stringify({
+                    message: "Student password was changed"
+                })
+            }
+        });
+
+        res.status(200).json({
+            message: 'Student password updated successfully'
+        });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+
 export const deleteStudent = async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const { studentId } = req.params;
 
         await prisma.student.delete({
-            where: { id }
+            where: { id: studentId }
         });
 
         // Create user activity log
@@ -1437,7 +1527,7 @@ export const deleteStudent = async (req, res, next) => {
             data: {
                 action: "Deleted Student",
                 entityType: "Student", 
-                entityId: id,
+                entityId: studentId,
                 userId: req.user?.id
             }
         });
@@ -1455,10 +1545,10 @@ export const deleteStudent = async (req, res, next) => {
 
 export const getStudent = async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const { studentId } = req.params;
 
         const student = await prisma.student.findUnique({
-            where: { id },
+            where: { id: studentId },
             include: {
                 statuses: true,
                 supervisors: true,

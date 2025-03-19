@@ -49,6 +49,7 @@ model userActivity {
   action      String   // e.g., "Updated Proposal Status", "Assigned Supervisor"
   entityType  String   // e.g., "Proposal", "Student", "Viva"
   entityId    String   // ID of the affected entity
+  details     String?  // Additional details about the activity (e.g. tracked changes)
   timestamp   DateTime @default(now())
 }
 
@@ -57,6 +58,7 @@ model student {
   title                 String?
   firstName             String
   lastName              String
+  course                String?
   email                 String         @unique
   phoneNumber          String?
   dateOfBirth          DateTime?
