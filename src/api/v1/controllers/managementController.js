@@ -1152,10 +1152,10 @@ export const getAllFacultyMembers = async (req, res, next) => {
 // Controller for getting a single faculty member
 export const getFacultyMember = async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const { facultyId } = req.params;
 
         const facultyMember = await prisma.facultyMember.findUnique({
-            where: { id },
+            where: { id: facultyId },
             include: {
                 school: true,
                 user: true
@@ -1278,21 +1278,6 @@ export const createStudent = async (req, res, next) => {
             throw error;
         }
 
-
-        // Ensure statusDefinition exists or create it
-        let statusDefinition = await prisma.statusDefinition.findUnique({
-            where: { name: "ADMITTED" }
-        });
-
-        if (!statusDefinition) {
-            statusDefinition = await prisma.statusDefinition.create({
-                data: {
-                    name: "ADMITTED",
-                    description: "Student has been admitted to the system"
-                }
-            });
-        }
-
         // Create user first
         const user = await prisma.user.create({
             data: {
@@ -1332,20 +1317,10 @@ export const createStudent = async (req, res, next) => {
                 programLevel,
                 specialization,
                 completionTime : completionTime ? parseInt(completionTime) : null,
-                
                 expectedCompletionDate: expectedCompletionDate ? new Date(expectedCompletionDate) : null,
-                currentStatus: "ADMITTED",
+                currentStatus: "WORKSHOP",
                 user: {
                     connect: { id: user.id }
-                },
-                statuses: {
-                    create: [{
-                        definition: {
-                            connect: { id: statusDefinition.id }
-                        },
-                        startDate: new Date(),
-                        conditions: "Initial admission"
-                    }]
                 }
             },
             include: {
@@ -1357,6 +1332,77 @@ export const createStudent = async (req, res, next) => {
                 user: true
             }
         });
+
+        // Ensure ADMITTED statusDefinition exists or create it
+        let admittedStatusDefinition = await prisma.statusDefinition.findFirst({
+            where: {
+                name: {
+                    in: ["ADMITTED", "admitted"]
+                }
+            }
+        });
+
+        if (!admittedStatusDefinition) {
+            admittedStatusDefinition = await prisma.statusDefinition.create({
+                data: {
+                    name: "ADMITTED",
+                    description: "Student has been admitted to the system"
+                }
+            });
+        }
+
+        // Create ADMITTED status for student
+        const admittedStatus = await prisma.studentStatus.create({
+            data: {
+                student: {
+                    connect: { id: student.id }
+                },
+                definition: {
+                    connect: { id: admittedStatusDefinition.id }
+                },
+                startDate: new Date(),
+                endDate: new Date(),
+                conditions: "Initial admission",
+                isCurrent: false
+            }
+        });
+
+        // Ensure WORKSHOP statusDefinition exists or create it
+        let workshopStatusDefinition = await prisma.statusDefinition.findFirst({
+            where: {
+                name: {
+                    in: ["WORKSHOP", "workshop"]
+                }
+            }
+        });
+
+        if (!workshopStatusDefinition) {
+            workshopStatusDefinition = await prisma.statusDefinition.create({
+                data: {
+                    name: "WORKSHOP",
+                    description: "Student is in workshop phase"
+                }
+            });
+        }
+
+        // Create WORKSHOP status for student
+        const workshopStatus = await prisma.studentStatus.create({
+            data: {
+                student: {
+                    connect: { id: student.id }
+                },
+                definition: {
+                    connect: { id: workshopStatusDefinition.id }
+                },
+                startDate: new Date(),
+                conditions: "Initial workshop phase",
+                isActive: true,
+                isCurrent: true
+            }
+        });
+
+        // Add the statuses to the student object
+        student.studentStatuses = [admittedStatus, workshopStatus];
 
         // Create user activity log
         await prisma.userActivity.create({
@@ -1450,6 +1496,7 @@ export const updateStudent = async (req, res, next) => {
     }
 };
 
+// Controller for changing a student's password
 export const changeStudentPassword = async (req, res, next) => {
     try {
         const { studentId } = req.params;
@@ -1518,6 +1565,31 @@ export const deleteStudent = async (req, res, next) => {
     try {
         const { studentId } = req.params;
 
+        // Get student with associated user
+        const student = await prisma.student.findUnique({
+            where: { id: studentId },
+            include: { user: true }
+        });
+
+        if (!student) {
+            const error = new Error('Student not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Delete student's user account if it exists
+        if (student.user) {
+            await prisma.user.delete({
+                where: { id: student.user.id }
+            });
+        }
+
+        // Delete student's statuses
+        await prisma.studentStatus.deleteMany({
+            where: { studentId: studentId }
+        });
+
+        // Delete student record
         await prisma.student.delete({
             where: { id: studentId }
         });
@@ -1526,14 +1598,17 @@ export const deleteStudent = async (req, res, next) => {
         await prisma.userActivity.create({
             data: {
                 action: "Deleted Student",
-                entityType: "Student", 
+                entityType: "Student",
                 entityId: studentId,
-                userId: req.user?.id
+                userId: req.user?.id,
+                details: JSON.stringify({
+                    message: "Student, associated user account, and statuses were deleted"
+                })
             }
         });
 
         res.status(200).json({
-            message: 'Student deleted successfully'
+            message: 'Student, associated user account, and statuses deleted successfully'
         });
     } catch (error) {
         if (!error.statusCode) {
@@ -1550,12 +1625,20 @@ export const getStudent = async (req, res, next) => {
         const student = await prisma.student.findUnique({
             where: { id: studentId },
             include: {
-                statuses: true,
+                statuses: {
+                    include: {
+                        definition: true
+                    }
+                    },
                 supervisors: true,
                 proposals: true,
                 notifications: true,
                 fieldWork: true,
-                vivas: true
+                vivas: true,
+                school: true,
+                campus: true,
+                department: true,
+                user: true
             }
         });
 
@@ -1580,11 +1663,20 @@ export const getAllStudents = async (req, res, next) => {
     try {
         const students = await prisma.student.findMany({
             include: {
-                statuses: true,
+                statuses: {
+                    include: {
+                        definition: true
+                    }
+                },
                 supervisors: true,
+                proposals: true,
+                notifications: true,
+                fieldWork: true,
+                vivas: true,
                 school: true,
                 campus: true,
-                department: true
+                department: true,
+                user: true
             }
         });
 
@@ -1603,11 +1695,78 @@ export const getAllStudents = async (req, res, next) => {
 // Create a new status definition
 export const createStatusDefinition = async (req, res, next) => {
     try {
-        const { name } = req.body;
+        const { 
+            name,
+            description,
+            expectedDuration,
+            warningDays,
+            criticalDays,
+            delayDays,
+            notifyRoles,
+            color,
+            isActive
+        } = req.body;
+
+        // Validate required fields
+        if (!name || !description || !color) {
+            const error = new Error('Name, description and color are required fields');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Validate numeric fields are positive if provided
+        if (expectedDuration && expectedDuration <= 0) {
+            const error = new Error('Expected duration must be a positive number');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Validate notification days sequence
+        if (warningDays && criticalDays && warningDays <= criticalDays) {
+            const error = new Error('Warning days must be greater than critical days');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Validate roles against schema
+        const validRoles = [
+            'SUPERADMIN',
+            'RESEARCH_ADMIN',
+            'SCHOOL_ADMIN',
+            'DEAN',
+            'SCHOOL_PA',
+            'STUDENT',
+            'FACULTY',
+            'SUPERVISOR',
+            'MANAGER',
+            'EXAMINER',
+            'COORDINATOR',
+            'LIBRARIAN',
+            'FINANCE_ADMIN',
+            'REGISTRY_ADMIN',
+            'GRADUATE_SCHOOL'
+        ];
+
+        const invalidRoles = notifyRoles?.filter(role => !validRoles.includes(role));
+        if (invalidRoles?.length > 0) {
+            const error = new Error(`Invalid roles: ${invalidRoles.join(', ')}`);
+            error.statusCode = 400;
+            throw error;
+        }
 
         const statusDefinition = await prisma.statusDefinition.create({
             data: {
-                name: name
+                name,
+                description,
+                expectedDuration: expectedDuration ? parseInt(expectedDuration) : null,
+                warningDays: warningDays ? parseInt(warningDays) : null,
+                criticalDays: criticalDays ? parseInt(criticalDays) : null,
+                delayDays: delayDays ? parseInt(delayDays) : null,
+                notifyRoles: {
+                    set: notifyRoles || []
+                },
+                color,
+                isActive: isActive ?? true
             }
         });
 

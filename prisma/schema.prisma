@@ -40,6 +40,14 @@ enum Role {
   STUDENT          // Views details, accepts dates, and sees notifications
   FACULTY          // Faculty member role
   SUPERVISOR       // Supervisor role
+  MANAGER           // Manager role for overseeing operations
+
+  EXAMINER          // Examiner role for evaluating student work
+  COORDINATOR       // Program/Department coordinator role
+  LIBRARIAN        // Library staff role for managing thesis submissions
+  FINANCE_ADMIN    // Finance administrator role
+  REGISTRY_ADMIN   // Registry administrator role
+  GRADUATE_SCHOOL  // Graduate school administrator role
 }
 
 model userActivity {
@@ -111,8 +119,10 @@ model statusDefinition {
   expectedDuration Int?     // Expected duration in days
   warningDays     Int?     // Days before expected end to send warning
   criticalDays    Int?     // Days after expected end to send critical notification
-  notifyRoles     Role[]  // Which roles to notify
-  isActive        Boolean @default(true)
+  delayDays       Int?     // Days after critical to send delay notification
+  notifyRoles     Role[]   // Which roles to notify
+  color           String?   // Color for UI display
+  isActive        Boolean  @default(true)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   studentStatuses studentStatus[] // All student statuses using this definition
@@ -131,6 +141,8 @@ model studentStatus {
   isActive          Boolean          @default(true)
   notificationsSent notificationLog[] // Track which notifications were sent
   isCurrent          Boolean          @default(true)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
 }
 
 model notificationLog {
