@@ -1048,72 +1048,7 @@ export const createFacultyMember = async (req, res, next) => {
     }
 };
 
-// Controller for creating a supervisor
-export const createSupervisor = async (req, res, next) => {
-    try {
-        const {
-            name,
-            workEmail,
-            personalEmail,
-            primaryPhone,
-            secondaryPhone,
-            designation,
-            schoolId,
-            campusId,
-            departmentId,
-            facultyType,
-            employeeId,
-            password
-        } = req.body;
 
-        // Hash password
-        const hashedPassword = await bcrypt.hash(password, 12);
-
-        // Set role based on faculty type
-        let role = 'SUPERVISOR';
-
-        // Create user first
-        const user = await prisma.user.create({
-            data: {
-                name,
-                email: workEmail,
-                designation,
-                password: hashedPassword,
-                role,
-                phone: primaryPhone
-            }
-        });
-
-        // Create supervisor and link user
-        const supervisor = await prisma.supervisor.create({
-            data: {
-                name,
-                workEmail,
-                personalEmail,
-                primaryPhone,
-                secondaryPhone,
-                designation,
-                school: { connect: { id: schoolId } },
-                campus: { connect: { id: campusId } },
-                department: { connect: { id: departmentId } },
-                facultyType,
-                role,
-                employeeId,
-                user: { connect: { id: user.id } }
-            }
-        });
-
-        res.status(201).json({
-            message: 'Supervisor created successfully',
-            supervisor
-        });
-    } catch (error) {
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
-    }
-};
 
 
 
@@ -1385,6 +1320,259 @@ export const deleteFacultyMember = async (req, res, next) => {
         next(error);
     }
 };
+
+// Controller for creating a supervisor
+export const createSupervisor = async (req, res, next) => {
+    try {
+        const {
+            name,
+            title,
+            workEmail,
+            personalEmail,
+            primaryPhone,
+            secondaryPhone,
+            designation,
+            schoolId,
+            campusId,
+            departmentId,
+            facultyType,
+            employeeId,
+            password
+        } = req.body;
+
+        // Hash password
+        const hashedPassword = await bcrypt.hash(password, 12);
+
+        // Set role based on faculty type
+        let role = 'SUPERVISOR';
+
+        // Create user first
+        const user = await prisma.user.create({
+            data: {
+                name,
+                title,
+                email: workEmail,
+                designation,
+                password: hashedPassword,
+                role,
+                phone: primaryPhone
+            }
+        });
+
+        // Create supervisor and link user
+        const supervisor = await prisma.supervisor.create({
+            data: {
+                title,
+                name,
+                workEmail,
+                personalEmail,
+                primaryPhone,
+                secondaryPhone,
+                designation,
+                school: { connect: { id: schoolId } },
+                campus: { connect: { id: campusId } },
+                department: { connect: { id: departmentId } },
+                facultyType,
+                role,
+                employeeId,
+                user: { connect: { id: user.id } }
+            }
+        });
+
+        res.status(201).json({
+            message: 'Supervisor created successfully',
+            supervisor
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for getting all supervisors
+export const getAllSupervisors = async (req, res, next) => {
+    try {
+        const supervisors = await prisma.supervisor.findMany({
+            include: {
+                school: true,
+                campus: true,
+                department: true,
+               
+            }
+        });
+
+        res.status(200).json({
+            supervisors
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for getting a single supervisor
+export const getSupervisor = async (req, res, next) => {
+    try {
+        const { supervisorId } = req.params;
+
+        const supervisor = await prisma.supervisor.findUnique({
+            where: { id: supervisorId },
+            include: {
+                school: true,
+                campus: true,
+                department: true,
+                
+            }
+        });
+
+        if (!supervisor) {
+            const error = new Error('Supervisor not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        res.status(200).json({
+            supervisor
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for updating a supervisor
+export const updateSupervisor = async (req, res, next) => {
+    try {
+        const { supervisorId } = req.params;
+        const { schoolId, campusId, departmentId, userId, ...updateData } = req.body;
+
+        // Get existing supervisor data before update
+        const existingSupervisor = await prisma.supervisor.findUnique({
+            where: { id: supervisorId },
+            include: {
+                user: true
+            }
+        });
+
+        if (!existingSupervisor) {
+            const error = new Error('Supervisor not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Check if email is being changed and if it already exists
+        if (updateData.workEmail !== existingSupervisor.workEmail) {
+            const emailExists = await prisma.user.findUnique({
+                where: { email: updateData.workEmail }
+            });
+
+            if (emailExists) {
+                const error = new Error('Work email already exists');
+                error.statusCode = 400;
+                throw error;
+            }
+
+            // Update the user's email
+            await prisma.user.update({
+                where: { id: existingSupervisor.user.id },
+                data: { email: updateData.workEmail }
+            });
+        }
+
+        // Track changes
+        const changes = [];
+        Object.keys(updateData).forEach(key => {
+            if (updateData[key] !== existingSupervisor[key]) {
+                changes.push({
+                    field: key,
+                    oldValue: existingSupervisor[key],
+                    newValue: updateData[key]
+                });
+            }
+        });
+
+        const updatedSupervisor = await prisma.supervisor.update({
+            where: { id: supervisorId },
+            data: {
+                ...updateData,
+                school: schoolId ? { connect: { id: schoolId } } : undefined,
+                campus: campusId ? { connect: { id: campusId } } : undefined,
+                department: departmentId ? { connect: { id: departmentId } } : undefined
+            },
+            include: {
+                school: true,
+                campus: true,
+                department: true,
+                user: true
+            }
+        });
+
+        res.status(200).json({
+            message: 'Supervisor updated successfully',
+            supervisor: updatedSupervisor,
+            changes
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for deleting a supervisor
+export const deleteSupervisor = async (req, res, next) => {
+    try {
+        const { supervisorId } = req.params;
+
+        const supervisor = await prisma.supervisor.findUnique({
+            where: { id: supervisorId },
+            include: {
+                user: true,
+                students: true
+            }
+        });
+
+        if (!supervisor) {
+            const error = new Error('Supervisor not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Check if supervisor has any students
+        if (supervisor.students.length > 0) {
+            const error = new Error('Cannot delete supervisor with assigned students');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Delete associated user
+        await prisma.user.delete({
+            where: { id: supervisor.user.id }
+        });
+
+        // Delete supervisor
+        await prisma.supervisor.delete({
+            where: { id: supervisorId }
+        });
+
+        res.status(200).json({
+            message: 'Supervisor deleted successfully'
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
 
 
 // Controller for creating a new student
