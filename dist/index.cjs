@@ -97271,17 +97271,62 @@ var getFacultyMember = async (req, res, next) => {
 };
 var updateFacultyMember = async (req, res, next) => {
   try {
-    const { id: id2 } = req.params;
-    const { name, email, phone, designation, schoolId, isAdmin } = req.body;
+    const { facultyId } = req.params;
+    const { schoolId, campusId, userId, ...updateData } = req.body;
+    const existingFacultyMember = await db_default.facultyMember.findUnique({
+      where: { id: facultyId }
+    });
+    if (!existingFacultyMember) {
+      const error = new Error("Faculty member not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    if (updateData.workEmail !== existingFacultyMember.workEmail) {
+      const emailExists = await db_default.user.findUnique({
+        where: { email: updateData.workEmail }
+      });
+      if (emailExists) {
+        const error = new Error("Work email already exists");
+        error.statusCode = 400;
+        throw error;
+      }
+      await db_default.user.update({
+        where: { id: existingFacultyMember.user.id },
+        data: { email: updateData.workEmail }
+      });
+    }
+    const changes = [];
+    Object.keys(updateData).forEach((key) => {
+      if (updateData[key] !== existingFacultyMember[key]) {
+        changes.push({
+          field: key,
+          oldValue: existingFacultyMember[key],
+          newValue: updateData[key]
+        });
+      }
+    });
     const updatedFacultyMember = await db_default.facultyMember.update({
-      where: { id: id2 },
+      where: { id: facultyId },
       data: {
-        name,
-        email,
-        phone,
-        designation,
-        schoolId,
-        isAdmin
+        ...updateData,
+        school: { connect: { id: schoolId } },
+        campus: { connect: { id: campusId } },
+        user: { connect: { id: userId } }
+      },
+      include: {
+        campus: true,
+        school: true,
+        user: true
+      }
+    });
+    await db_default.userActivity.create({
+      data: {
+        action: "UPDATE_FACULTY",
+        entityId: facultyId,
+        entityType: "FACULTY",
+        details: JSON.stringify(changes),
+        userId: req.user.id
+        // Assuming req.user contains logged in user details
       }
     });
     res.status(200).json({
@@ -97295,14 +97340,90 @@ var updateFacultyMember = async (req, res, next) => {
     next(error);
   }
 };
-var deleteFacultyMember = async (req, res, next) => {
+var changeFacultyPassword = async (req, res, next) => {
   try {
-    const { id: id2 } = req.params;
-    await db_default.facultyMember.delete({
-      where: { id: id2 }
+    const { facultyId } = req.params;
+    const { newPassword } = req.body;
+    if (!newPassword) {
+      const error = new Error("New password is required");
+      error.statusCode = 400;
+      throw error;
+    }
+    const faculty = await db_default.facultyMember.findUnique({
+      where: { id: facultyId },
+      include: { user: true }
+    });
+    if (!faculty) {
+      const error = new Error("Faculty member not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    if (!faculty.user) {
+      const error = new Error("No user account associated with this faculty member");
+      error.statusCode = 404;
+      throw error;
+    }
+    const hashedPassword = await bcryptjs_default.hash(newPassword, 12);
+    await db_default.user.update({
+      where: { id: faculty.user.id },
+      data: { password: hashedPassword }
     });
     res.status(200).json({
-      message: "Faculty member deleted successfully"
+      message: "Faculty password updated successfully"
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var deleteFacultyMember = async (req, res, next) => {
+  try {
+    const { facultyId } = req.params;
+    const faculty = await db_default.facultyMember.findUnique({
+      where: { id: facultyId },
+      include: {
+        user: {
+          include: {
+            activities: true
+          }
+        }
+      }
+    });
+    if (!faculty) {
+      const error = new Error("Faculty member not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    if (faculty.user?.activities?.length > 0) {
+      const error = new Error("Cannot delete faculty member with existing user activities");
+      error.statusCode = 400;
+      throw error;
+    }
+    if (faculty.user) {
+      await db_default.user.delete({
+        where: { id: faculty.user.id }
+      });
+    }
+    await db_default.facultyMember.delete({
+      where: { id: facultyId }
+    });
+    await db_default.userActivity.create({
+      data: {
+        action: "Deleted Faculty Member",
+        entityType: "FacultyMember",
+        entityId: facultyId,
+        userId: req.user?.id,
+        details: JSON.stringify({
+          facultyName: faculty.name,
+          facultyEmail: faculty.email,
+          hadUserAccount: !!faculty.user
+        })
+      }
+    });
+    res.status(200).json({
+      message: "Faculty member and associated user deleted successfully"
     });
   } catch (error) {
     if (!error.statusCode) {
@@ -97899,6 +98020,7 @@ router.get("/faculty", authentication_default, roleAuthorization_default("SUPERA
 router.get("/faculty/:facultyId", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), getFacultyMember);
 router.put("/faculty/:facultyId", authentication_default, roleAuthorization_default("SUPERADMIN"), updateFacultyMember);
 router.delete("/faculty/:facultyId", authentication_default, roleAuthorization_default("SUPERADMIN"), deleteFacultyMember);
+router.put("/faculty/:facultyId/password", authentication_default, roleAuthorization_default("SUPERADMIN"), changeFacultyPassword);
 router.post("/supervisor", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), createSupervisor);
 router.post("/students", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), createStudent);
 router.put("/students/:studentId", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), updateStudent);

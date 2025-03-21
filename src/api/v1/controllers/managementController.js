@@ -1182,18 +1182,75 @@ export const getFacultyMember = async (req, res, next) => {
 // Controller for updating a faculty member
 export const updateFacultyMember = async (req, res, next) => {
     try {
-        const { id } = req.params;
-        const { name, email, phone, designation, schoolId, isAdmin } = req.body;
+        const { facultyId } = req.params;
+        const {schoolId, campusId, userId, ...updateData} = req.body;
+
+        // Get existing faculty member data before update
+        const existingFacultyMember = await prisma.facultyMember.findUnique({
+            where: { id: facultyId }
+        });
+
+        if (!existingFacultyMember) {
+            const error = new Error('Faculty member not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Check if email is being changed and if it already exists
+        if (updateData.workEmail !== existingFacultyMember.workEmail) {
+            const emailExists = await prisma.user.findUnique({
+                where: { email: updateData.workEmail }
+            });
+
+            if (emailExists) {
+                const error = new Error('Work email already exists');
+                error.statusCode = 400;
+                throw error;
+            }
+
+            // Update the user's email
+            await prisma.user.update({
+                where: { id: existingFacultyMember.user.id },
+                data: { email: updateData.workEmail }
+            });
+        }
+
+        // Track changes
+        const changes = [];
+        Object.keys(updateData).forEach(key => {
+            if (updateData[key] !== existingFacultyMember[key]) {
+                changes.push({
+                    field: key,
+                    oldValue: existingFacultyMember[key],
+                    newValue: updateData[key]
+                });
+            }
+        });
 
         const updatedFacultyMember = await prisma.facultyMember.update({
-            where: { id },
+            where: { id: facultyId },
             data: {
-                name,
-                email,
-                phone,
-                designation,
-                schoolId,
-                isAdmin
+                ...updateData,
+                school: { connect: { id: schoolId} },
+                campus: { connect: { id: campusId } },
+                user: { connect: { id: userId } }
+            },
+            include: {
+                campus: true,
+                school: true,
+                user: true
+            }
+        });
+
+        // Log the activity
+        await prisma.userActivity.create({
+            data: {
+                action: 'UPDATE_FACULTY',
+                entityId: facultyId,
+                entityType: 'FACULTY',
+                details: JSON.stringify(changes),
+                userId: req.user.id, // Assuming req.user contains logged in user details
+               
             }
         });
 
@@ -1209,17 +1266,117 @@ export const updateFacultyMember = async (req, res, next) => {
     }
 };
 
-// Controller for deleting a faculty member
-export const deleteFacultyMember = async (req, res, next) => {
+// Controller for changing a faculty member's password
+export const changeFacultyPassword = async (req, res, next) => {
     try {
-        const { id } = req.params;
+        const { facultyId } = req.params;
+        const { newPassword } = req.body;
 
-        await prisma.facultyMember.delete({
-            where: { id }
+        if (!newPassword) {
+            const error = new Error('New password is required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Get faculty with associated user
+        const faculty = await prisma.facultyMember.findUnique({
+            where: { id: facultyId },
+            include: { user: true }
+        });
+
+        if (!faculty) {
+            const error = new Error('Faculty member not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        if (!faculty.user) {
+            const error = new Error('No user account associated with this faculty member');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Hash the new password
+        const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+        // Update the user's password
+        await prisma.user.update({
+            where: { id: faculty.user.id },
+            data: { password: hashedPassword }
         });
 
         res.status(200).json({
-            message: 'Faculty member deleted successfully'
+            message: 'Faculty password updated successfully'
+        });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+
+// Controller for deleting a faculty member
+export const deleteFacultyMember = async (req, res, next) => {
+    try {
+        const { facultyId } = req.params;
+
+        // Get faculty member with associated user and activities
+        const faculty = await prisma.facultyMember.findUnique({
+            where: { id: facultyId },
+            include: { 
+                user: {
+                    include: {
+                        activities: true
+                    }
+                }
+            }
+        });
+
+        if (!faculty) {
+            const error = new Error('Faculty member not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Check if user has any activities
+        if (faculty.user?.activities?.length > 0) {
+            const error = new Error('Cannot delete faculty member with existing user activities');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Delete the associated user if it exists and has no activities
+        if (faculty.user) {
+            await prisma.user.delete({
+                where: { id: faculty.user.id }
+            });
+        }
+
+        // Delete the faculty member
+        await prisma.facultyMember.delete({
+            where: { id: facultyId }
+        });
+
+        // Create user activity log
+        await prisma.userActivity.create({
+            data: {
+                action: "Deleted Faculty Member",
+                entityType: "FacultyMember", 
+                entityId: facultyId,
+                userId: req.user?.id,
+                details: JSON.stringify({
+                    facultyName: faculty.name,
+                    facultyEmail: faculty.email,
+                    hadUserAccount: !!faculty.user
+                })
+            }
+        });
+
+        res.status(200).json({
+            message: 'Faculty member and associated user deleted successfully'
         });
     } catch (error) {
         if (!error.statusCode) {
