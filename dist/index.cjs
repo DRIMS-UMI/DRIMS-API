@@ -97585,6 +97585,168 @@ var deleteSupervisor = async (req, res, next) => {
     next(error);
   }
 };
+var assignStudentsToSupervisor = async (req, res, next) => {
+  try {
+    const { supervisorId } = req.params;
+    const { studentIds } = req.body;
+    const supervisor = await db_default.supervisor.findUnique({
+      where: { id: supervisorId },
+      include: {
+        user: true
+      }
+    });
+    if (!supervisor) {
+      const error = new Error("Supervisor not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    const students = await db_default.student.findMany({
+      where: {
+        id: {
+          in: studentIds
+        }
+      },
+      include: {
+        supervisors: true
+      }
+    });
+    if (students.length !== studentIds.length) {
+      const error = new Error("One or more students not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    const studentsWithSupervisors = students.filter((student) => student.supervisors.length > 0);
+    if (studentsWithSupervisors.length > 0) {
+      const error = new Error("One or more students already have supervisors assigned");
+      error.statusCode = 400;
+      error.details = studentsWithSupervisors.map((student) => student.id);
+      throw error;
+    }
+    const normalProgressStatus = await db_default.statusDefinition.findFirst({
+      where: {
+        name: "normal progress"
+      }
+    });
+    if (!normalProgressStatus) {
+      const error = new Error("Normal Progress status definition not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    const updatePromises = studentIds.map(async (studentId) => {
+      await db_default.studentStatus.updateMany({
+        where: {
+          studentId,
+          isCurrent: true
+        },
+        data: { isCurrent: false, endDate: /* @__PURE__ */ new Date() }
+      });
+      await db_default.studentStatus.create({
+        data: {
+          student: { connect: { id: studentId } },
+          definition: { connect: { id: normalProgressStatus.id } },
+          isCurrent: true,
+          startDate: /* @__PURE__ */ new Date(),
+          conditions: "Normal Progress",
+          isActive: true
+        }
+      });
+      return db_default.student.update({
+        where: { id: studentId },
+        data: { supervisors: { connect: { id: supervisorId } } }
+      });
+    });
+    await Promise.all(updatePromises);
+    const updatedStudents = await db_default.student.findMany({
+      where: {
+        id: {
+          in: studentIds
+        }
+      },
+      include: {
+        campus: true,
+        statuses: {
+          where: {
+            isCurrent: true
+          },
+          include: {
+            definition: true
+          }
+        }
+      }
+    });
+    await db_default.userActivity.create({
+      data: {
+        user: { connect: { id: req.user?.id } },
+        action: "ASSIGN_STUDENTS",
+        entityType: "Supervisor",
+        entityId: supervisorId,
+        details: JSON.stringify({
+          supervisorId,
+          studentIds,
+          description: `Assigned ${studentIds.length} student(s) to supervisor ${supervisor.user.name}`
+        })
+      }
+    });
+    res.status(200).json({
+      message: "Students assigned successfully",
+      students: updatedStudents
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var getAssignedStudents = async (req, res, next) => {
+  try {
+    const { supervisorId } = req.params;
+    const supervisor = await db_default.supervisor.findUnique({
+      where: { id: supervisorId },
+      include: {
+        user: true
+      }
+    });
+    if (!supervisor) {
+      const error = new Error("Supervisor not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    const assignedStudents = await db_default.student.findMany({
+      where: {
+        supervisors: {
+          some: {
+            id: supervisorId
+          }
+        }
+      },
+      include: {
+        campus: true,
+        statuses: {
+          include: {
+            definition: true
+          }
+        },
+        school: true,
+        department: true
+      }
+    });
+    res.status(200).json({
+      message: "Students retrieved successfully",
+      supervisor: {
+        id: supervisor.id,
+        name: supervisor.user.name,
+        email: supervisor.user.email
+      },
+      students: assignedStudents
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
 var createStudent = async (req, res, next) => {
   let createdUser = null;
   try {
@@ -98179,6 +98341,8 @@ router.get("/supervisor", authentication_default, roleAuthorization_default("SUP
 router.get("/supervisor/:supervisorId", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), getSupervisor);
 router.put("/supervisor/:supervisorId", authentication_default, roleAuthorization_default("SUPERADMIN"), updateSupervisor);
 router.delete("/supervisor/:supervisorId", authentication_default, roleAuthorization_default("SUPERADMIN"), deleteSupervisor);
+router.post("/supervisor/:supervisorId/assign-students", authentication_default, roleAuthorization_default("SUPERADMIN"), assignStudentsToSupervisor);
+router.get("/supervisor/:supervisorId/students", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), getAssignedStudents);
 router.post("/students", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), createStudent);
 router.put("/students/:studentId", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), updateStudent);
 router.delete("/students/:studentId", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), deleteStudent);

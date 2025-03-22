@@ -1,7 +1,7 @@
 import express from 'express';
 import authenticateToken from '../middleware/authentication.js';
 import authorizeRoles from '../middleware/roleAuthorization.js';
-import { registerSuperAdmin, accessManagementPortal, loginSuperAdmin, loginResearchCentreAdmin, getLoggedInUserDetails, addSchool, addSchoolMembers, getAllSchools, getSchool, updateSchool, deleteSchool, createCampus, getAllCampuses, getCampus, updateCampus, deleteCampus, addDepartment, getAllDepartments, getDepartment, updateDepartment, deleteDepartment, updateSchoolMembers, createFacultyMember, getAllFacultyMembers, getFacultyMember, updateFacultyMember, deleteFacultyMember, createSupervisor, createStudent, updateStudent, deleteStudent, getStudent, getAllStudents, changeStudentPassword, createStatusDefinition, getAllStatusDefinitions, getStatusDefinition, updateStatusDefinition, deleteStatusDefinition, changeFacultyPassword, getAllSupervisors, getSupervisor, updateSupervisor, deleteSupervisor } from '../controllers/managementController.js';
+import { registerSuperAdmin, accessManagementPortal, loginSuperAdmin, loginResearchCentreAdmin, getLoggedInUserDetails, addSchool, addSchoolMembers, getAllSchools, getSchool, updateSchool, deleteSchool, createCampus, getAllCampuses, getCampus, updateCampus, deleteCampus, addDepartment, getAllDepartments, getDepartment, updateDepartment, deleteDepartment, updateSchoolMembers, createFacultyMember, getAllFacultyMembers, getFacultyMember, updateFacultyMember, deleteFacultyMember, createSupervisor, createStudent, updateStudent, deleteStudent, getStudent, getAllStudents, changeStudentPassword, createStatusDefinition, getAllStatusDefinitions, getStatusDefinition, updateStatusDefinition, deleteStatusDefinition, changeFacultyPassword, getAllSupervisors, getSupervisor, updateSupervisor, deleteSupervisor, assignStudentsToSupervisor, getAssignedStudents } from '../controllers/managementController.js';
 
 
 const router = express.Router();
@@ -57,7 +57,8 @@ router.get('/supervisor', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEA
 router.get('/supervisor/:supervisorId', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getSupervisor);
 router.put('/supervisor/:supervisorId', authenticateToken, authorizeRoles('SUPERADMIN'), updateSupervisor);
 router.delete('/supervisor/:supervisorId', authenticateToken, authorizeRoles('SUPERADMIN'), deleteSupervisor);
-
+router.post('/supervisor/:supervisorId/assign-students', authenticateToken, authorizeRoles('SUPERADMIN'), assignStudentsToSupervisor);
+router.get('/supervisor/:supervisorId/students', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getAssignedStudents);
 
 // Student management routes
 router.post('/students', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), createStudent);
