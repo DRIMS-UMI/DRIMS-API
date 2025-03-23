@@ -17853,17 +17853,17 @@ var require_router = __commonJS({
     var toString2 = Object.prototype.toString;
     var proto = module2.exports = function(options) {
       var opts = options || {};
-      function router4(req, res, next) {
-        router4.handle(req, res, next);
+      function router5(req, res, next) {
+        router5.handle(req, res, next);
       }
-      setPrototypeOf(router4, proto);
-      router4.params = {};
-      router4._params = [];
-      router4.caseSensitive = opts.caseSensitive;
-      router4.mergeParams = opts.mergeParams;
-      router4.strict = opts.strict;
-      router4.stack = [];
-      return router4;
+      setPrototypeOf(router5, proto);
+      router5.params = {};
+      router5._params = [];
+      router5.caseSensitive = opts.caseSensitive;
+      router5.mergeParams = opts.mergeParams;
+      router5.strict = opts.strict;
+      router5.stack = [];
+      return router5;
     };
     proto.param = function param(name, fn2) {
       if (typeof name === "function") {
@@ -20543,17 +20543,17 @@ var require_application = __commonJS({
       }
     };
     app2.handle = function handle(req, res, callback) {
-      var router4 = this._router;
+      var router5 = this._router;
       var done = callback || finalhandler(req, res, {
         env: this.get("env"),
         onerror: logerror.bind(this)
       });
-      if (!router4) {
+      if (!router5) {
         debug("no routes defined on app");
         done();
         return;
       }
-      router4.handle(req, res, done);
+      router5.handle(req, res, done);
     };
     app2.use = function use(fn2) {
       var offset = 0;
@@ -20573,15 +20573,15 @@ var require_application = __commonJS({
         throw new TypeError("app.use() requires a middleware function");
       }
       this.lazyrouter();
-      var router4 = this._router;
+      var router5 = this._router;
       fns.forEach(function(fn3) {
         if (!fn3 || !fn3.handle || !fn3.set) {
-          return router4.use(path2, fn3);
+          return router5.use(path2, fn3);
         }
         debug(".use app under %s", path2);
         fn3.mountpath = path2;
         fn3.parent = this;
-        router4.use(path2, function mounted_app(req, res, next) {
+        router5.use(path2, function mounted_app(req, res, next) {
           var orig = req.app;
           fn3.handle(req, res, function(err) {
             setPrototypeOf(req, orig.request);
@@ -23528,9 +23528,9 @@ var require_jws = __commonJS({
 var require_decode = __commonJS({
   "node_modules/jsonwebtoken/decode.js"(exports2, module2) {
     var jws = require_jws();
-    module2.exports = function(jwt3, options) {
+    module2.exports = function(jwt4, options) {
       options = options || {};
-      var decoded = jws.decode(jwt3, options);
+      var decoded = jws.decode(jwt4, options);
       if (!decoded) {
         return null;
       }
@@ -42929,7 +42929,7 @@ var require_absolute_path = __commonJS({
 var require_swagger_ui_express = __commonJS({
   "node_modules/swagger-ui-express/index.js"(exports2, module2) {
     "use strict";
-    var express6 = require_express2();
+    var express7 = require_express2();
     var getAbsoluteSwaggerFsPath = require_absolute_path();
     var favIconHtml = '<link rel="icon" type="image/png" href="./favicon-32x32.png" sizes="32x32" /><link rel="icon" type="image/png" href="./favicon-16x16.png" sizes="16x16" />';
     var swaggerInit = "";
@@ -43180,7 +43180,7 @@ window.onload = function() {
     var swaggerAssetMiddleware = (options) => {
       var opts = options || {};
       opts.index = false;
-      return express6.static(getAbsoluteSwaggerFsPath(), opts);
+      return express7.static(getAbsoluteSwaggerFsPath(), opts);
     };
     var serveFiles = function(swaggerDoc, opts) {
       opts = opts || {};
@@ -90375,7 +90375,7 @@ __export(index_exports, {
   default: () => index_default
 });
 module.exports = __toCommonJS(index_exports);
-var import_express4 = __toESM(require_express2(), 1);
+var import_express5 = __toESM(require_express2(), 1);
 var import_http = __toESM(require("http"), 1);
 
 // node_modules/dotenv/config.js
@@ -91262,11 +91262,11 @@ function isValidIP(ip2, version) {
   }
   return false;
 }
-function isValidJWT(jwt3, alg) {
-  if (!jwtRegex.test(jwt3))
+function isValidJWT(jwt4, alg) {
+  if (!jwtRegex.test(jwt4))
     return false;
   try {
-    const [header] = jwt3.split(".");
+    const [header] = jwt4.split(".");
     const base64 = header.replace(/-/g, "+").replace(/_/g, "/").padEnd(header.length + (4 - header.length % 4) % 4, "=");
     const decoded = JSON.parse(atob(base64));
     if (typeof decoded !== "object" || decoded === null)
@@ -94559,13 +94559,13 @@ var env = createEnv({
 });
 
 // src/app.mjs
-var express4 = __toESM(require_express2(), 1);
+var express5 = __toESM(require_express2(), 1);
 
 // src/api/index.mjs
-var import_express3 = __toESM(require_express2(), 1);
+var import_express4 = __toESM(require_express2(), 1);
 
 // src/api/v1/index.mjs
-var import_express2 = __toESM(require_express2(), 1);
+var import_express3 = __toESM(require_express2(), 1);
 
 // src/api/v1/routes/managementRoutes.js
 var import_express = __toESM(require_express2(), 1);
@@ -98407,6 +98407,140 @@ router.delete("/status-definitions/:id", authentication_default, roleAuthorizati
 router.get("/management", authentication_default, roleAuthorization_default("SUPERADMIN", "RESEARCH_ADMIN"), accessManagementPortal);
 var managementRoutes_default = router;
 
+// src/api/v1/routes/facultyRoutes.js
+var import_express2 = __toESM(require_express2(), 1);
+
+// src/api/v1/controllers/facultyController.js
+var import_jsonwebtoken3 = __toESM(require_jsonwebtoken(), 1);
+var loginFaculty = async (req, res, next) => {
+  try {
+    const { email, password, rememberMe } = req.body;
+    const user = await db_default.user.findUnique({
+      where: { email }
+    });
+    if (!user) {
+      const error = new Error("Faculty member not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    if (user.role !== "SCHOOL_ADMIN" && user.role !== "FACULTY") {
+      const error = new Error("Unauthorized access - must be School Admin or Faculty");
+      error.statusCode = 403;
+      throw error;
+    }
+    const isValidPassword = await bcryptjs_default.compare(password, user.password);
+    if (!isValidPassword) {
+      const error = new Error("Invalid password");
+      error.statusCode = 401;
+      throw error;
+    }
+    const token = import_jsonwebtoken3.default.sign(
+      {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        designation: user.designation
+      },
+      process.env.AUTH_SECRET,
+      { expiresIn: rememberMe ? "30d" : "24h" }
+    );
+    res.status(200).json({
+      token,
+      faculty: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        department: user.department,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt
+      }
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var getFacultyProfile = async (req, res, next) => {
+  try {
+    const facultyId = req.user.userId;
+    const faculty = await db_default.faculty.findUnique({
+      where: { id: facultyId },
+      include: {
+        department: {
+          include: {
+            school: true
+          }
+        }
+      }
+    });
+    if (!faculty) {
+      const error = new Error("Faculty member not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    res.status(200).json({
+      faculty: {
+        id: faculty.id,
+        name: faculty.name,
+        email: faculty.email,
+        role: faculty.role,
+        department: faculty.department,
+        createdAt: faculty.createdAt,
+        updatedAt: faculty.updatedAt
+      }
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var updateFacultyPassword = async (req, res, next) => {
+  try {
+    const facultyId = req.user.userId;
+    const { currentPassword, newPassword } = req.body;
+    const faculty = await db_default.faculty.findUnique({
+      where: { id: facultyId }
+    });
+    if (!faculty) {
+      const error = new Error("Faculty member not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    const isValidPassword = await bcryptjs_default.compare(currentPassword, faculty.password);
+    if (!isValidPassword) {
+      const error = new Error("Current password is incorrect");
+      error.statusCode = 401;
+      throw error;
+    }
+    const hashedPassword = await bcryptjs_default.hash(newPassword, 12);
+    await db_default.faculty.update({
+      where: { id: facultyId },
+      data: { password: hashedPassword }
+    });
+    res.status(200).json({
+      message: "Password updated successfully"
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+// src/api/v1/routes/facultyRoutes.js
+var router2 = import_express2.default.Router();
+router2.post("/login", loginFaculty);
+router2.get("/profile", authentication_default, getFacultyProfile);
+router2.put("/password", authentication_default, updateFacultyPassword);
+var facultyRoutes_default = router2;
+
 // src/api/v1/middleware/requestLogger.mjs
 var requestLogger = async (req, res, next) => {
   try {
@@ -98426,17 +98560,18 @@ var requestLogger = async (req, res, next) => {
 };
 
 // src/api/v1/index.mjs
-var router2 = import_express2.default.Router();
+var router3 = import_express3.default.Router();
 var endpoints = [
-  { path: "/management", router: managementRoutes_default }
+  { path: "/management", router: managementRoutes_default },
+  { path: "/faculty", router: facultyRoutes_default }
 ];
-endpoints.forEach((endpoint) => router2.use(endpoint.path, requestLogger, endpoint.router));
-var v1_default = router2;
+endpoints.forEach((endpoint) => router3.use(endpoint.path, requestLogger, endpoint.router));
+var v1_default = router3;
 
 // src/api/index.mjs
-var router3 = new import_express3.default.Router();
-router3.use("/v1", v1_default);
-var api_default = router3;
+var router4 = new import_express4.default.Router();
+router4.use("/v1", v1_default);
+var api_default = router4;
 
 // src/app.mjs
 var import_compression = __toESM(require_compression(), 1);
@@ -99305,8 +99440,8 @@ var htmlTemplate = `<!DOCTYPE html>
 </html>`;
 function customizeApp(app2) {
   app2.set("trust proxy", 1);
-  app2.use(express4.json());
-  app2.use(express4.urlencoded({ extended: false }));
+  app2.use(express5.json());
+  app2.use(express5.urlencoded({ extended: false }));
   app2.use((0, import_cors.default)(corsOptions));
   app2.use(
     lib_default({
@@ -99318,7 +99453,7 @@ function customizeApp(app2) {
   );
   app2.use((0, import_cookie_parser.default)());
   app2.use((0, import_compression.default)());
-  app2.use(express4.static(import_path.default.join(__dirname2, "public")));
+  app2.use(express5.static(import_path.default.join(__dirname2, "public")));
   app2.get("/", (req, res) => {
     res.status(200).send(htmlTemplate);
   });
@@ -99422,7 +99557,7 @@ function setupSocketIO(server) {
 }
 
 // src/index.mjs
-var app = (0, import_express4.default)();
+var app = (0, import_express5.default)();
 app.start = async () => {
   console.log("Starting server...");
   const signals = ["SIGINT", "SIGTERM", "SIGQUIT"];
