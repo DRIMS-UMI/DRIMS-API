@@ -26,6 +26,7 @@ model user {
   student     student? 
   facultyMember facultyMember?
   supervisor   supervisor?
+   updatedStatuses studentStatus[]  // Add this line
   
   createdAt DateTime? @default(now())
   updatedAt DateTime? @updatedAt
@@ -133,16 +134,19 @@ model studentStatus {
   student           student?         @relation(fields: [studentId], references: [id])
   studentId         String?          @db.ObjectId
   definition        statusDefinition? @relation(fields: [definitionId], references: [id])
-  definitionId      String?             @db.ObjectId
+  definitionId      String?          @db.ObjectId
   startDate         DateTime         @default(now())
   endDate           DateTime?
   duration          Int?             // Actual duration in days
   conditions        String?          // Conditions or remarks
   isActive          Boolean          @default(true)
+  
   notificationsSent notificationLog[] // Track which notifications were sent
-  isCurrent          Boolean          @default(true)
-  createdAt         DateTime?         @default(now())
-  updatedAt         DateTime?         @updatedAt
+  isCurrent         Boolean          @default(true)
+  createdAt         DateTime?        @default(now())
+  updatedAt         DateTime?        @updatedAt
+  updatedBy         user?            @relation(fields: [updatedById], references: [id])
+  updatedById       String?          @db.ObjectId
 }
 
 model notificationLog {

@@ -2236,6 +2236,62 @@ export const getAllStudents = async (req, res, next) => {
     }
 };
 
+// Controller to get student statuses with update history
+export const getStudentStatuses = async (req, res, next) => {
+    try {
+        const { studentId } = req.params;
+
+        // Check if student exists
+        const student = await prisma.student.findUnique({
+            where: { id: studentId },
+            include: {
+                statuses: {
+                    include: {
+                        definition: true,
+                        updatedBy: {
+                            select: {
+                                id: true,
+                                name: true,
+                                email: true,
+                                role: true
+                            }
+                        },
+                        notificationsSent: {
+                            select: {
+                                recipients: true,
+                                type: true,
+                                message: true,
+                                sentAt: true,
+                                studentStatus: true
+                            }
+                        }
+                    },
+                    orderBy: {
+                        updatedAt: 'desc'
+                    }
+                }
+            }
+        });
+
+        if (!student) {
+            const error = new Error('Student not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        res.status(200).json({
+            statuses: student.statuses
+        });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+
 // Controller for creating a status definition
 // Create a new status definition
 export const createStatusDefinition = async (req, res, next) => {
