@@ -72,18 +72,9 @@ export const loginFaculty = async (req, res, next) => {
 // Get faculty profile controller
 export const getFacultyProfile = async (req, res, next) => {
     try {
-        const facultyId = req.user.userId;
+        const facultyId = req.user.id;
 
-        const faculty = await prisma.faculty.findUnique({
-            where: { id: facultyId },
-            include: {
-                department: {
-                    include: {
-                        school: true
-                    }
-                }
-            }
-        });
+        const faculty = req.user;
 
         if (!faculty) {
             const error = new Error('Faculty member not found');
@@ -97,6 +88,7 @@ export const getFacultyProfile = async (req, res, next) => {
                 name: faculty.name,
                 email: faculty.email,
                 role: faculty.role,
+                designation: faculty.designation,
                 department: faculty.department,
                 createdAt: faculty.createdAt,
                 updatedAt: faculty.updatedAt
@@ -156,3 +148,144 @@ export const updateFacultyPassword = async (req, res, next) => {
         next(error);
     }
 };
+
+
+/** STUDENT MANAGEMENT CONTROLLERS */
+
+// Get student by ID controller
+export const getStudent = async (req, res, next) => {
+    try {
+        const { studentId } = req.params;
+
+        const student = await prisma.student.findUnique({
+            where: { id: studentId },
+            include: {
+                statuses: {
+                    include: {
+                        definition: true
+                    }
+                    },
+                supervisors: true,
+                proposals: true,
+                notifications: true,
+                fieldWork: true,
+                vivas: true,
+                school: true,
+                campus: true,
+                department: true,
+                user: true
+            }
+        });
+
+        if (!student) {
+            const error = new Error('Student not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        res.status(200).json({
+            student
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Get all students controller
+export const getAllStudents = async (req, res, next) => {
+    try {
+        // Get the faculty member's school and campus from the request
+        const { schoolId, campusId } = req.user;
+
+        const students = await prisma.student.findMany({
+            where: {
+                schoolId,
+                campusId
+            },
+            include: {
+                statuses: {
+                    include: {
+                        definition: true
+                    }
+                },
+                supervisors: true,
+                proposals: true,
+                notifications: true,
+                fieldWork: true,
+                vivas: true,
+                school: true,
+                campus: true,
+                department: true,
+                user: true
+            }
+        });
+
+        res.status(200).json({
+            students
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller to get student statuses with update history
+export const getStudentStatuses = async (req, res, next) => {
+    try {
+        const { studentId } = req.params;
+
+        // Check if student exists
+        const student = await prisma.student.findUnique({
+            where: { id: studentId },
+            include: {
+                statuses: {
+                    include: {
+                        definition: true,
+                        updatedBy: {
+                            select: {
+                                id: true,
+                                name: true,
+                                email: true,
+                                role: true
+                            }
+                        },
+                        notificationsSent: {
+                            select: {
+                                recipients: true,
+                                type: true,
+                                message: true,
+                                sentAt: true,
+                                studentStatus: true
+                            }
+                        }
+                    },
+                    orderBy: {
+                        updatedAt: 'desc'
+                    }
+                }
+            }
+        });
+
+        if (!student) {
+            const error = new Error('Student not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        res.status(200).json({
+            statuses: student.statuses
+        });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+

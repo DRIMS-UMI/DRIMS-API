@@ -98466,17 +98466,8 @@ var loginFaculty = async (req, res, next) => {
 };
 var getFacultyProfile = async (req, res, next) => {
   try {
-    const facultyId = req.user.userId;
-    const faculty = await db_default.faculty.findUnique({
-      where: { id: facultyId },
-      include: {
-        department: {
-          include: {
-            school: true
-          }
-        }
-      }
-    });
+    const facultyId = req.user.id;
+    const faculty = req.user;
     if (!faculty) {
       const error = new Error("Faculty member not found");
       error.statusCode = 404;
@@ -98488,6 +98479,7 @@ var getFacultyProfile = async (req, res, next) => {
         name: faculty.name,
         email: faculty.email,
         role: faculty.role,
+        designation: faculty.designation,
         department: faculty.department,
         createdAt: faculty.createdAt,
         updatedAt: faculty.updatedAt
@@ -98533,12 +98525,135 @@ var updateFacultyPassword = async (req, res, next) => {
     next(error);
   }
 };
+var getStudent2 = async (req, res, next) => {
+  try {
+    const { studentId } = req.params;
+    const student = await db_default.student.findUnique({
+      where: { id: studentId },
+      include: {
+        statuses: {
+          include: {
+            definition: true
+          }
+        },
+        supervisors: true,
+        proposals: true,
+        notifications: true,
+        fieldWork: true,
+        vivas: true,
+        school: true,
+        campus: true,
+        department: true,
+        user: true
+      }
+    });
+    if (!student) {
+      const error = new Error("Student not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    res.status(200).json({
+      student
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var getAllStudents2 = async (req, res, next) => {
+  try {
+    const { schoolId, campusId } = req.user;
+    const students = await db_default.student.findMany({
+      where: {
+        schoolId,
+        campusId
+      },
+      include: {
+        statuses: {
+          include: {
+            definition: true
+          }
+        },
+        supervisors: true,
+        proposals: true,
+        notifications: true,
+        fieldWork: true,
+        vivas: true,
+        school: true,
+        campus: true,
+        department: true,
+        user: true
+      }
+    });
+    res.status(200).json({
+      students
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var getStudentStatuses2 = async (req, res, next) => {
+  try {
+    const { studentId } = req.params;
+    const student = await db_default.student.findUnique({
+      where: { id: studentId },
+      include: {
+        statuses: {
+          include: {
+            definition: true,
+            updatedBy: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                role: true
+              }
+            },
+            notificationsSent: {
+              select: {
+                recipients: true,
+                type: true,
+                message: true,
+                sentAt: true,
+                studentStatus: true
+              }
+            }
+          },
+          orderBy: {
+            updatedAt: "desc"
+          }
+        }
+      }
+    });
+    if (!student) {
+      const error = new Error("Student not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    res.status(200).json({
+      statuses: student.statuses
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
 
 // src/api/v1/routes/facultyRoutes.js
 var router2 = import_express2.default.Router();
 router2.post("/login", loginFaculty);
 router2.get("/profile", authentication_default, getFacultyProfile);
 router2.put("/password", authentication_default, updateFacultyPassword);
+router2.get("/students/:studentId", authentication_default, roleAuthorization_default("SCHOOL_ADMIN"), getStudent2);
+router2.get("/students", authentication_default, roleAuthorization_default("SCHOOL_ADMIN"), getAllStudents2);
+router2.get("/students/:studentId/statuses", authentication_default, roleAuthorization_default("SCHOOL_ADMIN"), getStudentStatuses2);
 var facultyRoutes_default = router2;
 
 // src/api/v1/middleware/requestLogger.mjs
