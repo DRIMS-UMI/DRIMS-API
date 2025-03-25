@@ -27,6 +27,9 @@ model user {
   facultyMember facultyMember?
   supervisor   supervisor?
    updatedStatuses studentStatus[]  // Add this line
+
+  submittedProposals proposal[]        @relation("submittedProposals")
+   submittedGrades    proposalGrade[] 
   
   createdAt DateTime? @default(now())
   updatedAt DateTime? @updatedAt
@@ -167,18 +170,42 @@ enum NotificationType {
 
 model proposal {
   id          String            @id @default(auto()) @map("_id") @db.ObjectId
+  title       String
+  description String?
+  researchArea String
+  fileData    Bytes
+  fileName    String
+  fileType    String
   isCurrent   Boolean          @default(false)
-  student     student?          @relation( fields: [studentId], references: [id])
+  student     student?          @relation(fields: [studentId], references: [id])
   studentId   String?           @db.ObjectId
+  submittedBy user?            @relation(name: "submittedProposals", fields: [submittedById], references: [id])
+  submittedById String?        @db.ObjectId
   reviewerIds String[]          @db.ObjectId
-  reviewers   reviewer[]       @relation( fields: [reviewerIds], references: [id])
+  reviewers   reviewer[]       @relation(fields: [reviewerIds], references: [id])
   status      String           // Pending Review, Reviewed, Defended, Graded-Passed, Graded-Failed
   submittedAt DateTime         @default(now())
   defenseDate DateTime?
   panelists   String[]
   comments    String?
   markRange   Int?
+  grades      proposalGrade[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 }
+
+model proposalGrade {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  proposal    proposal  @relation(fields: [proposalId], references: [id])
+  proposalId  String    @db.ObjectId
+  grade       Float
+  feedback    String?
+  submittedBy    user      @relation(fields: [submittedById], references: [id])
+  submittedById  String    @db.ObjectId
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
 
 model book {
   id                           String    @id @default(auto()) @map("_id") @db.ObjectId

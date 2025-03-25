@@ -289,3 +289,241 @@ export const getStudentStatuses = async (req, res, next) => {
     }
 };
 
+/** PROPOSAL MANAGEMENT CONTROLLERS */
+// Submit proposal for student
+export const submitProposal = async (req, res, next) => {
+    try {
+        const { studentId } = req.params;
+        const { title, description, submissionDate, researchArea, file } = req.body;
+
+        // Check if student exists
+        const student = await prisma.student.findUnique({
+            where: { id: studentId },
+            include: {
+                statuses: {
+                    where: {
+                        isCurrent: true
+                    },
+                    take: 1
+                }
+            }
+        });
+
+        if (!student) {
+            const error = new Error('Student not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Create new proposal with file buffer
+        const proposal = await prisma.proposal.create({
+            data: {
+                title,
+                description,
+                submissionDate: new Date(submissionDate),
+                researchArea,
+                fileData: file.buffer,
+                fileName: file.originalname,
+                fileType: file.mimetype,
+                isCurrent: true,
+                student: {
+                    connect: { id: studentId }
+                },
+                submittedBy: {
+                    connect: { id: req.user.id }
+                }
+            }
+        });
+
+        // Update current status end date
+        if (student.statuses[0]) {
+            await prisma.studentStatus.update({
+                where: { id: student.statuses[0].id },
+                data: { endDate: new Date() }
+            });
+        }
+
+        // Create new status record for proposal submission
+        await prisma.studentStatus.create({
+            data: {
+                student: {
+                    connect: { id: studentId }
+                },
+                definition: {
+                    connect: { code: 'PROPOSAL_RECEIVED' }
+                },
+                updatedBy: {
+                    connect: { id: req.user.id }
+                },
+                startDate: new Date()
+            }
+        });
+
+        // Send response and clean up file buffer
+        res.status(201)
+           .set({
+               'Content-Type': 'multipart/mixed',
+               'Content-Disposition': `attachment; filename="${file.originalname}"`
+           })
+           .send({
+               message: 'Proposal submitted successfully',
+               file: file.buffer
+           });
+
+        // Clean up the file buffer from memory
+        file.buffer = null;
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Get proposal details
+export const getProposal = async (req, res, next) => {
+    try {
+        const { studentId, proposalId } = req.params;
+
+        const proposal = await prisma.proposal.findFirst({
+            where: {
+                id: proposalId,
+                studentId: studentId
+            },
+            include: {
+                student: true,
+                submittedBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true,
+                        role: true
+                    }
+                },
+                grade: true
+            }
+        });
+
+        if (!proposal) {
+            const error = new Error('Proposal not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        res.status(200).json({ proposal });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Get all proposals for a student
+export const getStudentProposals = async (req, res, next) => {
+    try {
+        const { studentId } = req.params;
+
+        const proposals = await prisma.proposal.findMany({
+            where: {
+                studentId: studentId
+            },
+            include: {
+                student: true,
+                submittedBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true,
+                        role: true
+                    }
+                },
+                grades: true,
+                reviewers: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                }
+            },
+            orderBy: {
+                submittedAt: 'desc'
+            }
+        });
+
+        res.status(200).json({ proposals });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+
+// Grade proposal
+export const gradeProposal = async (req, res, next) => {
+    try {
+        const { studentId, proposalId } = req.params;
+        const { grade, feedback } = req.body;
+
+        const proposal = await prisma.proposal.findFirst({
+            where: {
+                id: proposalId,
+                studentId: studentId
+            }
+        });
+
+        if (!proposal) {
+            const error = new Error('Proposal not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Create grade for proposal
+        const gradedProposal = await prisma.proposalGrade.create({
+            data: {
+                grade,
+                feedback,
+                proposal: {
+                    connect: { id: proposalId }
+                },
+                gradedBy: {
+                    connect: { id: req.user.id }
+                }
+            }
+        });
+
+        // Update student status
+        await prisma.studentStatus.create({
+            data: {
+                student: {
+                    connect: { id: studentId }
+                },
+                definition: {
+                    connect: { code: 'PROPOSAL_GRADED' }
+                },
+                updatedBy: {
+                    connect: { id: req.user.id }
+                }
+            }
+        });
+
+        res.status(200).json({
+            message: 'Proposal graded successfully',
+            grade: gradedProposal
+        });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+

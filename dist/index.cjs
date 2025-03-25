@@ -32216,15 +32216,33 @@ var require_client = __commonJS({
     };
     exports2.Prisma.ProposalScalarFieldEnum = {
       id: "id",
+      title: "title",
+      description: "description",
+      researchArea: "researchArea",
+      fileData: "fileData",
+      fileName: "fileName",
+      fileType: "fileType",
       isCurrent: "isCurrent",
       studentId: "studentId",
+      submittedById: "submittedById",
       reviewerIds: "reviewerIds",
       status: "status",
       submittedAt: "submittedAt",
       defenseDate: "defenseDate",
       panelists: "panelists",
       comments: "comments",
-      markRange: "markRange"
+      markRange: "markRange",
+      createdAt: "createdAt",
+      updatedAt: "updatedAt"
+    };
+    exports2.Prisma.ProposalGradeScalarFieldEnum = {
+      id: "id",
+      proposalId: "proposalId",
+      grade: "grade",
+      feedback: "feedback",
+      submittedById: "submittedById",
+      createdAt: "createdAt",
+      updatedAt: "updatedAt"
     };
     exports2.Prisma.BookScalarFieldEnum = {
       id: "id",
@@ -32386,6 +32404,7 @@ var require_client = __commonJS({
       studentStatus: "studentStatus",
       notificationLog: "notificationLog",
       proposal: "proposal",
+      proposalGrade: "proposalGrade",
       book: "book",
       examiner: "examiner",
       supervisor: "supervisor",
@@ -32434,6 +32453,7 @@ var require_client = __commonJS({
         "db"
       ],
       "activeProvider": "mongodb",
+      "postinstall": false,
       "inlineDatasources": {
         "db": {
           "url": {
@@ -32442,8 +32462,8 @@ var require_client = __commonJS({
           }
         }
       },
-      "inlineSchema": '// This is your Prisma schema file,\n// learn more about it in the docs: https://pris.ly/d/prisma-schema\n\n// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?\n// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init\n\ngenerator client {\n  provider = "prisma-client-js"\n}\n\ndatasource db {\n  provider = "mongodb"\n  url      = env("DATABASE_URL")\n}\n\nmodel user {\n  id              String          @id @default(auto()) @map("_id") @db.ObjectId\n  name            String\n  title           String?\n  email           String          @unique\n  password        String\n  phone           String?\n  designation     String?\n  role            Role // Defines user roles\n  activities      userActivity[]\n  student         student?\n  facultyMember   facultyMember?\n  supervisor      supervisor?\n  updatedStatuses studentStatus[] // Add this line\n\n  createdAt DateTime? @default(now())\n  updatedAt DateTime? @updatedAt\n}\n\nenum Role {\n  SUPERADMIN // Manages all users, IT administration, system management\n  RESEARCH_ADMIN // Same as SuperAdmin but without form editing access\n  SCHOOL_ADMIN // Manages students from the proposal submission stage onwards\n  DEAN // School Dean with school admin privileges\n  SCHOOL_PA // Personal Assistant with school admin privileges\n  STUDENT // Views details, accepts dates, and sees notifications\n  FACULTY // Faculty member role\n  SUPERVISOR // Supervisor role\n  MANAGER // Manager role for overseeing operations\n\n  EXAMINER // Examiner role for evaluating student work\n  COORDINATOR // Program/Department coordinator role\n  LIBRARIAN // Library staff role for managing thesis submissions\n  FINANCE_ADMIN // Finance administrator role\n  REGISTRY_ADMIN // Registry administrator role\n  GRADUATE_SCHOOL // Graduate school administrator role\n}\n\nmodel userActivity {\n  id         String   @id @default(auto()) @map("_id") @db.ObjectId\n  user       user?    @relation(fields: [userId], references: [id])\n  userId     String?  @db.ObjectId\n  action     String // e.g., "Updated Proposal Status", "Assigned Supervisor"\n  entityType String // e.g., "Proposal", "Student", "Viva"\n  entityId   String // ID of the affected entity\n  details    String? // Additional details about the activity (e.g. tracked changes)\n  timestamp  DateTime @default(now())\n}\n\nmodel student {\n  id          String    @id @default(auto()) @map("_id") @db.ObjectId\n  title       String?\n  firstName   String\n  lastName    String\n  course      String?\n  email       String    @unique\n  phoneNumber String?\n  dateOfBirth DateTime?\n  gender      String? // "male" or "female"\n\n  campus       campus?     @relation(fields: [campusId], references: [id])\n  campusId     String?     @db.ObjectId\n  school       school?     @relation(fields: [schoolId], references: [id])\n  schoolId     String?     @db.ObjectId\n  department   department? @relation(fields: [departmentId], references: [id])\n  departmentId String?     @db.ObjectId\n\n  academicYear   String?\n  studyMode      String? // "Full Time" or "Part Time"\n  intakePeriod   String?\n  programLevel   String? // "Masters" or "PhD"\n  specialization String?\n  completionTime Int? // Expected completion time in months\n\n  admissionDate          DateTime  @default(now())\n  expectedCompletionDate DateTime?\n  totalDuration          Int? // Total duration in days since admission\n  currentStatus          String? // Current status of the student\n  isActive               Boolean   @default(true)\n\n  fieldWork fieldWork[]\n\n  user   user?   @relation(fields: [userId], references: [id])\n  userId String? @unique @db.ObjectId\n\n  // Arrays\n  statuses      studentStatus[]\n  proposals     proposal[]\n  notifications notification[]\n  supervisorIds String[]        @db.ObjectId\n  supervisors   supervisor[]    @relation(fields: [supervisorIds], references: [id])\n\n  books book[]\n  vivas viva[]\n\n  // Timestamps\n  createdAt DateTime? @default(now())\n  updatedAt DateTime? @updatedAt\n}\n\nmodel statusDefinition {\n  id               String          @id @default(auto()) @map("_id") @db.ObjectId\n  name             String          @unique // e.g., "BREAK", "WORKSHOP", etc.\n  description      String\n  expectedDuration Int? // Expected duration in days\n  warningDays      Int? // Days before expected end to send warning\n  criticalDays     Int? // Days after expected end to send critical notification\n  delayDays        Int? // Days after critical to send delay notification\n  notifyRoles      Role[] // Which roles to notify\n  color            String? // Color for UI display\n  isActive         Boolean         @default(true)\n  createdAt        DateTime        @default(now())\n  updatedAt        DateTime        @updatedAt\n  studentStatuses  studentStatus[] // All student statuses using this definition\n}\n\nmodel studentStatus {\n  id           String            @id @default(auto()) @map("_id") @db.ObjectId\n  student      student?          @relation(fields: [studentId], references: [id])\n  studentId    String?           @db.ObjectId\n  definition   statusDefinition? @relation(fields: [definitionId], references: [id])\n  definitionId String?           @db.ObjectId\n  startDate    DateTime          @default(now())\n  endDate      DateTime?\n  duration     Int? // Actual duration in days\n  conditions   String? // Conditions or remarks\n  isActive     Boolean           @default(true)\n\n  notificationsSent notificationLog[] // Track which notifications were sent\n  isCurrent         Boolean           @default(true)\n  createdAt         DateTime?         @default(now())\n  updatedAt         DateTime?         @updatedAt\n  updatedBy         user?             @relation(fields: [updatedById], references: [id])\n  updatedById       String?           @db.ObjectId\n}\n\nmodel notificationLog {\n  id            String           @id @default(auto()) @map("_id") @db.ObjectId\n  studentStatus studentStatus    @relation(fields: [statusId], references: [id])\n  statusId      String           @db.ObjectId\n  type          NotificationType\n  sentAt        DateTime         @default(now())\n  recipients    String[] // List of email addresses notified\n  message       String\n}\n\nenum NotificationType {\n  WARNING // Approaching deadline\n  CRITICAL // Past deadline\n  INFO // General information\n}\n\nmodel proposal {\n  id          String     @id @default(auto()) @map("_id") @db.ObjectId\n  isCurrent   Boolean    @default(false)\n  student     student?   @relation(fields: [studentId], references: [id])\n  studentId   String?    @db.ObjectId\n  reviewerIds String[]   @db.ObjectId\n  reviewers   reviewer[] @relation(fields: [reviewerIds], references: [id])\n  status      String // Pending Review, Reviewed, Defended, Graded-Passed, Graded-Failed\n  submittedAt DateTime   @default(now())\n  defenseDate DateTime?\n  panelists   String[]\n  comments    String?\n  markRange   Int?\n}\n\nmodel book {\n  id                           String     @id @default(auto()) @map("_id") @db.ObjectId\n  student                      student?   @relation(fields: [studentId], references: [id])\n  studentId                    String?    @db.ObjectId\n  submittedAt                  DateTime   @default(now())\n  externalSubmissionDate       DateTime?\n  internalSubmissionDate       DateTime?\n  externalReportSubmissionDate DateTime?\n  internalReportSubmissionDate DateTime?\n  isCurrent                    Boolean    @default(false)\n  submissionCondition          String // Normal or Resubmission\n  researchAdminUpdated         Boolean    @default(false)\n  examiner                     examiner[] @relation(fields: [examinerIds], references: [id])\n  examinerIds                  String[]   @db.ObjectId\n  externalMarks                Int?\n  internalMarks                Int?\n  finalGrade                   Float? // Average of external and internal marks\n  status                       String // Under Examination, Passed, Failed, Resubmission Required\n}\n\nmodel examiner {\n  id          String    @id @default(auto()) @map("_id") @db.ObjectId\n  name        String\n  email       String    @unique\n  type        String // Internal or External\n  submittedAt DateTime?\n  bookIds     String[]  @db.ObjectId\n  books       book[]    @relation(fields: [bookIds], references: [id])\n}\n\nmodel supervisor {\n  id             String      @id @default(auto()) @map("_id") @db.ObjectId\n  name           String\n  title          String?\n  employeeId     String?\n  designation    String?\n  role           Role\n  workEmail      String      @unique\n  personalEmail  String?\n  primaryPhone   String\n  secondaryPhone String?\n  facultyType    String // dean, school_admin, faculty\n  studentIds     String[]    @db.ObjectId\n  students       student[]   @relation(fields: [studentIds], references: [id])\n  user           user?       @relation(fields: [userId], references: [id])\n  userId         String?     @unique @db.ObjectId\n  school         school?     @relation(fields: [schoolId], references: [id])\n  schoolId       String?     @db.ObjectId\n  campus         campus?     @relation(fields: [campusId], references: [id])\n  campusId       String?     @db.ObjectId\n  department     department? @relation(fields: [departmentId], references: [id])\n  departmentId   String?     @db.ObjectId\n}\n\nmodel fieldWork {\n  id             String    @id @default(auto()) @map("_id") @db.ObjectId\n  student        student?  @relation(fields: [studentId], references: [id])\n  studentId      String?   @db.ObjectId\n  status         String // Ongoing, Completed\n  startDate      DateTime\n  endDate        DateTime?\n  letterReceived Boolean   @default(false)\n}\n\nmodel reviewer {\n  id          String     @id @default(auto()) @map("_id") @db.ObjectId\n  name        String\n  email       String     @unique\n  proposalIds String[]   @db.ObjectId\n  proposals   proposal[] @relation(fields: [proposalIds], references: [id])\n}\n\nmodel viva {\n  id             String   @id @default(auto()) @map("_id") @db.ObjectId\n  student        student? @relation(fields: [studentId], references: [id])\n  studentId      String?  @db.ObjectId\n  scheduledAt    DateTime\n  status         String // Pending, Passed, Failed\n  panelists      String[]\n  verdict        String?\n  minutesPending Boolean  @default(true)\n}\n\nmodel notification {\n  id        String   @id @default(auto()) @map("_id") @db.ObjectId\n  recipient String // Student or Admin Email\n  message   String\n  createdAt DateTime @default(now())\n  sent      Boolean  @default(false)\n  student   student? @relation(fields: [studentId], references: [id])\n  studentId String?  @db.ObjectId\n}\n\nmodel school {\n  id             String          @id @default(auto()) @map("_id") @db.ObjectId\n  name           String\n  code           String\n  url            String?\n  campus         campus          @relation(fields: [campusId], references: [id])\n  campusId       String          @db.ObjectId\n  members        schoolMember[]\n  departments    department[]\n  facultyMembers facultyMember[]\n  supervisors    supervisor[]\n  students       student[]\n}\n\nmodel campus {\n  id             String          @id @default(auto()) @map("_id") @db.ObjectId\n  name           String\n  location       String\n  schools        school[]\n  facultyMembers facultyMember[]\n  supervisors    supervisor[]\n  students       student[]\n}\n\nmodel schoolMember {\n  id        String  @id @default(auto()) @map("_id") @db.ObjectId\n  school    school? @relation(fields: [schoolId], references: [id])\n  schoolId  String? @db.ObjectId\n  name      String\n  contact   String\n  email     String  @unique\n  role      String // Dean, Personal Assistant, School Admin\n  isCurrent Boolean @default(true)\n}\n\nmodel department {\n  id           String       @id @default(auto()) @map("_id") @db.ObjectId\n  school       school?      @relation(fields: [schoolId], references: [id])\n  schoolId     String?      @db.ObjectId\n  name         String\n  url          String?\n  adminName    String\n  adminContact String\n  adminEmail   String       @unique\n  supervisors  supervisor[]\n  students     student[]\n}\n\nmodel facultyMember {\n  id             String   @id @default(auto()) @map("_id") @db.ObjectId\n  employeeId     String?\n  school         school?  @relation(fields: [schoolId], references: [id])\n  schoolId       String?  @db.ObjectId\n  campus         campus?  @relation(fields: [campusId], references: [id])\n  campusId       String?  @db.ObjectId\n  name           String\n  workEmail      String   @unique\n  personalEmail  String?\n  primaryPhone   String\n  secondaryPhone String?\n  designation    String?\n  facultyType    String // dean, school_admin, faculty\n  role           Role\n  isAdmin        Boolean  @default(false) // Indicates if faculty member is school admin\n  user           user?    @relation(fields: [userId], references: [id])\n  userId         String?  @unique @db.ObjectId\n  createdAt      DateTime @default(now())\n  updatedAt      DateTime @updatedAt\n}\n',
-      "inlineSchemaHash": "687ac9c36b71b0fd3e61bd8584582f04592940b3b39141c7546a79085cf1c8ae",
+      "inlineSchema": '// This is your Prisma schema file,\n// learn more about it in the docs: https://pris.ly/d/prisma-schema\n\n// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?\n// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init\n\ngenerator client {\n  provider = "prisma-client-js"\n}\n\ndatasource db {\n  provider = "mongodb"\n  url      = env("DATABASE_URL")\n}\n\nmodel user {\n  id              String          @id @default(auto()) @map("_id") @db.ObjectId\n  name            String\n  title           String?\n  email           String          @unique\n  password        String\n  phone           String?\n  designation     String?\n  role            Role // Defines user roles\n  activities      userActivity[]\n  student         student?\n  facultyMember   facultyMember?\n  supervisor      supervisor?\n  updatedStatuses studentStatus[] // Add this line\n\n  submittedProposals proposal[]      @relation("submittedProposals")\n  submittedGrades    proposalGrade[]\n\n  createdAt DateTime? @default(now())\n  updatedAt DateTime? @updatedAt\n}\n\nenum Role {\n  SUPERADMIN // Manages all users, IT administration, system management\n  RESEARCH_ADMIN // Same as SuperAdmin but without form editing access\n  SCHOOL_ADMIN // Manages students from the proposal submission stage onwards\n  DEAN // School Dean with school admin privileges\n  SCHOOL_PA // Personal Assistant with school admin privileges\n  STUDENT // Views details, accepts dates, and sees notifications\n  FACULTY // Faculty member role\n  SUPERVISOR // Supervisor role\n  MANAGER // Manager role for overseeing operations\n\n  EXAMINER // Examiner role for evaluating student work\n  COORDINATOR // Program/Department coordinator role\n  LIBRARIAN // Library staff role for managing thesis submissions\n  FINANCE_ADMIN // Finance administrator role\n  REGISTRY_ADMIN // Registry administrator role\n  GRADUATE_SCHOOL // Graduate school administrator role\n}\n\nmodel userActivity {\n  id         String   @id @default(auto()) @map("_id") @db.ObjectId\n  user       user?    @relation(fields: [userId], references: [id])\n  userId     String?  @db.ObjectId\n  action     String // e.g., "Updated Proposal Status", "Assigned Supervisor"\n  entityType String // e.g., "Proposal", "Student", "Viva"\n  entityId   String // ID of the affected entity\n  details    String? // Additional details about the activity (e.g. tracked changes)\n  timestamp  DateTime @default(now())\n}\n\nmodel student {\n  id          String    @id @default(auto()) @map("_id") @db.ObjectId\n  title       String?\n  firstName   String\n  lastName    String\n  course      String?\n  email       String    @unique\n  phoneNumber String?\n  dateOfBirth DateTime?\n  gender      String? // "male" or "female"\n\n  campus       campus?     @relation(fields: [campusId], references: [id])\n  campusId     String?     @db.ObjectId\n  school       school?     @relation(fields: [schoolId], references: [id])\n  schoolId     String?     @db.ObjectId\n  department   department? @relation(fields: [departmentId], references: [id])\n  departmentId String?     @db.ObjectId\n\n  academicYear   String?\n  studyMode      String? // "Full Time" or "Part Time"\n  intakePeriod   String?\n  programLevel   String? // "Masters" or "PhD"\n  specialization String?\n  completionTime Int? // Expected completion time in months\n\n  admissionDate          DateTime  @default(now())\n  expectedCompletionDate DateTime?\n  totalDuration          Int? // Total duration in days since admission\n  currentStatus          String? // Current status of the student\n  isActive               Boolean   @default(true)\n\n  fieldWork fieldWork[]\n\n  user   user?   @relation(fields: [userId], references: [id])\n  userId String? @unique @db.ObjectId\n\n  // Arrays\n  statuses      studentStatus[]\n  proposals     proposal[]\n  notifications notification[]\n  supervisorIds String[]        @db.ObjectId\n  supervisors   supervisor[]    @relation(fields: [supervisorIds], references: [id])\n\n  books book[]\n  vivas viva[]\n\n  // Timestamps\n  createdAt DateTime? @default(now())\n  updatedAt DateTime? @updatedAt\n}\n\nmodel statusDefinition {\n  id               String          @id @default(auto()) @map("_id") @db.ObjectId\n  name             String          @unique // e.g., "BREAK", "WORKSHOP", etc.\n  description      String\n  expectedDuration Int? // Expected duration in days\n  warningDays      Int? // Days before expected end to send warning\n  criticalDays     Int? // Days after expected end to send critical notification\n  delayDays        Int? // Days after critical to send delay notification\n  notifyRoles      Role[] // Which roles to notify\n  color            String? // Color for UI display\n  isActive         Boolean         @default(true)\n  createdAt        DateTime        @default(now())\n  updatedAt        DateTime        @updatedAt\n  studentStatuses  studentStatus[] // All student statuses using this definition\n}\n\nmodel studentStatus {\n  id           String            @id @default(auto()) @map("_id") @db.ObjectId\n  student      student?          @relation(fields: [studentId], references: [id])\n  studentId    String?           @db.ObjectId\n  definition   statusDefinition? @relation(fields: [definitionId], references: [id])\n  definitionId String?           @db.ObjectId\n  startDate    DateTime          @default(now())\n  endDate      DateTime?\n  duration     Int? // Actual duration in days\n  conditions   String? // Conditions or remarks\n  isActive     Boolean           @default(true)\n\n  notificationsSent notificationLog[] // Track which notifications were sent\n  isCurrent         Boolean           @default(true)\n  createdAt         DateTime?         @default(now())\n  updatedAt         DateTime?         @updatedAt\n  updatedBy         user?             @relation(fields: [updatedById], references: [id])\n  updatedById       String?           @db.ObjectId\n}\n\nmodel notificationLog {\n  id            String           @id @default(auto()) @map("_id") @db.ObjectId\n  studentStatus studentStatus    @relation(fields: [statusId], references: [id])\n  statusId      String           @db.ObjectId\n  type          NotificationType\n  sentAt        DateTime         @default(now())\n  recipients    String[] // List of email addresses notified\n  message       String\n}\n\nenum NotificationType {\n  WARNING // Approaching deadline\n  CRITICAL // Past deadline\n  INFO // General information\n}\n\nmodel proposal {\n  id            String          @id @default(auto()) @map("_id") @db.ObjectId\n  title         String\n  description   String?\n  researchArea  String\n  fileData      Bytes\n  fileName      String\n  fileType      String\n  isCurrent     Boolean         @default(false)\n  student       student?        @relation(fields: [studentId], references: [id])\n  studentId     String?         @db.ObjectId\n  submittedBy   user?           @relation(name: "submittedProposals", fields: [submittedById], references: [id])\n  submittedById String?         @db.ObjectId\n  reviewerIds   String[]        @db.ObjectId\n  reviewers     reviewer[]      @relation(fields: [reviewerIds], references: [id])\n  status        String // Pending Review, Reviewed, Defended, Graded-Passed, Graded-Failed\n  submittedAt   DateTime        @default(now())\n  defenseDate   DateTime?\n  panelists     String[]\n  comments      String?\n  markRange     Int?\n  grades        proposalGrade[]\n  createdAt     DateTime        @default(now())\n  updatedAt     DateTime        @updatedAt\n}\n\nmodel proposalGrade {\n  id            String   @id @default(auto()) @map("_id") @db.ObjectId\n  proposal      proposal @relation(fields: [proposalId], references: [id])\n  proposalId    String   @db.ObjectId\n  grade         Float\n  feedback      String?\n  submittedBy   user     @relation(fields: [submittedById], references: [id])\n  submittedById String   @db.ObjectId\n  createdAt     DateTime @default(now())\n  updatedAt     DateTime @updatedAt\n}\n\nmodel book {\n  id                           String     @id @default(auto()) @map("_id") @db.ObjectId\n  student                      student?   @relation(fields: [studentId], references: [id])\n  studentId                    String?    @db.ObjectId\n  submittedAt                  DateTime   @default(now())\n  externalSubmissionDate       DateTime?\n  internalSubmissionDate       DateTime?\n  externalReportSubmissionDate DateTime?\n  internalReportSubmissionDate DateTime?\n  isCurrent                    Boolean    @default(false)\n  submissionCondition          String // Normal or Resubmission\n  researchAdminUpdated         Boolean    @default(false)\n  examiner                     examiner[] @relation(fields: [examinerIds], references: [id])\n  examinerIds                  String[]   @db.ObjectId\n  externalMarks                Int?\n  internalMarks                Int?\n  finalGrade                   Float? // Average of external and internal marks\n  status                       String // Under Examination, Passed, Failed, Resubmission Required\n}\n\nmodel examiner {\n  id          String    @id @default(auto()) @map("_id") @db.ObjectId\n  name        String\n  email       String    @unique\n  type        String // Internal or External\n  submittedAt DateTime?\n  bookIds     String[]  @db.ObjectId\n  books       book[]    @relation(fields: [bookIds], references: [id])\n}\n\nmodel supervisor {\n  id             String      @id @default(auto()) @map("_id") @db.ObjectId\n  name           String\n  title          String?\n  employeeId     String?\n  designation    String?\n  role           Role\n  workEmail      String      @unique\n  personalEmail  String?\n  primaryPhone   String\n  secondaryPhone String?\n  facultyType    String // dean, school_admin, faculty\n  studentIds     String[]    @db.ObjectId\n  students       student[]   @relation(fields: [studentIds], references: [id])\n  user           user?       @relation(fields: [userId], references: [id])\n  userId         String?     @unique @db.ObjectId\n  school         school?     @relation(fields: [schoolId], references: [id])\n  schoolId       String?     @db.ObjectId\n  campus         campus?     @relation(fields: [campusId], references: [id])\n  campusId       String?     @db.ObjectId\n  department     department? @relation(fields: [departmentId], references: [id])\n  departmentId   String?     @db.ObjectId\n}\n\nmodel fieldWork {\n  id             String    @id @default(auto()) @map("_id") @db.ObjectId\n  student        student?  @relation(fields: [studentId], references: [id])\n  studentId      String?   @db.ObjectId\n  status         String // Ongoing, Completed\n  startDate      DateTime\n  endDate        DateTime?\n  letterReceived Boolean   @default(false)\n}\n\nmodel reviewer {\n  id          String     @id @default(auto()) @map("_id") @db.ObjectId\n  name        String\n  email       String     @unique\n  proposalIds String[]   @db.ObjectId\n  proposals   proposal[] @relation(fields: [proposalIds], references: [id])\n}\n\nmodel viva {\n  id             String   @id @default(auto()) @map("_id") @db.ObjectId\n  student        student? @relation(fields: [studentId], references: [id])\n  studentId      String?  @db.ObjectId\n  scheduledAt    DateTime\n  status         String // Pending, Passed, Failed\n  panelists      String[]\n  verdict        String?\n  minutesPending Boolean  @default(true)\n}\n\nmodel notification {\n  id        String   @id @default(auto()) @map("_id") @db.ObjectId\n  recipient String // Student or Admin Email\n  message   String\n  createdAt DateTime @default(now())\n  sent      Boolean  @default(false)\n  student   student? @relation(fields: [studentId], references: [id])\n  studentId String?  @db.ObjectId\n}\n\nmodel school {\n  id             String          @id @default(auto()) @map("_id") @db.ObjectId\n  name           String\n  code           String\n  url            String?\n  campus         campus          @relation(fields: [campusId], references: [id])\n  campusId       String          @db.ObjectId\n  members        schoolMember[]\n  departments    department[]\n  facultyMembers facultyMember[]\n  supervisors    supervisor[]\n  students       student[]\n}\n\nmodel campus {\n  id             String          @id @default(auto()) @map("_id") @db.ObjectId\n  name           String\n  location       String\n  schools        school[]\n  facultyMembers facultyMember[]\n  supervisors    supervisor[]\n  students       student[]\n}\n\nmodel schoolMember {\n  id        String  @id @default(auto()) @map("_id") @db.ObjectId\n  school    school? @relation(fields: [schoolId], references: [id])\n  schoolId  String? @db.ObjectId\n  name      String\n  contact   String\n  email     String  @unique\n  role      String // Dean, Personal Assistant, School Admin\n  isCurrent Boolean @default(true)\n}\n\nmodel department {\n  id           String       @id @default(auto()) @map("_id") @db.ObjectId\n  school       school?      @relation(fields: [schoolId], references: [id])\n  schoolId     String?      @db.ObjectId\n  name         String\n  url          String?\n  adminName    String\n  adminContact String\n  adminEmail   String       @unique\n  supervisors  supervisor[]\n  students     student[]\n}\n\nmodel facultyMember {\n  id             String   @id @default(auto()) @map("_id") @db.ObjectId\n  employeeId     String?\n  school         school?  @relation(fields: [schoolId], references: [id])\n  schoolId       String?  @db.ObjectId\n  campus         campus?  @relation(fields: [campusId], references: [id])\n  campusId       String?  @db.ObjectId\n  name           String\n  workEmail      String   @unique\n  personalEmail  String?\n  primaryPhone   String\n  secondaryPhone String?\n  designation    String?\n  facultyType    String // dean, school_admin, faculty\n  role           Role\n  isAdmin        Boolean  @default(false) // Indicates if faculty member is school admin\n  user           user?    @relation(fields: [userId], references: [id])\n  userId         String?  @unique @db.ObjectId\n  createdAt      DateTime @default(now())\n  updatedAt      DateTime @updatedAt\n}\n',
+      "inlineSchemaHash": "1e24e2e388713d18ceb8ac23ba6473fb99942c78545ef62bd457c39f0fc042bb",
       "copyEngine": true
     };
     var fs = require("fs");
@@ -32459,7 +32479,7 @@ var require_client = __commonJS({
       config2.dirname = path2.join(process.cwd(), alternativePath);
       config2.isBundled = true;
     }
-    config2.runtimeDataModel = JSON.parse('{"models":{"user":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"title","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"email","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"password","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"phone","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"designation","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"role","kind":"enum","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Role","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"activities","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"userActivity","nativeType":null,"relationName":"userTouserActivity","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"student","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"studentTouser","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"facultyMember","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"facultyMember","nativeType":null,"relationName":"facultyMemberTouser","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"supervisor","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"supervisor","nativeType":null,"relationName":"supervisorTouser","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"updatedStatuses","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"studentStatus","nativeType":null,"relationName":"studentStatusTouser","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"createdAt","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"updatedAt","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":true}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"userActivity":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"user","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"user","nativeType":null,"relationName":"userTouserActivity","relationFromFields":["userId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"userId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"action","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"entityType","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"entityId","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"details","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"timestamp","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"student":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"title","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"firstName","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"lastName","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"course","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"email","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"phoneNumber","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"dateOfBirth","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"gender","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"campus","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"campus","nativeType":null,"relationName":"campusTostudent","relationFromFields":["campusId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"campusId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"school","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"school","nativeType":null,"relationName":"schoolTostudent","relationFromFields":["schoolId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"schoolId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"department","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"department","nativeType":null,"relationName":"departmentTostudent","relationFromFields":["departmentId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"departmentId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"academicYear","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"studyMode","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"intakePeriod","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"programLevel","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"specialization","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"completionTime","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"admissionDate","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"expectedCompletionDate","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"totalDuration","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"currentStatus","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"isActive","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":true,"isGenerated":false,"isUpdatedAt":false},{"name":"fieldWork","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"fieldWork","nativeType":null,"relationName":"fieldWorkTostudent","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"user","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"user","nativeType":null,"relationName":"studentTouser","relationFromFields":["userId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"userId","kind":"scalar","isList":false,"isRequired":false,"isUnique":true,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"statuses","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"studentStatus","nativeType":null,"relationName":"studentTostudentStatus","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"proposals","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"proposal","nativeType":null,"relationName":"proposalTostudent","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"notifications","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"notification","nativeType":null,"relationName":"notificationTostudent","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"supervisorIds","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"supervisors","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"supervisor","nativeType":null,"relationName":"studentTosupervisor","relationFromFields":["supervisorIds"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"books","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"book","nativeType":null,"relationName":"bookTostudent","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"vivas","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"viva","nativeType":null,"relationName":"studentToviva","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"createdAt","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"updatedAt","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":true}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"statusDefinition":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"description","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"expectedDuration","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"warningDays","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"criticalDays","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"delayDays","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"notifyRoles","kind":"enum","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Role","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"color","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"isActive","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":true,"isGenerated":false,"isUpdatedAt":false},{"name":"createdAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"updatedAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":true},{"name":"studentStatuses","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"studentStatus","nativeType":null,"relationName":"statusDefinitionTostudentStatus","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"studentStatus":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"student","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"studentTostudentStatus","relationFromFields":["studentId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"studentId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"definition","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"statusDefinition","nativeType":null,"relationName":"statusDefinitionTostudentStatus","relationFromFields":["definitionId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"definitionId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"startDate","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"endDate","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"duration","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"conditions","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"isActive","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":true,"isGenerated":false,"isUpdatedAt":false},{"name":"notificationsSent","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"notificationLog","nativeType":null,"relationName":"notificationLogTostudentStatus","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"isCurrent","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":true,"isGenerated":false,"isUpdatedAt":false},{"name":"createdAt","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"updatedAt","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":true},{"name":"updatedBy","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"user","nativeType":null,"relationName":"studentStatusTouser","relationFromFields":["updatedById"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"updatedById","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"notificationLog":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"studentStatus","kind":"object","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"studentStatus","nativeType":null,"relationName":"notificationLogTostudentStatus","relationFromFields":["statusId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"statusId","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"type","kind":"enum","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"NotificationType","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"sentAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"recipients","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"message","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"proposal":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"isCurrent","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":false,"isGenerated":false,"isUpdatedAt":false},{"name":"student","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"proposalTostudent","relationFromFields":["studentId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"studentId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"reviewerIds","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"reviewers","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"reviewer","nativeType":null,"relationName":"proposalToreviewer","relationFromFields":["reviewerIds"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"status","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"submittedAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"defenseDate","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"panelists","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"comments","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"markRange","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"book":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"student","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"bookTostudent","relationFromFields":["studentId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"studentId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"submittedAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"externalSubmissionDate","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"internalSubmissionDate","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"externalReportSubmissionDate","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"internalReportSubmissionDate","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"isCurrent","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":false,"isGenerated":false,"isUpdatedAt":false},{"name":"submissionCondition","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"researchAdminUpdated","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":false,"isGenerated":false,"isUpdatedAt":false},{"name":"examiner","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"examiner","nativeType":null,"relationName":"bookToexaminer","relationFromFields":["examinerIds"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"examinerIds","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"externalMarks","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"internalMarks","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"finalGrade","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Float","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"status","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"examiner":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"email","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"type","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"submittedAt","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"bookIds","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"books","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"book","nativeType":null,"relationName":"bookToexaminer","relationFromFields":["bookIds"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"supervisor":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"title","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"employeeId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"designation","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"role","kind":"enum","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Role","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"workEmail","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"personalEmail","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"primaryPhone","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"secondaryPhone","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"facultyType","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"studentIds","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"students","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"studentTosupervisor","relationFromFields":["studentIds"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"user","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"user","nativeType":null,"relationName":"supervisorTouser","relationFromFields":["userId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"userId","kind":"scalar","isList":false,"isRequired":false,"isUnique":true,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"school","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"school","nativeType":null,"relationName":"schoolTosupervisor","relationFromFields":["schoolId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"schoolId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"campus","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"campus","nativeType":null,"relationName":"campusTosupervisor","relationFromFields":["campusId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"campusId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"department","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"department","nativeType":null,"relationName":"departmentTosupervisor","relationFromFields":["departmentId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"departmentId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"fieldWork":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"student","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"fieldWorkTostudent","relationFromFields":["studentId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"studentId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"status","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"startDate","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"endDate","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"letterReceived","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":false,"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"reviewer":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"email","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"proposalIds","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"proposals","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"proposal","nativeType":null,"relationName":"proposalToreviewer","relationFromFields":["proposalIds"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"viva":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"student","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"studentToviva","relationFromFields":["studentId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"studentId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"scheduledAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"status","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"panelists","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"verdict","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"minutesPending","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":true,"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"notification":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"recipient","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"message","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"createdAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"sent","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":false,"isGenerated":false,"isUpdatedAt":false},{"name":"student","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"notificationTostudent","relationFromFields":["studentId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"studentId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"school":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"code","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"url","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"campus","kind":"object","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"campus","nativeType":null,"relationName":"campusToschool","relationFromFields":["campusId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"campusId","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"members","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"schoolMember","nativeType":null,"relationName":"schoolToschoolMember","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"departments","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"department","nativeType":null,"relationName":"departmentToschool","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"facultyMembers","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"facultyMember","nativeType":null,"relationName":"facultyMemberToschool","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"supervisors","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"supervisor","nativeType":null,"relationName":"schoolTosupervisor","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"students","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"schoolTostudent","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"campus":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"location","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"schools","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"school","nativeType":null,"relationName":"campusToschool","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"facultyMembers","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"facultyMember","nativeType":null,"relationName":"campusTofacultyMember","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"supervisors","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"supervisor","nativeType":null,"relationName":"campusTosupervisor","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"students","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"campusTostudent","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"schoolMember":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"school","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"school","nativeType":null,"relationName":"schoolToschoolMember","relationFromFields":["schoolId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"schoolId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"contact","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"email","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"role","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"isCurrent","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":true,"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"department":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"school","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"school","nativeType":null,"relationName":"departmentToschool","relationFromFields":["schoolId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"schoolId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"url","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"adminName","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"adminContact","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"adminEmail","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"supervisors","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"supervisor","nativeType":null,"relationName":"departmentTosupervisor","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"students","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"departmentTostudent","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"facultyMember":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"employeeId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"school","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"school","nativeType":null,"relationName":"facultyMemberToschool","relationFromFields":["schoolId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"schoolId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"campus","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"campus","nativeType":null,"relationName":"campusTofacultyMember","relationFromFields":["campusId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"campusId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"workEmail","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"personalEmail","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"primaryPhone","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"secondaryPhone","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"designation","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"facultyType","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"role","kind":"enum","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Role","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"isAdmin","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":false,"isGenerated":false,"isUpdatedAt":false},{"name":"user","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"user","nativeType":null,"relationName":"facultyMemberTouser","relationFromFields":["userId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"userId","kind":"scalar","isList":false,"isRequired":false,"isUnique":true,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"createdAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"updatedAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":true}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false}},"enums":{"Role":{"values":[{"name":"SUPERADMIN","dbName":null},{"name":"RESEARCH_ADMIN","dbName":null},{"name":"SCHOOL_ADMIN","dbName":null},{"name":"DEAN","dbName":null},{"name":"SCHOOL_PA","dbName":null},{"name":"STUDENT","dbName":null},{"name":"FACULTY","dbName":null},{"name":"SUPERVISOR","dbName":null},{"name":"MANAGER","dbName":null},{"name":"EXAMINER","dbName":null},{"name":"COORDINATOR","dbName":null},{"name":"LIBRARIAN","dbName":null},{"name":"FINANCE_ADMIN","dbName":null},{"name":"REGISTRY_ADMIN","dbName":null},{"name":"GRADUATE_SCHOOL","dbName":null}],"dbName":null},"NotificationType":{"values":[{"name":"WARNING","dbName":null},{"name":"CRITICAL","dbName":null},{"name":"INFO","dbName":null}],"dbName":null}},"types":{}}');
+    config2.runtimeDataModel = JSON.parse('{"models":{"user":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"title","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"email","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"password","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"phone","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"designation","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"role","kind":"enum","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Role","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"activities","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"userActivity","nativeType":null,"relationName":"userTouserActivity","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"student","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"studentTouser","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"facultyMember","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"facultyMember","nativeType":null,"relationName":"facultyMemberTouser","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"supervisor","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"supervisor","nativeType":null,"relationName":"supervisorTouser","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"updatedStatuses","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"studentStatus","nativeType":null,"relationName":"studentStatusTouser","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"submittedProposals","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"proposal","nativeType":null,"relationName":"submittedProposals","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"submittedGrades","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"proposalGrade","nativeType":null,"relationName":"proposalGradeTouser","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"createdAt","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"updatedAt","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":true}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"userActivity":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"user","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"user","nativeType":null,"relationName":"userTouserActivity","relationFromFields":["userId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"userId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"action","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"entityType","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"entityId","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"details","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"timestamp","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"student":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"title","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"firstName","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"lastName","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"course","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"email","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"phoneNumber","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"dateOfBirth","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"gender","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"campus","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"campus","nativeType":null,"relationName":"campusTostudent","relationFromFields":["campusId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"campusId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"school","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"school","nativeType":null,"relationName":"schoolTostudent","relationFromFields":["schoolId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"schoolId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"department","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"department","nativeType":null,"relationName":"departmentTostudent","relationFromFields":["departmentId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"departmentId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"academicYear","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"studyMode","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"intakePeriod","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"programLevel","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"specialization","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"completionTime","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"admissionDate","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"expectedCompletionDate","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"totalDuration","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"currentStatus","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"isActive","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":true,"isGenerated":false,"isUpdatedAt":false},{"name":"fieldWork","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"fieldWork","nativeType":null,"relationName":"fieldWorkTostudent","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"user","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"user","nativeType":null,"relationName":"studentTouser","relationFromFields":["userId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"userId","kind":"scalar","isList":false,"isRequired":false,"isUnique":true,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"statuses","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"studentStatus","nativeType":null,"relationName":"studentTostudentStatus","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"proposals","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"proposal","nativeType":null,"relationName":"proposalTostudent","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"notifications","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"notification","nativeType":null,"relationName":"notificationTostudent","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"supervisorIds","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"supervisors","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"supervisor","nativeType":null,"relationName":"studentTosupervisor","relationFromFields":["supervisorIds"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"books","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"book","nativeType":null,"relationName":"bookTostudent","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"vivas","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"viva","nativeType":null,"relationName":"studentToviva","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"createdAt","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"updatedAt","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":true}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"statusDefinition":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"description","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"expectedDuration","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"warningDays","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"criticalDays","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"delayDays","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"notifyRoles","kind":"enum","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Role","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"color","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"isActive","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":true,"isGenerated":false,"isUpdatedAt":false},{"name":"createdAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"updatedAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":true},{"name":"studentStatuses","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"studentStatus","nativeType":null,"relationName":"statusDefinitionTostudentStatus","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"studentStatus":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"student","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"studentTostudentStatus","relationFromFields":["studentId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"studentId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"definition","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"statusDefinition","nativeType":null,"relationName":"statusDefinitionTostudentStatus","relationFromFields":["definitionId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"definitionId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"startDate","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"endDate","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"duration","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"conditions","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"isActive","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":true,"isGenerated":false,"isUpdatedAt":false},{"name":"notificationsSent","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"notificationLog","nativeType":null,"relationName":"notificationLogTostudentStatus","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"isCurrent","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":true,"isGenerated":false,"isUpdatedAt":false},{"name":"createdAt","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"updatedAt","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":true},{"name":"updatedBy","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"user","nativeType":null,"relationName":"studentStatusTouser","relationFromFields":["updatedById"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"updatedById","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"notificationLog":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"studentStatus","kind":"object","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"studentStatus","nativeType":null,"relationName":"notificationLogTostudentStatus","relationFromFields":["statusId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"statusId","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"type","kind":"enum","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"NotificationType","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"sentAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"recipients","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"message","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"proposal":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"title","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"description","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"researchArea","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"fileData","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Bytes","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"fileName","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"fileType","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"isCurrent","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":false,"isGenerated":false,"isUpdatedAt":false},{"name":"student","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"proposalTostudent","relationFromFields":["studentId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"studentId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"submittedBy","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"user","nativeType":null,"relationName":"submittedProposals","relationFromFields":["submittedById"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"submittedById","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"reviewerIds","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"reviewers","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"reviewer","nativeType":null,"relationName":"proposalToreviewer","relationFromFields":["reviewerIds"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"status","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"submittedAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"defenseDate","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"panelists","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"comments","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"markRange","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"grades","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"proposalGrade","nativeType":null,"relationName":"proposalToproposalGrade","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"createdAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"updatedAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":true}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"proposalGrade":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"proposal","kind":"object","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"proposal","nativeType":null,"relationName":"proposalToproposalGrade","relationFromFields":["proposalId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"proposalId","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"grade","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Float","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"feedback","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"submittedBy","kind":"object","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"user","nativeType":null,"relationName":"proposalGradeTouser","relationFromFields":["submittedById"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"submittedById","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"createdAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"updatedAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":true}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"book":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"student","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"bookTostudent","relationFromFields":["studentId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"studentId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"submittedAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"externalSubmissionDate","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"internalSubmissionDate","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"externalReportSubmissionDate","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"internalReportSubmissionDate","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"isCurrent","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":false,"isGenerated":false,"isUpdatedAt":false},{"name":"submissionCondition","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"researchAdminUpdated","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":false,"isGenerated":false,"isUpdatedAt":false},{"name":"examiner","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"examiner","nativeType":null,"relationName":"bookToexaminer","relationFromFields":["examinerIds"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"examinerIds","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"externalMarks","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"internalMarks","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Int","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"finalGrade","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Float","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"status","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"examiner":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"email","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"type","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"submittedAt","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"bookIds","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"books","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"book","nativeType":null,"relationName":"bookToexaminer","relationFromFields":["bookIds"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"supervisor":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"title","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"employeeId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"designation","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"role","kind":"enum","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Role","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"workEmail","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"personalEmail","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"primaryPhone","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"secondaryPhone","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"facultyType","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"studentIds","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"students","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"studentTosupervisor","relationFromFields":["studentIds"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"user","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"user","nativeType":null,"relationName":"supervisorTouser","relationFromFields":["userId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"userId","kind":"scalar","isList":false,"isRequired":false,"isUnique":true,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"school","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"school","nativeType":null,"relationName":"schoolTosupervisor","relationFromFields":["schoolId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"schoolId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"campus","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"campus","nativeType":null,"relationName":"campusTosupervisor","relationFromFields":["campusId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"campusId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"department","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"department","nativeType":null,"relationName":"departmentTosupervisor","relationFromFields":["departmentId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"departmentId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"fieldWork":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"student","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"fieldWorkTostudent","relationFromFields":["studentId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"studentId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"status","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"startDate","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"endDate","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"letterReceived","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":false,"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"reviewer":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"email","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"proposalIds","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"proposals","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"proposal","nativeType":null,"relationName":"proposalToreviewer","relationFromFields":["proposalIds"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"viva":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"student","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"studentToviva","relationFromFields":["studentId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"studentId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"scheduledAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"status","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"panelists","kind":"scalar","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"verdict","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"minutesPending","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":true,"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"notification":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"recipient","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"message","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"createdAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"sent","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":false,"isGenerated":false,"isUpdatedAt":false},{"name":"student","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"notificationTostudent","relationFromFields":["studentId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"studentId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"school":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"code","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"url","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"campus","kind":"object","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"campus","nativeType":null,"relationName":"campusToschool","relationFromFields":["campusId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"campusId","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"members","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"schoolMember","nativeType":null,"relationName":"schoolToschoolMember","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"departments","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"department","nativeType":null,"relationName":"departmentToschool","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"facultyMembers","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"facultyMember","nativeType":null,"relationName":"facultyMemberToschool","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"supervisors","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"supervisor","nativeType":null,"relationName":"schoolTosupervisor","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"students","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"schoolTostudent","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"campus":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"location","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"schools","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"school","nativeType":null,"relationName":"campusToschool","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"facultyMembers","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"facultyMember","nativeType":null,"relationName":"campusTofacultyMember","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"supervisors","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"supervisor","nativeType":null,"relationName":"campusTosupervisor","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"students","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"campusTostudent","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"schoolMember":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"school","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"school","nativeType":null,"relationName":"schoolToschoolMember","relationFromFields":["schoolId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"schoolId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"contact","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"email","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"role","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"isCurrent","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":true,"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"department":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"school","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"school","nativeType":null,"relationName":"departmentToschool","relationFromFields":["schoolId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"schoolId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"url","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"adminName","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"adminContact","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"adminEmail","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"supervisors","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"supervisor","nativeType":null,"relationName":"departmentTosupervisor","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false},{"name":"students","kind":"object","isList":true,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"student","nativeType":null,"relationName":"departmentTostudent","relationFromFields":[],"relationToFields":[],"isGenerated":false,"isUpdatedAt":false}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false},"facultyMember":{"dbName":null,"schema":null,"fields":[{"name":"id","dbName":"_id","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":true,"isReadOnly":false,"hasDefaultValue":true,"type":"String","nativeType":["ObjectId",[]],"default":{"name":"auto","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"employeeId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"school","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"school","nativeType":null,"relationName":"facultyMemberToschool","relationFromFields":["schoolId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"schoolId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"campus","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"campus","nativeType":null,"relationName":"campusTofacultyMember","relationFromFields":["campusId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"campusId","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"name","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"workEmail","kind":"scalar","isList":false,"isRequired":true,"isUnique":true,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"personalEmail","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"primaryPhone","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"secondaryPhone","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"designation","kind":"scalar","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"facultyType","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"String","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"role","kind":"enum","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"Role","nativeType":null,"isGenerated":false,"isUpdatedAt":false},{"name":"isAdmin","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"Boolean","nativeType":null,"default":false,"isGenerated":false,"isUpdatedAt":false},{"name":"user","kind":"object","isList":false,"isRequired":false,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"user","nativeType":null,"relationName":"facultyMemberTouser","relationFromFields":["userId"],"relationToFields":["id"],"isGenerated":false,"isUpdatedAt":false},{"name":"userId","kind":"scalar","isList":false,"isRequired":false,"isUnique":true,"isId":false,"isReadOnly":true,"hasDefaultValue":false,"type":"String","nativeType":["ObjectId",[]],"isGenerated":false,"isUpdatedAt":false},{"name":"createdAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":true,"type":"DateTime","nativeType":null,"default":{"name":"now","args":[]},"isGenerated":false,"isUpdatedAt":false},{"name":"updatedAt","kind":"scalar","isList":false,"isRequired":true,"isUnique":false,"isId":false,"isReadOnly":false,"hasDefaultValue":false,"type":"DateTime","nativeType":null,"isGenerated":false,"isUpdatedAt":true}],"primaryKey":null,"uniqueFields":[],"uniqueIndexes":[],"isGenerated":false}},"enums":{"Role":{"values":[{"name":"SUPERADMIN","dbName":null},{"name":"RESEARCH_ADMIN","dbName":null},{"name":"SCHOOL_ADMIN","dbName":null},{"name":"DEAN","dbName":null},{"name":"SCHOOL_PA","dbName":null},{"name":"STUDENT","dbName":null},{"name":"FACULTY","dbName":null},{"name":"SUPERVISOR","dbName":null},{"name":"MANAGER","dbName":null},{"name":"EXAMINER","dbName":null},{"name":"COORDINATOR","dbName":null},{"name":"LIBRARIAN","dbName":null},{"name":"FINANCE_ADMIN","dbName":null},{"name":"REGISTRY_ADMIN","dbName":null},{"name":"GRADUATE_SCHOOL","dbName":null}],"dbName":null},"NotificationType":{"values":[{"name":"WARNING","dbName":null},{"name":"CRITICAL","dbName":null},{"name":"INFO","dbName":null}],"dbName":null}},"types":{}}');
     defineDmmfProperty2(exports2.Prisma, config2.runtimeDataModel);
     config2.engineWasm = void 0;
     config2.compilerWasm = void 0;
@@ -32491,6 +32511,7222 @@ var require_default2 = __commonJS({
     module2.exports = {
       ...require_default()
     };
+  }
+});
+
+// node_modules/busboy/lib/utils.js
+var require_utils3 = __commonJS({
+  "node_modules/busboy/lib/utils.js"(exports2, module2) {
+    "use strict";
+    function parseContentType(str) {
+      if (str.length === 0)
+        return;
+      const params = /* @__PURE__ */ Object.create(null);
+      let i = 0;
+      for (; i < str.length; ++i) {
+        const code = str.charCodeAt(i);
+        if (TOKEN[code] !== 1) {
+          if (code !== 47 || i === 0)
+            return;
+          break;
+        }
+      }
+      if (i === str.length)
+        return;
+      const type = str.slice(0, i).toLowerCase();
+      const subtypeStart = ++i;
+      for (; i < str.length; ++i) {
+        const code = str.charCodeAt(i);
+        if (TOKEN[code] !== 1) {
+          if (i === subtypeStart)
+            return;
+          if (parseContentTypeParams(str, i, params) === void 0)
+            return;
+          break;
+        }
+      }
+      if (i === subtypeStart)
+        return;
+      const subtype = str.slice(subtypeStart, i).toLowerCase();
+      return { type, subtype, params };
+    }
+    function parseContentTypeParams(str, i, params) {
+      while (i < str.length) {
+        for (; i < str.length; ++i) {
+          const code = str.charCodeAt(i);
+          if (code !== 32 && code !== 9)
+            break;
+        }
+        if (i === str.length)
+          break;
+        if (str.charCodeAt(i++) !== 59)
+          return;
+        for (; i < str.length; ++i) {
+          const code = str.charCodeAt(i);
+          if (code !== 32 && code !== 9)
+            break;
+        }
+        if (i === str.length)
+          return;
+        let name;
+        const nameStart = i;
+        for (; i < str.length; ++i) {
+          const code = str.charCodeAt(i);
+          if (TOKEN[code] !== 1) {
+            if (code !== 61)
+              return;
+            break;
+          }
+        }
+        if (i === str.length)
+          return;
+        name = str.slice(nameStart, i);
+        ++i;
+        if (i === str.length)
+          return;
+        let value = "";
+        let valueStart;
+        if (str.charCodeAt(i) === 34) {
+          valueStart = ++i;
+          let escaping = false;
+          for (; i < str.length; ++i) {
+            const code = str.charCodeAt(i);
+            if (code === 92) {
+              if (escaping) {
+                valueStart = i;
+                escaping = false;
+              } else {
+                value += str.slice(valueStart, i);
+                escaping = true;
+              }
+              continue;
+            }
+            if (code === 34) {
+              if (escaping) {
+                valueStart = i;
+                escaping = false;
+                continue;
+              }
+              value += str.slice(valueStart, i);
+              break;
+            }
+            if (escaping) {
+              valueStart = i - 1;
+              escaping = false;
+            }
+            if (QDTEXT[code] !== 1)
+              return;
+          }
+          if (i === str.length)
+            return;
+          ++i;
+        } else {
+          valueStart = i;
+          for (; i < str.length; ++i) {
+            const code = str.charCodeAt(i);
+            if (TOKEN[code] !== 1) {
+              if (i === valueStart)
+                return;
+              break;
+            }
+          }
+          value = str.slice(valueStart, i);
+        }
+        name = name.toLowerCase();
+        if (params[name] === void 0)
+          params[name] = value;
+      }
+      return params;
+    }
+    function parseDisposition(str, defDecoder) {
+      if (str.length === 0)
+        return;
+      const params = /* @__PURE__ */ Object.create(null);
+      let i = 0;
+      for (; i < str.length; ++i) {
+        const code = str.charCodeAt(i);
+        if (TOKEN[code] !== 1) {
+          if (parseDispositionParams(str, i, params, defDecoder) === void 0)
+            return;
+          break;
+        }
+      }
+      const type = str.slice(0, i).toLowerCase();
+      return { type, params };
+    }
+    function parseDispositionParams(str, i, params, defDecoder) {
+      while (i < str.length) {
+        for (; i < str.length; ++i) {
+          const code = str.charCodeAt(i);
+          if (code !== 32 && code !== 9)
+            break;
+        }
+        if (i === str.length)
+          break;
+        if (str.charCodeAt(i++) !== 59)
+          return;
+        for (; i < str.length; ++i) {
+          const code = str.charCodeAt(i);
+          if (code !== 32 && code !== 9)
+            break;
+        }
+        if (i === str.length)
+          return;
+        let name;
+        const nameStart = i;
+        for (; i < str.length; ++i) {
+          const code = str.charCodeAt(i);
+          if (TOKEN[code] !== 1) {
+            if (code === 61)
+              break;
+            return;
+          }
+        }
+        if (i === str.length)
+          return;
+        let value = "";
+        let valueStart;
+        let charset;
+        name = str.slice(nameStart, i);
+        if (name.charCodeAt(name.length - 1) === 42) {
+          const charsetStart = ++i;
+          for (; i < str.length; ++i) {
+            const code = str.charCodeAt(i);
+            if (CHARSET[code] !== 1) {
+              if (code !== 39)
+                return;
+              break;
+            }
+          }
+          if (i === str.length)
+            return;
+          charset = str.slice(charsetStart, i);
+          ++i;
+          for (; i < str.length; ++i) {
+            const code = str.charCodeAt(i);
+            if (code === 39)
+              break;
+          }
+          if (i === str.length)
+            return;
+          ++i;
+          if (i === str.length)
+            return;
+          valueStart = i;
+          let encode = 0;
+          for (; i < str.length; ++i) {
+            const code = str.charCodeAt(i);
+            if (EXTENDED_VALUE[code] !== 1) {
+              if (code === 37) {
+                let hexUpper;
+                let hexLower;
+                if (i + 2 < str.length && (hexUpper = HEX_VALUES[str.charCodeAt(i + 1)]) !== -1 && (hexLower = HEX_VALUES[str.charCodeAt(i + 2)]) !== -1) {
+                  const byteVal = (hexUpper << 4) + hexLower;
+                  value += str.slice(valueStart, i);
+                  value += String.fromCharCode(byteVal);
+                  i += 2;
+                  valueStart = i + 1;
+                  if (byteVal >= 128)
+                    encode = 2;
+                  else if (encode === 0)
+                    encode = 1;
+                  continue;
+                }
+                return;
+              }
+              break;
+            }
+          }
+          value += str.slice(valueStart, i);
+          value = convertToUTF8(value, charset, encode);
+          if (value === void 0)
+            return;
+        } else {
+          ++i;
+          if (i === str.length)
+            return;
+          if (str.charCodeAt(i) === 34) {
+            valueStart = ++i;
+            let escaping = false;
+            for (; i < str.length; ++i) {
+              const code = str.charCodeAt(i);
+              if (code === 92) {
+                if (escaping) {
+                  valueStart = i;
+                  escaping = false;
+                } else {
+                  value += str.slice(valueStart, i);
+                  escaping = true;
+                }
+                continue;
+              }
+              if (code === 34) {
+                if (escaping) {
+                  valueStart = i;
+                  escaping = false;
+                  continue;
+                }
+                value += str.slice(valueStart, i);
+                break;
+              }
+              if (escaping) {
+                valueStart = i - 1;
+                escaping = false;
+              }
+              if (QDTEXT[code] !== 1)
+                return;
+            }
+            if (i === str.length)
+              return;
+            ++i;
+          } else {
+            valueStart = i;
+            for (; i < str.length; ++i) {
+              const code = str.charCodeAt(i);
+              if (TOKEN[code] !== 1) {
+                if (i === valueStart)
+                  return;
+                break;
+              }
+            }
+            value = str.slice(valueStart, i);
+          }
+          value = defDecoder(value, 2);
+          if (value === void 0)
+            return;
+        }
+        name = name.toLowerCase();
+        if (params[name] === void 0)
+          params[name] = value;
+      }
+      return params;
+    }
+    function getDecoder(charset) {
+      let lc;
+      while (true) {
+        switch (charset) {
+          case "utf-8":
+          case "utf8":
+            return decoders.utf8;
+          case "latin1":
+          case "ascii":
+          // TODO: Make these a separate, strict decoder?
+          case "us-ascii":
+          case "iso-8859-1":
+          case "iso8859-1":
+          case "iso88591":
+          case "iso_8859-1":
+          case "windows-1252":
+          case "iso_8859-1:1987":
+          case "cp1252":
+          case "x-cp1252":
+            return decoders.latin1;
+          case "utf16le":
+          case "utf-16le":
+          case "ucs2":
+          case "ucs-2":
+            return decoders.utf16le;
+          case "base64":
+            return decoders.base64;
+          default:
+            if (lc === void 0) {
+              lc = true;
+              charset = charset.toLowerCase();
+              continue;
+            }
+            return decoders.other.bind(charset);
+        }
+      }
+    }
+    var decoders = {
+      utf8: (data, hint) => {
+        if (data.length === 0)
+          return "";
+        if (typeof data === "string") {
+          if (hint < 2)
+            return data;
+          data = Buffer.from(data, "latin1");
+        }
+        return data.utf8Slice(0, data.length);
+      },
+      latin1: (data, hint) => {
+        if (data.length === 0)
+          return "";
+        if (typeof data === "string")
+          return data;
+        return data.latin1Slice(0, data.length);
+      },
+      utf16le: (data, hint) => {
+        if (data.length === 0)
+          return "";
+        if (typeof data === "string")
+          data = Buffer.from(data, "latin1");
+        return data.ucs2Slice(0, data.length);
+      },
+      base64: (data, hint) => {
+        if (data.length === 0)
+          return "";
+        if (typeof data === "string")
+          data = Buffer.from(data, "latin1");
+        return data.base64Slice(0, data.length);
+      },
+      other: (data, hint) => {
+        if (data.length === 0)
+          return "";
+        if (typeof data === "string")
+          data = Buffer.from(data, "latin1");
+        try {
+          const decoder = new TextDecoder(exports2);
+          return decoder.decode(data);
+        } catch {
+        }
+      }
+    };
+    function convertToUTF8(data, charset, hint) {
+      const decode = getDecoder(charset);
+      if (decode)
+        return decode(data, hint);
+    }
+    function basename(path2) {
+      if (typeof path2 !== "string")
+        return "";
+      for (let i = path2.length - 1; i >= 0; --i) {
+        switch (path2.charCodeAt(i)) {
+          case 47:
+          // '/'
+          case 92:
+            path2 = path2.slice(i + 1);
+            return path2 === ".." || path2 === "." ? "" : path2;
+        }
+      }
+      return path2 === ".." || path2 === "." ? "" : path2;
+    }
+    var TOKEN = [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      1,
+      1,
+      0,
+      1,
+      1,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      1,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ];
+    var QDTEXT = [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ];
+    var CHARSET = [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      1,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ];
+    var EXTENDED_VALUE = [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      1,
+      1,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      1,
+      1,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      1,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ];
+    var HEX_VALUES = [
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1
+    ];
+    module2.exports = {
+      basename,
+      convertToUTF8,
+      getDecoder,
+      parseContentType,
+      parseDisposition
+    };
+  }
+});
+
+// node_modules/streamsearch/lib/sbmh.js
+var require_sbmh = __commonJS({
+  "node_modules/streamsearch/lib/sbmh.js"(exports2, module2) {
+    "use strict";
+    function memcmp(buf1, pos1, buf2, pos2, num) {
+      for (let i = 0; i < num; ++i) {
+        if (buf1[pos1 + i] !== buf2[pos2 + i])
+          return false;
+      }
+      return true;
+    }
+    var SBMH = class {
+      constructor(needle, cb) {
+        if (typeof cb !== "function")
+          throw new Error("Missing match callback");
+        if (typeof needle === "string")
+          needle = Buffer.from(needle);
+        else if (!Buffer.isBuffer(needle))
+          throw new Error(`Expected Buffer for needle, got ${typeof needle}`);
+        const needleLen = needle.length;
+        this.maxMatches = Infinity;
+        this.matches = 0;
+        this._cb = cb;
+        this._lookbehindSize = 0;
+        this._needle = needle;
+        this._bufPos = 0;
+        this._lookbehind = Buffer.allocUnsafe(needleLen);
+        this._occ = [
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen,
+          needleLen
+        ];
+        if (needleLen > 1) {
+          for (let i = 0; i < needleLen - 1; ++i)
+            this._occ[needle[i]] = needleLen - 1 - i;
+        }
+      }
+      reset() {
+        this.matches = 0;
+        this._lookbehindSize = 0;
+        this._bufPos = 0;
+      }
+      push(chunk, pos) {
+        let result;
+        if (!Buffer.isBuffer(chunk))
+          chunk = Buffer.from(chunk, "latin1");
+        const chunkLen = chunk.length;
+        this._bufPos = pos || 0;
+        while (result !== chunkLen && this.matches < this.maxMatches)
+          result = feed(this, chunk);
+        return result;
+      }
+      destroy() {
+        const lbSize = this._lookbehindSize;
+        if (lbSize)
+          this._cb(false, this._lookbehind, 0, lbSize, false);
+        this.reset();
+      }
+    };
+    function feed(self2, data) {
+      const len = data.length;
+      const needle = self2._needle;
+      const needleLen = needle.length;
+      let pos = -self2._lookbehindSize;
+      const lastNeedleCharPos = needleLen - 1;
+      const lastNeedleChar = needle[lastNeedleCharPos];
+      const end = len - needleLen;
+      const occ = self2._occ;
+      const lookbehind = self2._lookbehind;
+      if (pos < 0) {
+        while (pos < 0 && pos <= end) {
+          const nextPos = pos + lastNeedleCharPos;
+          const ch = nextPos < 0 ? lookbehind[self2._lookbehindSize + nextPos] : data[nextPos];
+          if (ch === lastNeedleChar && matchNeedle(self2, data, pos, lastNeedleCharPos)) {
+            self2._lookbehindSize = 0;
+            ++self2.matches;
+            if (pos > -self2._lookbehindSize)
+              self2._cb(true, lookbehind, 0, self2._lookbehindSize + pos, false);
+            else
+              self2._cb(true, void 0, 0, 0, true);
+            return self2._bufPos = pos + needleLen;
+          }
+          pos += occ[ch];
+        }
+        while (pos < 0 && !matchNeedle(self2, data, pos, len - pos))
+          ++pos;
+        if (pos < 0) {
+          const bytesToCutOff = self2._lookbehindSize + pos;
+          if (bytesToCutOff > 0) {
+            self2._cb(false, lookbehind, 0, bytesToCutOff, false);
+          }
+          self2._lookbehindSize -= bytesToCutOff;
+          lookbehind.copy(lookbehind, 0, bytesToCutOff, self2._lookbehindSize);
+          lookbehind.set(data, self2._lookbehindSize);
+          self2._lookbehindSize += len;
+          self2._bufPos = len;
+          return len;
+        }
+        self2._cb(false, lookbehind, 0, self2._lookbehindSize, false);
+        self2._lookbehindSize = 0;
+      }
+      pos += self2._bufPos;
+      const firstNeedleChar = needle[0];
+      while (pos <= end) {
+        const ch = data[pos + lastNeedleCharPos];
+        if (ch === lastNeedleChar && data[pos] === firstNeedleChar && memcmp(needle, 0, data, pos, lastNeedleCharPos)) {
+          ++self2.matches;
+          if (pos > 0)
+            self2._cb(true, data, self2._bufPos, pos, true);
+          else
+            self2._cb(true, void 0, 0, 0, true);
+          return self2._bufPos = pos + needleLen;
+        }
+        pos += occ[ch];
+      }
+      while (pos < len) {
+        if (data[pos] !== firstNeedleChar || !memcmp(data, pos, needle, 0, len - pos)) {
+          ++pos;
+          continue;
+        }
+        data.copy(lookbehind, 0, pos, len);
+        self2._lookbehindSize = len - pos;
+        break;
+      }
+      if (pos > 0)
+        self2._cb(false, data, self2._bufPos, pos < len ? pos : len, true);
+      self2._bufPos = len;
+      return len;
+    }
+    function matchNeedle(self2, data, pos, len) {
+      const lb = self2._lookbehind;
+      const lbSize = self2._lookbehindSize;
+      const needle = self2._needle;
+      for (let i = 0; i < len; ++i, ++pos) {
+        const ch = pos < 0 ? lb[lbSize + pos] : data[pos];
+        if (ch !== needle[i])
+          return false;
+      }
+      return true;
+    }
+    module2.exports = SBMH;
+  }
+});
+
+// node_modules/busboy/lib/types/multipart.js
+var require_multipart = __commonJS({
+  "node_modules/busboy/lib/types/multipart.js"(exports2, module2) {
+    "use strict";
+    var { Readable, Writable } = require("stream");
+    var StreamSearch = require_sbmh();
+    var {
+      basename,
+      convertToUTF8,
+      getDecoder,
+      parseContentType,
+      parseDisposition
+    } = require_utils3();
+    var BUF_CRLF = Buffer.from("\r\n");
+    var BUF_CR = Buffer.from("\r");
+    var BUF_DASH = Buffer.from("-");
+    function noop() {
+    }
+    var MAX_HEADER_PAIRS = 2e3;
+    var MAX_HEADER_SIZE = 16 * 1024;
+    var HPARSER_NAME = 0;
+    var HPARSER_PRE_OWS = 1;
+    var HPARSER_VALUE = 2;
+    var HeaderParser = class {
+      constructor(cb) {
+        this.header = /* @__PURE__ */ Object.create(null);
+        this.pairCount = 0;
+        this.byteCount = 0;
+        this.state = HPARSER_NAME;
+        this.name = "";
+        this.value = "";
+        this.crlf = 0;
+        this.cb = cb;
+      }
+      reset() {
+        this.header = /* @__PURE__ */ Object.create(null);
+        this.pairCount = 0;
+        this.byteCount = 0;
+        this.state = HPARSER_NAME;
+        this.name = "";
+        this.value = "";
+        this.crlf = 0;
+      }
+      push(chunk, pos, end) {
+        let start = pos;
+        while (pos < end) {
+          switch (this.state) {
+            case HPARSER_NAME: {
+              let done = false;
+              for (; pos < end; ++pos) {
+                if (this.byteCount === MAX_HEADER_SIZE)
+                  return -1;
+                ++this.byteCount;
+                const code = chunk[pos];
+                if (TOKEN[code] !== 1) {
+                  if (code !== 58)
+                    return -1;
+                  this.name += chunk.latin1Slice(start, pos);
+                  if (this.name.length === 0)
+                    return -1;
+                  ++pos;
+                  done = true;
+                  this.state = HPARSER_PRE_OWS;
+                  break;
+                }
+              }
+              if (!done) {
+                this.name += chunk.latin1Slice(start, pos);
+                break;
+              }
+            }
+            case HPARSER_PRE_OWS: {
+              let done = false;
+              for (; pos < end; ++pos) {
+                if (this.byteCount === MAX_HEADER_SIZE)
+                  return -1;
+                ++this.byteCount;
+                const code = chunk[pos];
+                if (code !== 32 && code !== 9) {
+                  start = pos;
+                  done = true;
+                  this.state = HPARSER_VALUE;
+                  break;
+                }
+              }
+              if (!done)
+                break;
+            }
+            case HPARSER_VALUE:
+              switch (this.crlf) {
+                case 0:
+                  for (; pos < end; ++pos) {
+                    if (this.byteCount === MAX_HEADER_SIZE)
+                      return -1;
+                    ++this.byteCount;
+                    const code = chunk[pos];
+                    if (FIELD_VCHAR[code] !== 1) {
+                      if (code !== 13)
+                        return -1;
+                      ++this.crlf;
+                      break;
+                    }
+                  }
+                  this.value += chunk.latin1Slice(start, pos++);
+                  break;
+                case 1:
+                  if (this.byteCount === MAX_HEADER_SIZE)
+                    return -1;
+                  ++this.byteCount;
+                  if (chunk[pos++] !== 10)
+                    return -1;
+                  ++this.crlf;
+                  break;
+                case 2: {
+                  if (this.byteCount === MAX_HEADER_SIZE)
+                    return -1;
+                  ++this.byteCount;
+                  const code = chunk[pos];
+                  if (code === 32 || code === 9) {
+                    start = pos;
+                    this.crlf = 0;
+                  } else {
+                    if (++this.pairCount < MAX_HEADER_PAIRS) {
+                      this.name = this.name.toLowerCase();
+                      if (this.header[this.name] === void 0)
+                        this.header[this.name] = [this.value];
+                      else
+                        this.header[this.name].push(this.value);
+                    }
+                    if (code === 13) {
+                      ++this.crlf;
+                      ++pos;
+                    } else {
+                      start = pos;
+                      this.crlf = 0;
+                      this.state = HPARSER_NAME;
+                      this.name = "";
+                      this.value = "";
+                    }
+                  }
+                  break;
+                }
+                case 3: {
+                  if (this.byteCount === MAX_HEADER_SIZE)
+                    return -1;
+                  ++this.byteCount;
+                  if (chunk[pos++] !== 10)
+                    return -1;
+                  const header = this.header;
+                  this.reset();
+                  this.cb(header);
+                  return pos;
+                }
+              }
+              break;
+          }
+        }
+        return pos;
+      }
+    };
+    var FileStream = class extends Readable {
+      constructor(opts, owner) {
+        super(opts);
+        this.truncated = false;
+        this._readcb = null;
+        this.once("end", () => {
+          this._read();
+          if (--owner._fileEndsLeft === 0 && owner._finalcb) {
+            const cb = owner._finalcb;
+            owner._finalcb = null;
+            process.nextTick(cb);
+          }
+        });
+      }
+      _read(n) {
+        const cb = this._readcb;
+        if (cb) {
+          this._readcb = null;
+          cb();
+        }
+      }
+    };
+    var ignoreData = {
+      push: (chunk, pos) => {
+      },
+      destroy: () => {
+      }
+    };
+    function callAndUnsetCb(self2, err) {
+      const cb = self2._writecb;
+      self2._writecb = null;
+      if (err)
+        self2.destroy(err);
+      else if (cb)
+        cb();
+    }
+    function nullDecoder(val, hint) {
+      return val;
+    }
+    var Multipart = class extends Writable {
+      constructor(cfg) {
+        const streamOpts = {
+          autoDestroy: true,
+          emitClose: true,
+          highWaterMark: typeof cfg.highWaterMark === "number" ? cfg.highWaterMark : void 0
+        };
+        super(streamOpts);
+        if (!cfg.conType.params || typeof cfg.conType.params.boundary !== "string")
+          throw new Error("Multipart: Boundary not found");
+        const boundary = cfg.conType.params.boundary;
+        const paramDecoder = typeof cfg.defParamCharset === "string" && cfg.defParamCharset ? getDecoder(cfg.defParamCharset) : nullDecoder;
+        const defCharset = cfg.defCharset || "utf8";
+        const preservePath = cfg.preservePath;
+        const fileOpts = {
+          autoDestroy: true,
+          emitClose: true,
+          highWaterMark: typeof cfg.fileHwm === "number" ? cfg.fileHwm : void 0
+        };
+        const limits = cfg.limits;
+        const fieldSizeLimit = limits && typeof limits.fieldSize === "number" ? limits.fieldSize : 1 * 1024 * 1024;
+        const fileSizeLimit = limits && typeof limits.fileSize === "number" ? limits.fileSize : Infinity;
+        const filesLimit = limits && typeof limits.files === "number" ? limits.files : Infinity;
+        const fieldsLimit = limits && typeof limits.fields === "number" ? limits.fields : Infinity;
+        const partsLimit = limits && typeof limits.parts === "number" ? limits.parts : Infinity;
+        let parts = -1;
+        let fields = 0;
+        let files = 0;
+        let skipPart = false;
+        this._fileEndsLeft = 0;
+        this._fileStream = void 0;
+        this._complete = false;
+        let fileSize = 0;
+        let field;
+        let fieldSize = 0;
+        let partCharset;
+        let partEncoding;
+        let partType;
+        let partName;
+        let partTruncated = false;
+        let hitFilesLimit = false;
+        let hitFieldsLimit = false;
+        this._hparser = null;
+        const hparser = new HeaderParser((header) => {
+          this._hparser = null;
+          skipPart = false;
+          partType = "text/plain";
+          partCharset = defCharset;
+          partEncoding = "7bit";
+          partName = void 0;
+          partTruncated = false;
+          let filename;
+          if (!header["content-disposition"]) {
+            skipPart = true;
+            return;
+          }
+          const disp = parseDisposition(
+            header["content-disposition"][0],
+            paramDecoder
+          );
+          if (!disp || disp.type !== "form-data") {
+            skipPart = true;
+            return;
+          }
+          if (disp.params) {
+            if (disp.params.name)
+              partName = disp.params.name;
+            if (disp.params["filename*"])
+              filename = disp.params["filename*"];
+            else if (disp.params.filename)
+              filename = disp.params.filename;
+            if (filename !== void 0 && !preservePath)
+              filename = basename(filename);
+          }
+          if (header["content-type"]) {
+            const conType = parseContentType(header["content-type"][0]);
+            if (conType) {
+              partType = `${conType.type}/${conType.subtype}`;
+              if (conType.params && typeof conType.params.charset === "string")
+                partCharset = conType.params.charset.toLowerCase();
+            }
+          }
+          if (header["content-transfer-encoding"])
+            partEncoding = header["content-transfer-encoding"][0].toLowerCase();
+          if (partType === "application/octet-stream" || filename !== void 0) {
+            if (files === filesLimit) {
+              if (!hitFilesLimit) {
+                hitFilesLimit = true;
+                this.emit("filesLimit");
+              }
+              skipPart = true;
+              return;
+            }
+            ++files;
+            if (this.listenerCount("file") === 0) {
+              skipPart = true;
+              return;
+            }
+            fileSize = 0;
+            this._fileStream = new FileStream(fileOpts, this);
+            ++this._fileEndsLeft;
+            this.emit(
+              "file",
+              partName,
+              this._fileStream,
+              {
+                filename,
+                encoding: partEncoding,
+                mimeType: partType
+              }
+            );
+          } else {
+            if (fields === fieldsLimit) {
+              if (!hitFieldsLimit) {
+                hitFieldsLimit = true;
+                this.emit("fieldsLimit");
+              }
+              skipPart = true;
+              return;
+            }
+            ++fields;
+            if (this.listenerCount("field") === 0) {
+              skipPart = true;
+              return;
+            }
+            field = [];
+            fieldSize = 0;
+          }
+        });
+        let matchPostBoundary = 0;
+        const ssCb = (isMatch, data, start, end, isDataSafe) => {
+          retrydata:
+            while (data) {
+              if (this._hparser !== null) {
+                const ret = this._hparser.push(data, start, end);
+                if (ret === -1) {
+                  this._hparser = null;
+                  hparser.reset();
+                  this.emit("error", new Error("Malformed part header"));
+                  break;
+                }
+                start = ret;
+              }
+              if (start === end)
+                break;
+              if (matchPostBoundary !== 0) {
+                if (matchPostBoundary === 1) {
+                  switch (data[start]) {
+                    case 45:
+                      matchPostBoundary = 2;
+                      ++start;
+                      break;
+                    case 13:
+                      matchPostBoundary = 3;
+                      ++start;
+                      break;
+                    default:
+                      matchPostBoundary = 0;
+                  }
+                  if (start === end)
+                    return;
+                }
+                if (matchPostBoundary === 2) {
+                  matchPostBoundary = 0;
+                  if (data[start] === 45) {
+                    this._complete = true;
+                    this._bparser = ignoreData;
+                    return;
+                  }
+                  const writecb = this._writecb;
+                  this._writecb = noop;
+                  ssCb(false, BUF_DASH, 0, 1, false);
+                  this._writecb = writecb;
+                } else if (matchPostBoundary === 3) {
+                  matchPostBoundary = 0;
+                  if (data[start] === 10) {
+                    ++start;
+                    if (parts >= partsLimit)
+                      break;
+                    this._hparser = hparser;
+                    if (start === end)
+                      break;
+                    continue retrydata;
+                  } else {
+                    const writecb = this._writecb;
+                    this._writecb = noop;
+                    ssCb(false, BUF_CR, 0, 1, false);
+                    this._writecb = writecb;
+                  }
+                }
+              }
+              if (!skipPart) {
+                if (this._fileStream) {
+                  let chunk;
+                  const actualLen = Math.min(end - start, fileSizeLimit - fileSize);
+                  if (!isDataSafe) {
+                    chunk = Buffer.allocUnsafe(actualLen);
+                    data.copy(chunk, 0, start, start + actualLen);
+                  } else {
+                    chunk = data.slice(start, start + actualLen);
+                  }
+                  fileSize += chunk.length;
+                  if (fileSize === fileSizeLimit) {
+                    if (chunk.length > 0)
+                      this._fileStream.push(chunk);
+                    this._fileStream.emit("limit");
+                    this._fileStream.truncated = true;
+                    skipPart = true;
+                  } else if (!this._fileStream.push(chunk)) {
+                    if (this._writecb)
+                      this._fileStream._readcb = this._writecb;
+                    this._writecb = null;
+                  }
+                } else if (field !== void 0) {
+                  let chunk;
+                  const actualLen = Math.min(
+                    end - start,
+                    fieldSizeLimit - fieldSize
+                  );
+                  if (!isDataSafe) {
+                    chunk = Buffer.allocUnsafe(actualLen);
+                    data.copy(chunk, 0, start, start + actualLen);
+                  } else {
+                    chunk = data.slice(start, start + actualLen);
+                  }
+                  fieldSize += actualLen;
+                  field.push(chunk);
+                  if (fieldSize === fieldSizeLimit) {
+                    skipPart = true;
+                    partTruncated = true;
+                  }
+                }
+              }
+              break;
+            }
+          if (isMatch) {
+            matchPostBoundary = 1;
+            if (this._fileStream) {
+              this._fileStream.push(null);
+              this._fileStream = null;
+            } else if (field !== void 0) {
+              let data2;
+              switch (field.length) {
+                case 0:
+                  data2 = "";
+                  break;
+                case 1:
+                  data2 = convertToUTF8(field[0], partCharset, 0);
+                  break;
+                default:
+                  data2 = convertToUTF8(
+                    Buffer.concat(field, fieldSize),
+                    partCharset,
+                    0
+                  );
+              }
+              field = void 0;
+              fieldSize = 0;
+              this.emit(
+                "field",
+                partName,
+                data2,
+                {
+                  nameTruncated: false,
+                  valueTruncated: partTruncated,
+                  encoding: partEncoding,
+                  mimeType: partType
+                }
+              );
+            }
+            if (++parts === partsLimit)
+              this.emit("partsLimit");
+          }
+        };
+        this._bparser = new StreamSearch(`\r
+--${boundary}`, ssCb);
+        this._writecb = null;
+        this._finalcb = null;
+        this.write(BUF_CRLF);
+      }
+      static detect(conType) {
+        return conType.type === "multipart" && conType.subtype === "form-data";
+      }
+      _write(chunk, enc, cb) {
+        this._writecb = cb;
+        this._bparser.push(chunk, 0);
+        if (this._writecb)
+          callAndUnsetCb(this);
+      }
+      _destroy(err, cb) {
+        this._hparser = null;
+        this._bparser = ignoreData;
+        if (!err)
+          err = checkEndState(this);
+        const fileStream = this._fileStream;
+        if (fileStream) {
+          this._fileStream = null;
+          fileStream.destroy(err);
+        }
+        cb(err);
+      }
+      _final(cb) {
+        this._bparser.destroy();
+        if (!this._complete)
+          return cb(new Error("Unexpected end of form"));
+        if (this._fileEndsLeft)
+          this._finalcb = finalcb.bind(null, this, cb);
+        else
+          finalcb(this, cb);
+      }
+    };
+    function finalcb(self2, cb, err) {
+      if (err)
+        return cb(err);
+      err = checkEndState(self2);
+      cb(err);
+    }
+    function checkEndState(self2) {
+      if (self2._hparser)
+        return new Error("Malformed part header");
+      const fileStream = self2._fileStream;
+      if (fileStream) {
+        self2._fileStream = null;
+        fileStream.destroy(new Error("Unexpected end of file"));
+      }
+      if (!self2._complete)
+        return new Error("Unexpected end of form");
+    }
+    var TOKEN = [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      1,
+      1,
+      0,
+      1,
+      1,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      1,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ];
+    var FIELD_VCHAR = [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ];
+    module2.exports = Multipart;
+  }
+});
+
+// node_modules/busboy/lib/types/urlencoded.js
+var require_urlencoded2 = __commonJS({
+  "node_modules/busboy/lib/types/urlencoded.js"(exports2, module2) {
+    "use strict";
+    var { Writable } = require("stream");
+    var { getDecoder } = require_utils3();
+    var URLEncoded = class extends Writable {
+      constructor(cfg) {
+        const streamOpts = {
+          autoDestroy: true,
+          emitClose: true,
+          highWaterMark: typeof cfg.highWaterMark === "number" ? cfg.highWaterMark : void 0
+        };
+        super(streamOpts);
+        let charset = cfg.defCharset || "utf8";
+        if (cfg.conType.params && typeof cfg.conType.params.charset === "string")
+          charset = cfg.conType.params.charset;
+        this.charset = charset;
+        const limits = cfg.limits;
+        this.fieldSizeLimit = limits && typeof limits.fieldSize === "number" ? limits.fieldSize : 1 * 1024 * 1024;
+        this.fieldsLimit = limits && typeof limits.fields === "number" ? limits.fields : Infinity;
+        this.fieldNameSizeLimit = limits && typeof limits.fieldNameSize === "number" ? limits.fieldNameSize : 100;
+        this._inKey = true;
+        this._keyTrunc = false;
+        this._valTrunc = false;
+        this._bytesKey = 0;
+        this._bytesVal = 0;
+        this._fields = 0;
+        this._key = "";
+        this._val = "";
+        this._byte = -2;
+        this._lastPos = 0;
+        this._encode = 0;
+        this._decoder = getDecoder(charset);
+      }
+      static detect(conType) {
+        return conType.type === "application" && conType.subtype === "x-www-form-urlencoded";
+      }
+      _write(chunk, enc, cb) {
+        if (this._fields >= this.fieldsLimit)
+          return cb();
+        let i = 0;
+        const len = chunk.length;
+        this._lastPos = 0;
+        if (this._byte !== -2) {
+          i = readPctEnc(this, chunk, i, len);
+          if (i === -1)
+            return cb(new Error("Malformed urlencoded form"));
+          if (i >= len)
+            return cb();
+          if (this._inKey)
+            ++this._bytesKey;
+          else
+            ++this._bytesVal;
+        }
+        main:
+          while (i < len) {
+            if (this._inKey) {
+              i = skipKeyBytes(this, chunk, i, len);
+              while (i < len) {
+                switch (chunk[i]) {
+                  case 61:
+                    if (this._lastPos < i)
+                      this._key += chunk.latin1Slice(this._lastPos, i);
+                    this._lastPos = ++i;
+                    this._key = this._decoder(this._key, this._encode);
+                    this._encode = 0;
+                    this._inKey = false;
+                    continue main;
+                  case 38:
+                    if (this._lastPos < i)
+                      this._key += chunk.latin1Slice(this._lastPos, i);
+                    this._lastPos = ++i;
+                    this._key = this._decoder(this._key, this._encode);
+                    this._encode = 0;
+                    if (this._bytesKey > 0) {
+                      this.emit(
+                        "field",
+                        this._key,
+                        "",
+                        {
+                          nameTruncated: this._keyTrunc,
+                          valueTruncated: false,
+                          encoding: this.charset,
+                          mimeType: "text/plain"
+                        }
+                      );
+                    }
+                    this._key = "";
+                    this._val = "";
+                    this._keyTrunc = false;
+                    this._valTrunc = false;
+                    this._bytesKey = 0;
+                    this._bytesVal = 0;
+                    if (++this._fields >= this.fieldsLimit) {
+                      this.emit("fieldsLimit");
+                      return cb();
+                    }
+                    continue;
+                  case 43:
+                    if (this._lastPos < i)
+                      this._key += chunk.latin1Slice(this._lastPos, i);
+                    this._key += " ";
+                    this._lastPos = i + 1;
+                    break;
+                  case 37:
+                    if (this._encode === 0)
+                      this._encode = 1;
+                    if (this._lastPos < i)
+                      this._key += chunk.latin1Slice(this._lastPos, i);
+                    this._lastPos = i + 1;
+                    this._byte = -1;
+                    i = readPctEnc(this, chunk, i + 1, len);
+                    if (i === -1)
+                      return cb(new Error("Malformed urlencoded form"));
+                    if (i >= len)
+                      return cb();
+                    ++this._bytesKey;
+                    i = skipKeyBytes(this, chunk, i, len);
+                    continue;
+                }
+                ++i;
+                ++this._bytesKey;
+                i = skipKeyBytes(this, chunk, i, len);
+              }
+              if (this._lastPos < i)
+                this._key += chunk.latin1Slice(this._lastPos, i);
+            } else {
+              i = skipValBytes(this, chunk, i, len);
+              while (i < len) {
+                switch (chunk[i]) {
+                  case 38:
+                    if (this._lastPos < i)
+                      this._val += chunk.latin1Slice(this._lastPos, i);
+                    this._lastPos = ++i;
+                    this._inKey = true;
+                    this._val = this._decoder(this._val, this._encode);
+                    this._encode = 0;
+                    if (this._bytesKey > 0 || this._bytesVal > 0) {
+                      this.emit(
+                        "field",
+                        this._key,
+                        this._val,
+                        {
+                          nameTruncated: this._keyTrunc,
+                          valueTruncated: this._valTrunc,
+                          encoding: this.charset,
+                          mimeType: "text/plain"
+                        }
+                      );
+                    }
+                    this._key = "";
+                    this._val = "";
+                    this._keyTrunc = false;
+                    this._valTrunc = false;
+                    this._bytesKey = 0;
+                    this._bytesVal = 0;
+                    if (++this._fields >= this.fieldsLimit) {
+                      this.emit("fieldsLimit");
+                      return cb();
+                    }
+                    continue main;
+                  case 43:
+                    if (this._lastPos < i)
+                      this._val += chunk.latin1Slice(this._lastPos, i);
+                    this._val += " ";
+                    this._lastPos = i + 1;
+                    break;
+                  case 37:
+                    if (this._encode === 0)
+                      this._encode = 1;
+                    if (this._lastPos < i)
+                      this._val += chunk.latin1Slice(this._lastPos, i);
+                    this._lastPos = i + 1;
+                    this._byte = -1;
+                    i = readPctEnc(this, chunk, i + 1, len);
+                    if (i === -1)
+                      return cb(new Error("Malformed urlencoded form"));
+                    if (i >= len)
+                      return cb();
+                    ++this._bytesVal;
+                    i = skipValBytes(this, chunk, i, len);
+                    continue;
+                }
+                ++i;
+                ++this._bytesVal;
+                i = skipValBytes(this, chunk, i, len);
+              }
+              if (this._lastPos < i)
+                this._val += chunk.latin1Slice(this._lastPos, i);
+            }
+          }
+        cb();
+      }
+      _final(cb) {
+        if (this._byte !== -2)
+          return cb(new Error("Malformed urlencoded form"));
+        if (!this._inKey || this._bytesKey > 0 || this._bytesVal > 0) {
+          if (this._inKey)
+            this._key = this._decoder(this._key, this._encode);
+          else
+            this._val = this._decoder(this._val, this._encode);
+          this.emit(
+            "field",
+            this._key,
+            this._val,
+            {
+              nameTruncated: this._keyTrunc,
+              valueTruncated: this._valTrunc,
+              encoding: this.charset,
+              mimeType: "text/plain"
+            }
+          );
+        }
+        cb();
+      }
+    };
+    function readPctEnc(self2, chunk, pos, len) {
+      if (pos >= len)
+        return len;
+      if (self2._byte === -1) {
+        const hexUpper = HEX_VALUES[chunk[pos++]];
+        if (hexUpper === -1)
+          return -1;
+        if (hexUpper >= 8)
+          self2._encode = 2;
+        if (pos < len) {
+          const hexLower = HEX_VALUES[chunk[pos++]];
+          if (hexLower === -1)
+            return -1;
+          if (self2._inKey)
+            self2._key += String.fromCharCode((hexUpper << 4) + hexLower);
+          else
+            self2._val += String.fromCharCode((hexUpper << 4) + hexLower);
+          self2._byte = -2;
+          self2._lastPos = pos;
+        } else {
+          self2._byte = hexUpper;
+        }
+      } else {
+        const hexLower = HEX_VALUES[chunk[pos++]];
+        if (hexLower === -1)
+          return -1;
+        if (self2._inKey)
+          self2._key += String.fromCharCode((self2._byte << 4) + hexLower);
+        else
+          self2._val += String.fromCharCode((self2._byte << 4) + hexLower);
+        self2._byte = -2;
+        self2._lastPos = pos;
+      }
+      return pos;
+    }
+    function skipKeyBytes(self2, chunk, pos, len) {
+      if (self2._bytesKey > self2.fieldNameSizeLimit) {
+        if (!self2._keyTrunc) {
+          if (self2._lastPos < pos)
+            self2._key += chunk.latin1Slice(self2._lastPos, pos - 1);
+        }
+        self2._keyTrunc = true;
+        for (; pos < len; ++pos) {
+          const code = chunk[pos];
+          if (code === 61 || code === 38)
+            break;
+          ++self2._bytesKey;
+        }
+        self2._lastPos = pos;
+      }
+      return pos;
+    }
+    function skipValBytes(self2, chunk, pos, len) {
+      if (self2._bytesVal > self2.fieldSizeLimit) {
+        if (!self2._valTrunc) {
+          if (self2._lastPos < pos)
+            self2._val += chunk.latin1Slice(self2._lastPos, pos - 1);
+        }
+        self2._valTrunc = true;
+        for (; pos < len; ++pos) {
+          if (chunk[pos] === 38)
+            break;
+          ++self2._bytesVal;
+        }
+        self2._lastPos = pos;
+      }
+      return pos;
+    }
+    var HEX_VALUES = [
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1
+    ];
+    module2.exports = URLEncoded;
+  }
+});
+
+// node_modules/busboy/lib/index.js
+var require_lib3 = __commonJS({
+  "node_modules/busboy/lib/index.js"(exports2, module2) {
+    "use strict";
+    var { parseContentType } = require_utils3();
+    function getInstance(cfg) {
+      const headers = cfg.headers;
+      const conType = parseContentType(headers["content-type"]);
+      if (!conType)
+        throw new Error("Malformed content type");
+      for (const type of TYPES) {
+        const matched = type.detect(conType);
+        if (!matched)
+          continue;
+        const instanceCfg = {
+          limits: cfg.limits,
+          headers,
+          conType,
+          highWaterMark: void 0,
+          fileHwm: void 0,
+          defCharset: void 0,
+          defParamCharset: void 0,
+          preservePath: false
+        };
+        if (cfg.highWaterMark)
+          instanceCfg.highWaterMark = cfg.highWaterMark;
+        if (cfg.fileHwm)
+          instanceCfg.fileHwm = cfg.fileHwm;
+        instanceCfg.defCharset = cfg.defCharset;
+        instanceCfg.defParamCharset = cfg.defParamCharset;
+        instanceCfg.preservePath = cfg.preservePath;
+        return new type(instanceCfg);
+      }
+      throw new Error(`Unsupported content type: ${headers["content-type"]}`);
+    }
+    var TYPES = [
+      require_multipart(),
+      require_urlencoded2()
+    ].filter(function(typemod) {
+      return typeof typemod.detect === "function";
+    });
+    module2.exports = (cfg) => {
+      if (typeof cfg !== "object" || cfg === null)
+        cfg = {};
+      if (typeof cfg.headers !== "object" || cfg.headers === null || typeof cfg.headers["content-type"] !== "string") {
+        throw new Error("Missing Content-Type");
+      }
+      return getInstance(cfg);
+    };
+  }
+});
+
+// node_modules/xtend/immutable.js
+var require_immutable = __commonJS({
+  "node_modules/xtend/immutable.js"(exports2, module2) {
+    module2.exports = extend;
+    var hasOwnProperty = Object.prototype.hasOwnProperty;
+    function extend() {
+      var target = {};
+      for (var i = 0; i < arguments.length; i++) {
+        var source = arguments[i];
+        for (var key in source) {
+          if (hasOwnProperty.call(source, key)) {
+            target[key] = source[key];
+          }
+        }
+      }
+      return target;
+    }
+  }
+});
+
+// node_modules/append-field/lib/parse-path.js
+var require_parse_path = __commonJS({
+  "node_modules/append-field/lib/parse-path.js"(exports2, module2) {
+    var reFirstKey = /^[^\[]*/;
+    var reDigitPath = /^\[(\d+)\]/;
+    var reNormalPath = /^\[([^\]]+)\]/;
+    function parsePath(key) {
+      function failure() {
+        return [{ type: "object", key, last: true }];
+      }
+      var firstKey = reFirstKey.exec(key)[0];
+      if (!firstKey) return failure();
+      var len = key.length;
+      var pos = firstKey.length;
+      var tail = { type: "object", key: firstKey };
+      var steps = [tail];
+      while (pos < len) {
+        var m;
+        if (key[pos] === "[" && key[pos + 1] === "]") {
+          pos += 2;
+          tail.append = true;
+          if (pos !== len) return failure();
+          continue;
+        }
+        m = reDigitPath.exec(key.substring(pos));
+        if (m !== null) {
+          pos += m[0].length;
+          tail.nextType = "array";
+          tail = { type: "array", key: parseInt(m[1], 10) };
+          steps.push(tail);
+          continue;
+        }
+        m = reNormalPath.exec(key.substring(pos));
+        if (m !== null) {
+          pos += m[0].length;
+          tail.nextType = "object";
+          tail = { type: "object", key: m[1] };
+          steps.push(tail);
+          continue;
+        }
+        return failure();
+      }
+      tail.last = true;
+      return steps;
+    }
+    module2.exports = parsePath;
+  }
+});
+
+// node_modules/append-field/lib/set-value.js
+var require_set_value = __commonJS({
+  "node_modules/append-field/lib/set-value.js"(exports2, module2) {
+    function valueType(value) {
+      if (value === void 0) return "undefined";
+      if (Array.isArray(value)) return "array";
+      if (typeof value === "object") return "object";
+      return "scalar";
+    }
+    function setLastValue(context, step, currentValue, entryValue) {
+      switch (valueType(currentValue)) {
+        case "undefined":
+          if (step.append) {
+            context[step.key] = [entryValue];
+          } else {
+            context[step.key] = entryValue;
+          }
+          break;
+        case "array":
+          context[step.key].push(entryValue);
+          break;
+        case "object":
+          return setLastValue(currentValue, { type: "object", key: "", last: true }, currentValue[""], entryValue);
+        case "scalar":
+          context[step.key] = [context[step.key], entryValue];
+          break;
+      }
+      return context;
+    }
+    function setValue(context, step, currentValue, entryValue) {
+      if (step.last) return setLastValue(context, step, currentValue, entryValue);
+      var obj;
+      switch (valueType(currentValue)) {
+        case "undefined":
+          if (step.nextType === "array") {
+            context[step.key] = [];
+          } else {
+            context[step.key] = /* @__PURE__ */ Object.create(null);
+          }
+          return context[step.key];
+        case "object":
+          return context[step.key];
+        case "array":
+          if (step.nextType === "array") {
+            return currentValue;
+          }
+          obj = /* @__PURE__ */ Object.create(null);
+          context[step.key] = obj;
+          currentValue.forEach(function(item, i) {
+            if (item !== void 0) obj["" + i] = item;
+          });
+          return obj;
+        case "scalar":
+          obj = /* @__PURE__ */ Object.create(null);
+          obj[""] = currentValue;
+          context[step.key] = obj;
+          return obj;
+      }
+    }
+    module2.exports = setValue;
+  }
+});
+
+// node_modules/append-field/index.js
+var require_append_field = __commonJS({
+  "node_modules/append-field/index.js"(exports2, module2) {
+    var parsePath = require_parse_path();
+    var setValue = require_set_value();
+    function appendField(store, key, value) {
+      var steps = parsePath(key);
+      steps.reduce(function(context, step) {
+        return setValue(context, step, context[step.key], value);
+      }, store);
+    }
+    module2.exports = appendField;
+  }
+});
+
+// node_modules/multer/lib/counter.js
+var require_counter = __commonJS({
+  "node_modules/multer/lib/counter.js"(exports2, module2) {
+    var EventEmitter = require("events").EventEmitter;
+    function Counter() {
+      EventEmitter.call(this);
+      this.value = 0;
+    }
+    Counter.prototype = Object.create(EventEmitter.prototype);
+    Counter.prototype.increment = function increment() {
+      this.value++;
+    };
+    Counter.prototype.decrement = function decrement() {
+      if (--this.value === 0) this.emit("zero");
+    };
+    Counter.prototype.isZero = function isZero() {
+      return this.value === 0;
+    };
+    Counter.prototype.onceZero = function onceZero(fn2) {
+      if (this.isZero()) return fn2();
+      this.once("zero", fn2);
+    };
+    module2.exports = Counter;
+  }
+});
+
+// node_modules/multer/lib/multer-error.js
+var require_multer_error = __commonJS({
+  "node_modules/multer/lib/multer-error.js"(exports2, module2) {
+    var util2 = require("util");
+    var errorMessages = {
+      LIMIT_PART_COUNT: "Too many parts",
+      LIMIT_FILE_SIZE: "File too large",
+      LIMIT_FILE_COUNT: "Too many files",
+      LIMIT_FIELD_KEY: "Field name too long",
+      LIMIT_FIELD_VALUE: "Field value too long",
+      LIMIT_FIELD_COUNT: "Too many fields",
+      LIMIT_UNEXPECTED_FILE: "Unexpected field",
+      MISSING_FIELD_NAME: "Field name missing"
+    };
+    function MulterError(code, field) {
+      Error.captureStackTrace(this, this.constructor);
+      this.name = this.constructor.name;
+      this.message = errorMessages[code];
+      this.code = code;
+      if (field) this.field = field;
+    }
+    util2.inherits(MulterError, Error);
+    module2.exports = MulterError;
+  }
+});
+
+// node_modules/object-assign/index.js
+var require_object_assign = __commonJS({
+  "node_modules/object-assign/index.js"(exports2, module2) {
+    "use strict";
+    var getOwnPropertySymbols = Object.getOwnPropertySymbols;
+    var hasOwnProperty = Object.prototype.hasOwnProperty;
+    var propIsEnumerable = Object.prototype.propertyIsEnumerable;
+    function toObject(val) {
+      if (val === null || val === void 0) {
+        throw new TypeError("Object.assign cannot be called with null or undefined");
+      }
+      return Object(val);
+    }
+    function shouldUseNative() {
+      try {
+        if (!Object.assign) {
+          return false;
+        }
+        var test1 = new String("abc");
+        test1[5] = "de";
+        if (Object.getOwnPropertyNames(test1)[0] === "5") {
+          return false;
+        }
+        var test2 = {};
+        for (var i = 0; i < 10; i++) {
+          test2["_" + String.fromCharCode(i)] = i;
+        }
+        var order2 = Object.getOwnPropertyNames(test2).map(function(n) {
+          return test2[n];
+        });
+        if (order2.join("") !== "0123456789") {
+          return false;
+        }
+        var test3 = {};
+        "abcdefghijklmnopqrst".split("").forEach(function(letter) {
+          test3[letter] = letter;
+        });
+        if (Object.keys(Object.assign({}, test3)).join("") !== "abcdefghijklmnopqrst") {
+          return false;
+        }
+        return true;
+      } catch (err) {
+        return false;
+      }
+    }
+    module2.exports = shouldUseNative() ? Object.assign : function(target, source) {
+      var from;
+      var to2 = toObject(target);
+      var symbols;
+      for (var s = 1; s < arguments.length; s++) {
+        from = Object(arguments[s]);
+        for (var key in from) {
+          if (hasOwnProperty.call(from, key)) {
+            to2[key] = from[key];
+          }
+        }
+        if (getOwnPropertySymbols) {
+          symbols = getOwnPropertySymbols(from);
+          for (var i = 0; i < symbols.length; i++) {
+            if (propIsEnumerable.call(from, symbols[i])) {
+              to2[symbols[i]] = from[symbols[i]];
+            }
+          }
+        }
+      }
+      return to2;
+    };
+  }
+});
+
+// node_modules/multer/lib/file-appender.js
+var require_file_appender = __commonJS({
+  "node_modules/multer/lib/file-appender.js"(exports2, module2) {
+    var objectAssign = require_object_assign();
+    function arrayRemove(arr, item) {
+      var idx = arr.indexOf(item);
+      if (~idx) arr.splice(idx, 1);
+    }
+    function FileAppender(strategy, req) {
+      this.strategy = strategy;
+      this.req = req;
+      switch (strategy) {
+        case "NONE":
+          break;
+        case "VALUE":
+          break;
+        case "ARRAY":
+          req.files = [];
+          break;
+        case "OBJECT":
+          req.files = /* @__PURE__ */ Object.create(null);
+          break;
+        default:
+          throw new Error("Unknown file strategy: " + strategy);
+      }
+    }
+    FileAppender.prototype.insertPlaceholder = function(file) {
+      var placeholder = {
+        fieldname: file.fieldname
+      };
+      switch (this.strategy) {
+        case "NONE":
+          break;
+        case "VALUE":
+          break;
+        case "ARRAY":
+          this.req.files.push(placeholder);
+          break;
+        case "OBJECT":
+          if (this.req.files[file.fieldname]) {
+            this.req.files[file.fieldname].push(placeholder);
+          } else {
+            this.req.files[file.fieldname] = [placeholder];
+          }
+          break;
+      }
+      return placeholder;
+    };
+    FileAppender.prototype.removePlaceholder = function(placeholder) {
+      switch (this.strategy) {
+        case "NONE":
+          break;
+        case "VALUE":
+          break;
+        case "ARRAY":
+          arrayRemove(this.req.files, placeholder);
+          break;
+        case "OBJECT":
+          if (this.req.files[placeholder.fieldname].length === 1) {
+            delete this.req.files[placeholder.fieldname];
+          } else {
+            arrayRemove(this.req.files[placeholder.fieldname], placeholder);
+          }
+          break;
+      }
+    };
+    FileAppender.prototype.replacePlaceholder = function(placeholder, file) {
+      if (this.strategy === "VALUE") {
+        this.req.file = file;
+        return;
+      }
+      delete placeholder.fieldname;
+      objectAssign(placeholder, file);
+    };
+    module2.exports = FileAppender;
+  }
+});
+
+// node_modules/multer/lib/remove-uploaded-files.js
+var require_remove_uploaded_files = __commonJS({
+  "node_modules/multer/lib/remove-uploaded-files.js"(exports2, module2) {
+    function removeUploadedFiles(uploadedFiles, remove, cb) {
+      var length = uploadedFiles.length;
+      var errors = [];
+      if (length === 0) return cb(null, errors);
+      function handleFile(idx) {
+        var file = uploadedFiles[idx];
+        remove(file, function(err) {
+          if (err) {
+            err.file = file;
+            err.field = file.fieldname;
+            errors.push(err);
+          }
+          if (idx < length - 1) {
+            handleFile(idx + 1);
+          } else {
+            cb(null, errors);
+          }
+        });
+      }
+      handleFile(0);
+    }
+    module2.exports = removeUploadedFiles;
+  }
+});
+
+// node_modules/multer/lib/make-middleware.js
+var require_make_middleware = __commonJS({
+  "node_modules/multer/lib/make-middleware.js"(exports2, module2) {
+    var is = require_type_is();
+    var Busboy = require_lib3();
+    var extend = require_immutable();
+    var appendField = require_append_field();
+    var Counter = require_counter();
+    var MulterError = require_multer_error();
+    var FileAppender = require_file_appender();
+    var removeUploadedFiles = require_remove_uploaded_files();
+    function makeMiddleware(setup) {
+      return function multerMiddleware(req, res, next) {
+        if (!is(req, ["multipart"])) return next();
+        var options = setup();
+        var limits = options.limits;
+        var storage2 = options.storage;
+        var fileFilter = options.fileFilter;
+        var fileStrategy = options.fileStrategy;
+        var preservePath = options.preservePath;
+        req.body = /* @__PURE__ */ Object.create(null);
+        var busboy;
+        try {
+          busboy = Busboy({ headers: req.headers, limits, preservePath });
+        } catch (err) {
+          return next(err);
+        }
+        var appender = new FileAppender(fileStrategy, req);
+        var isDone = false;
+        var readFinished = false;
+        var errorOccured = false;
+        var pendingWrites = new Counter();
+        var uploadedFiles = [];
+        function done(err) {
+          if (isDone) return;
+          isDone = true;
+          req.unpipe(busboy);
+          process.nextTick(() => {
+            busboy.removeAllListeners();
+          });
+          next(err);
+        }
+        function indicateDone() {
+          if (readFinished && pendingWrites.isZero() && !errorOccured) done();
+        }
+        function abortWithError(uploadError) {
+          if (errorOccured) return;
+          errorOccured = true;
+          pendingWrites.onceZero(function() {
+            function remove(file, cb) {
+              storage2._removeFile(req, file, cb);
+            }
+            removeUploadedFiles(uploadedFiles, remove, function(err, storageErrors) {
+              if (err) return done(err);
+              uploadError.storageErrors = storageErrors;
+              done(uploadError);
+            });
+          });
+        }
+        function abortWithCode(code, optionalField) {
+          abortWithError(new MulterError(code, optionalField));
+        }
+        busboy.on("field", function(fieldname, value, { nameTruncated, valueTruncated }) {
+          if (fieldname == null) return abortWithCode("MISSING_FIELD_NAME");
+          if (nameTruncated) return abortWithCode("LIMIT_FIELD_KEY");
+          if (valueTruncated) return abortWithCode("LIMIT_FIELD_VALUE", fieldname);
+          if (limits && Object.prototype.hasOwnProperty.call(limits, "fieldNameSize")) {
+            if (fieldname.length > limits.fieldNameSize) return abortWithCode("LIMIT_FIELD_KEY");
+          }
+          appendField(req.body, fieldname, value);
+        });
+        busboy.on("file", function(fieldname, fileStream, { filename, encoding, mimeType }) {
+          if (!filename) return fileStream.resume();
+          if (limits && Object.prototype.hasOwnProperty.call(limits, "fieldNameSize")) {
+            if (fieldname.length > limits.fieldNameSize) return abortWithCode("LIMIT_FIELD_KEY");
+          }
+          var file = {
+            fieldname,
+            originalname: filename,
+            encoding,
+            mimetype: mimeType
+          };
+          var placeholder = appender.insertPlaceholder(file);
+          fileFilter(req, file, function(err, includeFile) {
+            if (err) {
+              appender.removePlaceholder(placeholder);
+              return abortWithError(err);
+            }
+            if (!includeFile) {
+              appender.removePlaceholder(placeholder);
+              return fileStream.resume();
+            }
+            var aborting = false;
+            pendingWrites.increment();
+            Object.defineProperty(file, "stream", {
+              configurable: true,
+              enumerable: false,
+              value: fileStream
+            });
+            fileStream.on("error", function(err2) {
+              pendingWrites.decrement();
+              abortWithError(err2);
+            });
+            fileStream.on("limit", function() {
+              aborting = true;
+              abortWithCode("LIMIT_FILE_SIZE", fieldname);
+            });
+            storage2._handleFile(req, file, function(err2, info) {
+              if (aborting) {
+                appender.removePlaceholder(placeholder);
+                uploadedFiles.push(extend(file, info));
+                return pendingWrites.decrement();
+              }
+              if (err2) {
+                appender.removePlaceholder(placeholder);
+                pendingWrites.decrement();
+                return abortWithError(err2);
+              }
+              var fileInfo = extend(file, info);
+              appender.replacePlaceholder(placeholder, fileInfo);
+              uploadedFiles.push(fileInfo);
+              pendingWrites.decrement();
+              indicateDone();
+            });
+          });
+        });
+        busboy.on("error", function(err) {
+          abortWithError(err);
+        });
+        busboy.on("partsLimit", function() {
+          abortWithCode("LIMIT_PART_COUNT");
+        });
+        busboy.on("filesLimit", function() {
+          abortWithCode("LIMIT_FILE_COUNT");
+        });
+        busboy.on("fieldsLimit", function() {
+          abortWithCode("LIMIT_FIELD_COUNT");
+        });
+        busboy.on("close", function() {
+          readFinished = true;
+          indicateDone();
+        });
+        req.pipe(busboy);
+      };
+    }
+    module2.exports = makeMiddleware;
+  }
+});
+
+// node_modules/mkdirp/index.js
+var require_mkdirp = __commonJS({
+  "node_modules/mkdirp/index.js"(exports2, module2) {
+    var path2 = require("path");
+    var fs = require("fs");
+    var _0777 = parseInt("0777", 8);
+    module2.exports = mkdirP.mkdirp = mkdirP.mkdirP = mkdirP;
+    function mkdirP(p, opts, f2, made) {
+      if (typeof opts === "function") {
+        f2 = opts;
+        opts = {};
+      } else if (!opts || typeof opts !== "object") {
+        opts = { mode: opts };
+      }
+      var mode = opts.mode;
+      var xfs = opts.fs || fs;
+      if (mode === void 0) {
+        mode = _0777;
+      }
+      if (!made) made = null;
+      var cb = f2 || /* istanbul ignore next */
+      function() {
+      };
+      p = path2.resolve(p);
+      xfs.mkdir(p, mode, function(er2) {
+        if (!er2) {
+          made = made || p;
+          return cb(null, made);
+        }
+        switch (er2.code) {
+          case "ENOENT":
+            if (path2.dirname(p) === p) return cb(er2);
+            mkdirP(path2.dirname(p), opts, function(er3, made2) {
+              if (er3) cb(er3, made2);
+              else mkdirP(p, opts, cb, made2);
+            });
+            break;
+          // In the case of any other error, just see if there's a dir
+          // there already.  If so, then hooray!  If not, then something
+          // is borked.
+          default:
+            xfs.stat(p, function(er22, stat) {
+              if (er22 || !stat.isDirectory()) cb(er2, made);
+              else cb(null, made);
+            });
+            break;
+        }
+      });
+    }
+    mkdirP.sync = function sync(p, opts, made) {
+      if (!opts || typeof opts !== "object") {
+        opts = { mode: opts };
+      }
+      var mode = opts.mode;
+      var xfs = opts.fs || fs;
+      if (mode === void 0) {
+        mode = _0777;
+      }
+      if (!made) made = null;
+      p = path2.resolve(p);
+      try {
+        xfs.mkdirSync(p, mode);
+        made = made || p;
+      } catch (err0) {
+        switch (err0.code) {
+          case "ENOENT":
+            made = sync(path2.dirname(p), opts, made);
+            sync(p, opts, made);
+            break;
+          // In the case of any other error, just see if there's a dir
+          // there already.  If so, then hooray!  If not, then something
+          // is borked.
+          default:
+            var stat;
+            try {
+              stat = xfs.statSync(p);
+            } catch (err1) {
+              throw err0;
+            }
+            if (!stat.isDirectory()) throw err0;
+            break;
+        }
+      }
+      return made;
+    };
+  }
+});
+
+// node_modules/multer/storage/disk.js
+var require_disk = __commonJS({
+  "node_modules/multer/storage/disk.js"(exports2, module2) {
+    var fs = require("fs");
+    var os2 = require("os");
+    var path2 = require("path");
+    var crypto2 = require("crypto");
+    var mkdirp = require_mkdirp();
+    function getFilename(req, file, cb) {
+      crypto2.randomBytes(16, function(err, raw2) {
+        cb(err, err ? void 0 : raw2.toString("hex"));
+      });
+    }
+    function getDestination(req, file, cb) {
+      cb(null, os2.tmpdir());
+    }
+    function DiskStorage(opts) {
+      this.getFilename = opts.filename || getFilename;
+      if (typeof opts.destination === "string") {
+        mkdirp.sync(opts.destination);
+        this.getDestination = function($0, $1, cb) {
+          cb(null, opts.destination);
+        };
+      } else {
+        this.getDestination = opts.destination || getDestination;
+      }
+    }
+    DiskStorage.prototype._handleFile = function _handleFile(req, file, cb) {
+      var that = this;
+      that.getDestination(req, file, function(err, destination) {
+        if (err) return cb(err);
+        that.getFilename(req, file, function(err2, filename) {
+          if (err2) return cb(err2);
+          var finalPath = path2.join(destination, filename);
+          var outStream = fs.createWriteStream(finalPath);
+          file.stream.pipe(outStream);
+          outStream.on("error", cb);
+          outStream.on("finish", function() {
+            cb(null, {
+              destination,
+              filename,
+              path: finalPath,
+              size: outStream.bytesWritten
+            });
+          });
+        });
+      });
+    };
+    DiskStorage.prototype._removeFile = function _removeFile(req, file, cb) {
+      var path3 = file.path;
+      delete file.destination;
+      delete file.filename;
+      delete file.path;
+      fs.unlink(path3, cb);
+    };
+    module2.exports = function(opts) {
+      return new DiskStorage(opts);
+    };
+  }
+});
+
+// node_modules/process-nextick-args/index.js
+var require_process_nextick_args = __commonJS({
+  "node_modules/process-nextick-args/index.js"(exports2, module2) {
+    "use strict";
+    if (typeof process === "undefined" || !process.version || process.version.indexOf("v0.") === 0 || process.version.indexOf("v1.") === 0 && process.version.indexOf("v1.8.") !== 0) {
+      module2.exports = { nextTick: nextTick2 };
+    } else {
+      module2.exports = process;
+    }
+    function nextTick2(fn2, arg1, arg2, arg3) {
+      if (typeof fn2 !== "function") {
+        throw new TypeError('"callback" argument must be a function');
+      }
+      var len = arguments.length;
+      var args, i;
+      switch (len) {
+        case 0:
+        case 1:
+          return process.nextTick(fn2);
+        case 2:
+          return process.nextTick(function afterTickOne() {
+            fn2.call(null, arg1);
+          });
+        case 3:
+          return process.nextTick(function afterTickTwo() {
+            fn2.call(null, arg1, arg2);
+          });
+        case 4:
+          return process.nextTick(function afterTickThree() {
+            fn2.call(null, arg1, arg2, arg3);
+          });
+        default:
+          args = new Array(len - 1);
+          i = 0;
+          while (i < args.length) {
+            args[i++] = arguments[i];
+          }
+          return process.nextTick(function afterTick() {
+            fn2.apply(null, args);
+          });
+      }
+    }
+  }
+});
+
+// node_modules/isarray/index.js
+var require_isarray = __commonJS({
+  "node_modules/isarray/index.js"(exports2, module2) {
+    var toString2 = {}.toString;
+    module2.exports = Array.isArray || function(arr) {
+      return toString2.call(arr) == "[object Array]";
+    };
+  }
+});
+
+// node_modules/readable-stream/lib/internal/streams/stream.js
+var require_stream = __commonJS({
+  "node_modules/readable-stream/lib/internal/streams/stream.js"(exports2, module2) {
+    module2.exports = require("stream");
+  }
+});
+
+// node_modules/readable-stream/node_modules/safe-buffer/index.js
+var require_safe_buffer2 = __commonJS({
+  "node_modules/readable-stream/node_modules/safe-buffer/index.js"(exports2, module2) {
+    var buffer = require("buffer");
+    var Buffer3 = buffer.Buffer;
+    function copyProps(src, dst) {
+      for (var key in src) {
+        dst[key] = src[key];
+      }
+    }
+    if (Buffer3.from && Buffer3.alloc && Buffer3.allocUnsafe && Buffer3.allocUnsafeSlow) {
+      module2.exports = buffer;
+    } else {
+      copyProps(buffer, exports2);
+      exports2.Buffer = SafeBuffer;
+    }
+    function SafeBuffer(arg, encodingOrOffset, length) {
+      return Buffer3(arg, encodingOrOffset, length);
+    }
+    copyProps(Buffer3, SafeBuffer);
+    SafeBuffer.from = function(arg, encodingOrOffset, length) {
+      if (typeof arg === "number") {
+        throw new TypeError("Argument must not be a number");
+      }
+      return Buffer3(arg, encodingOrOffset, length);
+    };
+    SafeBuffer.alloc = function(size, fill, encoding) {
+      if (typeof size !== "number") {
+        throw new TypeError("Argument must be a number");
+      }
+      var buf = Buffer3(size);
+      if (fill !== void 0) {
+        if (typeof encoding === "string") {
+          buf.fill(fill, encoding);
+        } else {
+          buf.fill(fill);
+        }
+      } else {
+        buf.fill(0);
+      }
+      return buf;
+    };
+    SafeBuffer.allocUnsafe = function(size) {
+      if (typeof size !== "number") {
+        throw new TypeError("Argument must be a number");
+      }
+      return Buffer3(size);
+    };
+    SafeBuffer.allocUnsafeSlow = function(size) {
+      if (typeof size !== "number") {
+        throw new TypeError("Argument must be a number");
+      }
+      return buffer.SlowBuffer(size);
+    };
+  }
+});
+
+// node_modules/core-util-is/lib/util.js
+var require_util = __commonJS({
+  "node_modules/core-util-is/lib/util.js"(exports2) {
+    function isArray(arg) {
+      if (Array.isArray) {
+        return Array.isArray(arg);
+      }
+      return objectToString(arg) === "[object Array]";
+    }
+    exports2.isArray = isArray;
+    function isBoolean(arg) {
+      return typeof arg === "boolean";
+    }
+    exports2.isBoolean = isBoolean;
+    function isNull(arg) {
+      return arg === null;
+    }
+    exports2.isNull = isNull;
+    function isNullOrUndefined(arg) {
+      return arg == null;
+    }
+    exports2.isNullOrUndefined = isNullOrUndefined;
+    function isNumber(arg) {
+      return typeof arg === "number";
+    }
+    exports2.isNumber = isNumber;
+    function isString(arg) {
+      return typeof arg === "string";
+    }
+    exports2.isString = isString;
+    function isSymbol(arg) {
+      return typeof arg === "symbol";
+    }
+    exports2.isSymbol = isSymbol;
+    function isUndefined(arg) {
+      return arg === void 0;
+    }
+    exports2.isUndefined = isUndefined;
+    function isRegExp(re2) {
+      return objectToString(re2) === "[object RegExp]";
+    }
+    exports2.isRegExp = isRegExp;
+    function isObject(arg) {
+      return typeof arg === "object" && arg !== null;
+    }
+    exports2.isObject = isObject;
+    function isDate(d2) {
+      return objectToString(d2) === "[object Date]";
+    }
+    exports2.isDate = isDate;
+    function isError(e) {
+      return objectToString(e) === "[object Error]" || e instanceof Error;
+    }
+    exports2.isError = isError;
+    function isFunction(arg) {
+      return typeof arg === "function";
+    }
+    exports2.isFunction = isFunction;
+    function isPrimitive(arg) {
+      return arg === null || typeof arg === "boolean" || typeof arg === "number" || typeof arg === "string" || typeof arg === "symbol" || // ES6 symbol
+      typeof arg === "undefined";
+    }
+    exports2.isPrimitive = isPrimitive;
+    exports2.isBuffer = require("buffer").Buffer.isBuffer;
+    function objectToString(o) {
+      return Object.prototype.toString.call(o);
+    }
+  }
+});
+
+// node_modules/readable-stream/lib/internal/streams/BufferList.js
+var require_BufferList = __commonJS({
+  "node_modules/readable-stream/lib/internal/streams/BufferList.js"(exports2, module2) {
+    "use strict";
+    function _classCallCheck(instance, Constructor) {
+      if (!(instance instanceof Constructor)) {
+        throw new TypeError("Cannot call a class as a function");
+      }
+    }
+    var Buffer3 = require_safe_buffer2().Buffer;
+    var util2 = require("util");
+    function copyBuffer(src, target, offset) {
+      src.copy(target, offset);
+    }
+    module2.exports = function() {
+      function BufferList() {
+        _classCallCheck(this, BufferList);
+        this.head = null;
+        this.tail = null;
+        this.length = 0;
+      }
+      BufferList.prototype.push = function push(v) {
+        var entry = { data: v, next: null };
+        if (this.length > 0) this.tail.next = entry;
+        else this.head = entry;
+        this.tail = entry;
+        ++this.length;
+      };
+      BufferList.prototype.unshift = function unshift(v) {
+        var entry = { data: v, next: this.head };
+        if (this.length === 0) this.tail = entry;
+        this.head = entry;
+        ++this.length;
+      };
+      BufferList.prototype.shift = function shift() {
+        if (this.length === 0) return;
+        var ret = this.head.data;
+        if (this.length === 1) this.head = this.tail = null;
+        else this.head = this.head.next;
+        --this.length;
+        return ret;
+      };
+      BufferList.prototype.clear = function clear() {
+        this.head = this.tail = null;
+        this.length = 0;
+      };
+      BufferList.prototype.join = function join2(s) {
+        if (this.length === 0) return "";
+        var p = this.head;
+        var ret = "" + p.data;
+        while (p = p.next) {
+          ret += s + p.data;
+        }
+        return ret;
+      };
+      BufferList.prototype.concat = function concat(n) {
+        if (this.length === 0) return Buffer3.alloc(0);
+        var ret = Buffer3.allocUnsafe(n >>> 0);
+        var p = this.head;
+        var i = 0;
+        while (p) {
+          copyBuffer(p.data, ret, i);
+          i += p.data.length;
+          p = p.next;
+        }
+        return ret;
+      };
+      return BufferList;
+    }();
+    if (util2 && util2.inspect && util2.inspect.custom) {
+      module2.exports.prototype[util2.inspect.custom] = function() {
+        var obj = util2.inspect({ length: this.length });
+        return this.constructor.name + " " + obj;
+      };
+    }
+  }
+});
+
+// node_modules/readable-stream/lib/internal/streams/destroy.js
+var require_destroy2 = __commonJS({
+  "node_modules/readable-stream/lib/internal/streams/destroy.js"(exports2, module2) {
+    "use strict";
+    var pna = require_process_nextick_args();
+    function destroy(err, cb) {
+      var _this = this;
+      var readableDestroyed = this._readableState && this._readableState.destroyed;
+      var writableDestroyed = this._writableState && this._writableState.destroyed;
+      if (readableDestroyed || writableDestroyed) {
+        if (cb) {
+          cb(err);
+        } else if (err) {
+          if (!this._writableState) {
+            pna.nextTick(emitErrorNT, this, err);
+          } else if (!this._writableState.errorEmitted) {
+            this._writableState.errorEmitted = true;
+            pna.nextTick(emitErrorNT, this, err);
+          }
+        }
+        return this;
+      }
+      if (this._readableState) {
+        this._readableState.destroyed = true;
+      }
+      if (this._writableState) {
+        this._writableState.destroyed = true;
+      }
+      this._destroy(err || null, function(err2) {
+        if (!cb && err2) {
+          if (!_this._writableState) {
+            pna.nextTick(emitErrorNT, _this, err2);
+          } else if (!_this._writableState.errorEmitted) {
+            _this._writableState.errorEmitted = true;
+            pna.nextTick(emitErrorNT, _this, err2);
+          }
+        } else if (cb) {
+          cb(err2);
+        }
+      });
+      return this;
+    }
+    function undestroy() {
+      if (this._readableState) {
+        this._readableState.destroyed = false;
+        this._readableState.reading = false;
+        this._readableState.ended = false;
+        this._readableState.endEmitted = false;
+      }
+      if (this._writableState) {
+        this._writableState.destroyed = false;
+        this._writableState.ended = false;
+        this._writableState.ending = false;
+        this._writableState.finalCalled = false;
+        this._writableState.prefinished = false;
+        this._writableState.finished = false;
+        this._writableState.errorEmitted = false;
+      }
+    }
+    function emitErrorNT(self2, err) {
+      self2.emit("error", err);
+    }
+    module2.exports = {
+      destroy,
+      undestroy
+    };
+  }
+});
+
+// node_modules/util-deprecate/node.js
+var require_node2 = __commonJS({
+  "node_modules/util-deprecate/node.js"(exports2, module2) {
+    module2.exports = require("util").deprecate;
+  }
+});
+
+// node_modules/readable-stream/lib/_stream_writable.js
+var require_stream_writable = __commonJS({
+  "node_modules/readable-stream/lib/_stream_writable.js"(exports2, module2) {
+    "use strict";
+    var pna = require_process_nextick_args();
+    module2.exports = Writable;
+    function CorkedRequest(state) {
+      var _this = this;
+      this.next = null;
+      this.entry = null;
+      this.finish = function() {
+        onCorkedFinish(_this, state);
+      };
+    }
+    var asyncWrite = !process.browser && ["v0.10", "v0.9."].indexOf(process.version.slice(0, 5)) > -1 ? setImmediate : pna.nextTick;
+    var Duplex;
+    Writable.WritableState = WritableState;
+    var util2 = Object.create(require_util());
+    util2.inherits = require_inherits();
+    var internalUtil = {
+      deprecate: require_node2()
+    };
+    var Stream = require_stream();
+    var Buffer3 = require_safe_buffer2().Buffer;
+    var OurUint8Array = (typeof global !== "undefined" ? global : typeof window !== "undefined" ? window : typeof self !== "undefined" ? self : {}).Uint8Array || function() {
+    };
+    function _uint8ArrayToBuffer(chunk) {
+      return Buffer3.from(chunk);
+    }
+    function _isUint8Array(obj) {
+      return Buffer3.isBuffer(obj) || obj instanceof OurUint8Array;
+    }
+    var destroyImpl = require_destroy2();
+    util2.inherits(Writable, Stream);
+    function nop() {
+    }
+    function WritableState(options, stream) {
+      Duplex = Duplex || require_stream_duplex();
+      options = options || {};
+      var isDuplex = stream instanceof Duplex;
+      this.objectMode = !!options.objectMode;
+      if (isDuplex) this.objectMode = this.objectMode || !!options.writableObjectMode;
+      var hwm = options.highWaterMark;
+      var writableHwm = options.writableHighWaterMark;
+      var defaultHwm = this.objectMode ? 16 : 16 * 1024;
+      if (hwm || hwm === 0) this.highWaterMark = hwm;
+      else if (isDuplex && (writableHwm || writableHwm === 0)) this.highWaterMark = writableHwm;
+      else this.highWaterMark = defaultHwm;
+      this.highWaterMark = Math.floor(this.highWaterMark);
+      this.finalCalled = false;
+      this.needDrain = false;
+      this.ending = false;
+      this.ended = false;
+      this.finished = false;
+      this.destroyed = false;
+      var noDecode = options.decodeStrings === false;
+      this.decodeStrings = !noDecode;
+      this.defaultEncoding = options.defaultEncoding || "utf8";
+      this.length = 0;
+      this.writing = false;
+      this.corked = 0;
+      this.sync = true;
+      this.bufferProcessing = false;
+      this.onwrite = function(er2) {
+        onwrite(stream, er2);
+      };
+      this.writecb = null;
+      this.writelen = 0;
+      this.bufferedRequest = null;
+      this.lastBufferedRequest = null;
+      this.pendingcb = 0;
+      this.prefinished = false;
+      this.errorEmitted = false;
+      this.bufferedRequestCount = 0;
+      this.corkedRequestsFree = new CorkedRequest(this);
+    }
+    WritableState.prototype.getBuffer = function getBuffer() {
+      var current = this.bufferedRequest;
+      var out = [];
+      while (current) {
+        out.push(current);
+        current = current.next;
+      }
+      return out;
+    };
+    (function() {
+      try {
+        Object.defineProperty(WritableState.prototype, "buffer", {
+          get: internalUtil.deprecate(function() {
+            return this.getBuffer();
+          }, "_writableState.buffer is deprecated. Use _writableState.getBuffer instead.", "DEP0003")
+        });
+      } catch (_) {
+      }
+    })();
+    var realHasInstance;
+    if (typeof Symbol === "function" && Symbol.hasInstance && typeof Function.prototype[Symbol.hasInstance] === "function") {
+      realHasInstance = Function.prototype[Symbol.hasInstance];
+      Object.defineProperty(Writable, Symbol.hasInstance, {
+        value: function(object) {
+          if (realHasInstance.call(this, object)) return true;
+          if (this !== Writable) return false;
+          return object && object._writableState instanceof WritableState;
+        }
+      });
+    } else {
+      realHasInstance = function(object) {
+        return object instanceof this;
+      };
+    }
+    function Writable(options) {
+      Duplex = Duplex || require_stream_duplex();
+      if (!realHasInstance.call(Writable, this) && !(this instanceof Duplex)) {
+        return new Writable(options);
+      }
+      this._writableState = new WritableState(options, this);
+      this.writable = true;
+      if (options) {
+        if (typeof options.write === "function") this._write = options.write;
+        if (typeof options.writev === "function") this._writev = options.writev;
+        if (typeof options.destroy === "function") this._destroy = options.destroy;
+        if (typeof options.final === "function") this._final = options.final;
+      }
+      Stream.call(this);
+    }
+    Writable.prototype.pipe = function() {
+      this.emit("error", new Error("Cannot pipe, not readable"));
+    };
+    function writeAfterEnd(stream, cb) {
+      var er2 = new Error("write after end");
+      stream.emit("error", er2);
+      pna.nextTick(cb, er2);
+    }
+    function validChunk(stream, state, chunk, cb) {
+      var valid = true;
+      var er2 = false;
+      if (chunk === null) {
+        er2 = new TypeError("May not write null values to stream");
+      } else if (typeof chunk !== "string" && chunk !== void 0 && !state.objectMode) {
+        er2 = new TypeError("Invalid non-string/buffer chunk");
+      }
+      if (er2) {
+        stream.emit("error", er2);
+        pna.nextTick(cb, er2);
+        valid = false;
+      }
+      return valid;
+    }
+    Writable.prototype.write = function(chunk, encoding, cb) {
+      var state = this._writableState;
+      var ret = false;
+      var isBuf = !state.objectMode && _isUint8Array(chunk);
+      if (isBuf && !Buffer3.isBuffer(chunk)) {
+        chunk = _uint8ArrayToBuffer(chunk);
+      }
+      if (typeof encoding === "function") {
+        cb = encoding;
+        encoding = null;
+      }
+      if (isBuf) encoding = "buffer";
+      else if (!encoding) encoding = state.defaultEncoding;
+      if (typeof cb !== "function") cb = nop;
+      if (state.ended) writeAfterEnd(this, cb);
+      else if (isBuf || validChunk(this, state, chunk, cb)) {
+        state.pendingcb++;
+        ret = writeOrBuffer(this, state, isBuf, chunk, encoding, cb);
+      }
+      return ret;
+    };
+    Writable.prototype.cork = function() {
+      var state = this._writableState;
+      state.corked++;
+    };
+    Writable.prototype.uncork = function() {
+      var state = this._writableState;
+      if (state.corked) {
+        state.corked--;
+        if (!state.writing && !state.corked && !state.bufferProcessing && state.bufferedRequest) clearBuffer(this, state);
+      }
+    };
+    Writable.prototype.setDefaultEncoding = function setDefaultEncoding(encoding) {
+      if (typeof encoding === "string") encoding = encoding.toLowerCase();
+      if (!(["hex", "utf8", "utf-8", "ascii", "binary", "base64", "ucs2", "ucs-2", "utf16le", "utf-16le", "raw"].indexOf((encoding + "").toLowerCase()) > -1)) throw new TypeError("Unknown encoding: " + encoding);
+      this._writableState.defaultEncoding = encoding;
+      return this;
+    };
+    function decodeChunk(state, chunk, encoding) {
+      if (!state.objectMode && state.decodeStrings !== false && typeof chunk === "string") {
+        chunk = Buffer3.from(chunk, encoding);
+      }
+      return chunk;
+    }
+    Object.defineProperty(Writable.prototype, "writableHighWaterMark", {
+      // making it explicit this property is not enumerable
+      // because otherwise some prototype manipulation in
+      // userland will fail
+      enumerable: false,
+      get: function() {
+        return this._writableState.highWaterMark;
+      }
+    });
+    function writeOrBuffer(stream, state, isBuf, chunk, encoding, cb) {
+      if (!isBuf) {
+        var newChunk = decodeChunk(state, chunk, encoding);
+        if (chunk !== newChunk) {
+          isBuf = true;
+          encoding = "buffer";
+          chunk = newChunk;
+        }
+      }
+      var len = state.objectMode ? 1 : chunk.length;
+      state.length += len;
+      var ret = state.length < state.highWaterMark;
+      if (!ret) state.needDrain = true;
+      if (state.writing || state.corked) {
+        var last = state.lastBufferedRequest;
+        state.lastBufferedRequest = {
+          chunk,
+          encoding,
+          isBuf,
+          callback: cb,
+          next: null
+        };
+        if (last) {
+          last.next = state.lastBufferedRequest;
+        } else {
+          state.bufferedRequest = state.lastBufferedRequest;
+        }
+        state.bufferedRequestCount += 1;
+      } else {
+        doWrite(stream, state, false, len, chunk, encoding, cb);
+      }
+      return ret;
+    }
+    function doWrite(stream, state, writev, len, chunk, encoding, cb) {
+      state.writelen = len;
+      state.writecb = cb;
+      state.writing = true;
+      state.sync = true;
+      if (writev) stream._writev(chunk, state.onwrite);
+      else stream._write(chunk, encoding, state.onwrite);
+      state.sync = false;
+    }
+    function onwriteError(stream, state, sync, er2, cb) {
+      --state.pendingcb;
+      if (sync) {
+        pna.nextTick(cb, er2);
+        pna.nextTick(finishMaybe, stream, state);
+        stream._writableState.errorEmitted = true;
+        stream.emit("error", er2);
+      } else {
+        cb(er2);
+        stream._writableState.errorEmitted = true;
+        stream.emit("error", er2);
+        finishMaybe(stream, state);
+      }
+    }
+    function onwriteStateUpdate(state) {
+      state.writing = false;
+      state.writecb = null;
+      state.length -= state.writelen;
+      state.writelen = 0;
+    }
+    function onwrite(stream, er2) {
+      var state = stream._writableState;
+      var sync = state.sync;
+      var cb = state.writecb;
+      onwriteStateUpdate(state);
+      if (er2) onwriteError(stream, state, sync, er2, cb);
+      else {
+        var finished = needFinish(state);
+        if (!finished && !state.corked && !state.bufferProcessing && state.bufferedRequest) {
+          clearBuffer(stream, state);
+        }
+        if (sync) {
+          asyncWrite(afterWrite, stream, state, finished, cb);
+        } else {
+          afterWrite(stream, state, finished, cb);
+        }
+      }
+    }
+    function afterWrite(stream, state, finished, cb) {
+      if (!finished) onwriteDrain(stream, state);
+      state.pendingcb--;
+      cb();
+      finishMaybe(stream, state);
+    }
+    function onwriteDrain(stream, state) {
+      if (state.length === 0 && state.needDrain) {
+        state.needDrain = false;
+        stream.emit("drain");
+      }
+    }
+    function clearBuffer(stream, state) {
+      state.bufferProcessing = true;
+      var entry = state.bufferedRequest;
+      if (stream._writev && entry && entry.next) {
+        var l = state.bufferedRequestCount;
+        var buffer = new Array(l);
+        var holder = state.corkedRequestsFree;
+        holder.entry = entry;
+        var count = 0;
+        var allBuffers = true;
+        while (entry) {
+          buffer[count] = entry;
+          if (!entry.isBuf) allBuffers = false;
+          entry = entry.next;
+          count += 1;
+        }
+        buffer.allBuffers = allBuffers;
+        doWrite(stream, state, true, state.length, buffer, "", holder.finish);
+        state.pendingcb++;
+        state.lastBufferedRequest = null;
+        if (holder.next) {
+          state.corkedRequestsFree = holder.next;
+          holder.next = null;
+        } else {
+          state.corkedRequestsFree = new CorkedRequest(state);
+        }
+        state.bufferedRequestCount = 0;
+      } else {
+        while (entry) {
+          var chunk = entry.chunk;
+          var encoding = entry.encoding;
+          var cb = entry.callback;
+          var len = state.objectMode ? 1 : chunk.length;
+          doWrite(stream, state, false, len, chunk, encoding, cb);
+          entry = entry.next;
+          state.bufferedRequestCount--;
+          if (state.writing) {
+            break;
+          }
+        }
+        if (entry === null) state.lastBufferedRequest = null;
+      }
+      state.bufferedRequest = entry;
+      state.bufferProcessing = false;
+    }
+    Writable.prototype._write = function(chunk, encoding, cb) {
+      cb(new Error("_write() is not implemented"));
+    };
+    Writable.prototype._writev = null;
+    Writable.prototype.end = function(chunk, encoding, cb) {
+      var state = this._writableState;
+      if (typeof chunk === "function") {
+        cb = chunk;
+        chunk = null;
+        encoding = null;
+      } else if (typeof encoding === "function") {
+        cb = encoding;
+        encoding = null;
+      }
+      if (chunk !== null && chunk !== void 0) this.write(chunk, encoding);
+      if (state.corked) {
+        state.corked = 1;
+        this.uncork();
+      }
+      if (!state.ending) endWritable(this, state, cb);
+    };
+    function needFinish(state) {
+      return state.ending && state.length === 0 && state.bufferedRequest === null && !state.finished && !state.writing;
+    }
+    function callFinal(stream, state) {
+      stream._final(function(err) {
+        state.pendingcb--;
+        if (err) {
+          stream.emit("error", err);
+        }
+        state.prefinished = true;
+        stream.emit("prefinish");
+        finishMaybe(stream, state);
+      });
+    }
+    function prefinish(stream, state) {
+      if (!state.prefinished && !state.finalCalled) {
+        if (typeof stream._final === "function") {
+          state.pendingcb++;
+          state.finalCalled = true;
+          pna.nextTick(callFinal, stream, state);
+        } else {
+          state.prefinished = true;
+          stream.emit("prefinish");
+        }
+      }
+    }
+    function finishMaybe(stream, state) {
+      var need = needFinish(state);
+      if (need) {
+        prefinish(stream, state);
+        if (state.pendingcb === 0) {
+          state.finished = true;
+          stream.emit("finish");
+        }
+      }
+      return need;
+    }
+    function endWritable(stream, state, cb) {
+      state.ending = true;
+      finishMaybe(stream, state);
+      if (cb) {
+        if (state.finished) pna.nextTick(cb);
+        else stream.once("finish", cb);
+      }
+      state.ended = true;
+      stream.writable = false;
+    }
+    function onCorkedFinish(corkReq, state, err) {
+      var entry = corkReq.entry;
+      corkReq.entry = null;
+      while (entry) {
+        var cb = entry.callback;
+        state.pendingcb--;
+        cb(err);
+        entry = entry.next;
+      }
+      state.corkedRequestsFree.next = corkReq;
+    }
+    Object.defineProperty(Writable.prototype, "destroyed", {
+      get: function() {
+        if (this._writableState === void 0) {
+          return false;
+        }
+        return this._writableState.destroyed;
+      },
+      set: function(value) {
+        if (!this._writableState) {
+          return;
+        }
+        this._writableState.destroyed = value;
+      }
+    });
+    Writable.prototype.destroy = destroyImpl.destroy;
+    Writable.prototype._undestroy = destroyImpl.undestroy;
+    Writable.prototype._destroy = function(err, cb) {
+      this.end();
+      cb(err);
+    };
+  }
+});
+
+// node_modules/readable-stream/lib/_stream_duplex.js
+var require_stream_duplex = __commonJS({
+  "node_modules/readable-stream/lib/_stream_duplex.js"(exports2, module2) {
+    "use strict";
+    var pna = require_process_nextick_args();
+    var objectKeys = Object.keys || function(obj) {
+      var keys2 = [];
+      for (var key in obj) {
+        keys2.push(key);
+      }
+      return keys2;
+    };
+    module2.exports = Duplex;
+    var util2 = Object.create(require_util());
+    util2.inherits = require_inherits();
+    var Readable = require_stream_readable();
+    var Writable = require_stream_writable();
+    util2.inherits(Duplex, Readable);
+    {
+      keys = objectKeys(Writable.prototype);
+      for (v = 0; v < keys.length; v++) {
+        method = keys[v];
+        if (!Duplex.prototype[method]) Duplex.prototype[method] = Writable.prototype[method];
+      }
+    }
+    var keys;
+    var method;
+    var v;
+    function Duplex(options) {
+      if (!(this instanceof Duplex)) return new Duplex(options);
+      Readable.call(this, options);
+      Writable.call(this, options);
+      if (options && options.readable === false) this.readable = false;
+      if (options && options.writable === false) this.writable = false;
+      this.allowHalfOpen = true;
+      if (options && options.allowHalfOpen === false) this.allowHalfOpen = false;
+      this.once("end", onend);
+    }
+    Object.defineProperty(Duplex.prototype, "writableHighWaterMark", {
+      // making it explicit this property is not enumerable
+      // because otherwise some prototype manipulation in
+      // userland will fail
+      enumerable: false,
+      get: function() {
+        return this._writableState.highWaterMark;
+      }
+    });
+    function onend() {
+      if (this.allowHalfOpen || this._writableState.ended) return;
+      pna.nextTick(onEndNT, this);
+    }
+    function onEndNT(self2) {
+      self2.end();
+    }
+    Object.defineProperty(Duplex.prototype, "destroyed", {
+      get: function() {
+        if (this._readableState === void 0 || this._writableState === void 0) {
+          return false;
+        }
+        return this._readableState.destroyed && this._writableState.destroyed;
+      },
+      set: function(value) {
+        if (this._readableState === void 0 || this._writableState === void 0) {
+          return;
+        }
+        this._readableState.destroyed = value;
+        this._writableState.destroyed = value;
+      }
+    });
+    Duplex.prototype._destroy = function(err, cb) {
+      this.push(null);
+      this.end();
+      pna.nextTick(cb, err);
+    };
+  }
+});
+
+// node_modules/string_decoder/node_modules/safe-buffer/index.js
+var require_safe_buffer3 = __commonJS({
+  "node_modules/string_decoder/node_modules/safe-buffer/index.js"(exports2, module2) {
+    var buffer = require("buffer");
+    var Buffer3 = buffer.Buffer;
+    function copyProps(src, dst) {
+      for (var key in src) {
+        dst[key] = src[key];
+      }
+    }
+    if (Buffer3.from && Buffer3.alloc && Buffer3.allocUnsafe && Buffer3.allocUnsafeSlow) {
+      module2.exports = buffer;
+    } else {
+      copyProps(buffer, exports2);
+      exports2.Buffer = SafeBuffer;
+    }
+    function SafeBuffer(arg, encodingOrOffset, length) {
+      return Buffer3(arg, encodingOrOffset, length);
+    }
+    copyProps(Buffer3, SafeBuffer);
+    SafeBuffer.from = function(arg, encodingOrOffset, length) {
+      if (typeof arg === "number") {
+        throw new TypeError("Argument must not be a number");
+      }
+      return Buffer3(arg, encodingOrOffset, length);
+    };
+    SafeBuffer.alloc = function(size, fill, encoding) {
+      if (typeof size !== "number") {
+        throw new TypeError("Argument must be a number");
+      }
+      var buf = Buffer3(size);
+      if (fill !== void 0) {
+        if (typeof encoding === "string") {
+          buf.fill(fill, encoding);
+        } else {
+          buf.fill(fill);
+        }
+      } else {
+        buf.fill(0);
+      }
+      return buf;
+    };
+    SafeBuffer.allocUnsafe = function(size) {
+      if (typeof size !== "number") {
+        throw new TypeError("Argument must be a number");
+      }
+      return Buffer3(size);
+    };
+    SafeBuffer.allocUnsafeSlow = function(size) {
+      if (typeof size !== "number") {
+        throw new TypeError("Argument must be a number");
+      }
+      return buffer.SlowBuffer(size);
+    };
+  }
+});
+
+// node_modules/string_decoder/lib/string_decoder.js
+var require_string_decoder = __commonJS({
+  "node_modules/string_decoder/lib/string_decoder.js"(exports2) {
+    "use strict";
+    var Buffer3 = require_safe_buffer3().Buffer;
+    var isEncoding = Buffer3.isEncoding || function(encoding) {
+      encoding = "" + encoding;
+      switch (encoding && encoding.toLowerCase()) {
+        case "hex":
+        case "utf8":
+        case "utf-8":
+        case "ascii":
+        case "binary":
+        case "base64":
+        case "ucs2":
+        case "ucs-2":
+        case "utf16le":
+        case "utf-16le":
+        case "raw":
+          return true;
+        default:
+          return false;
+      }
+    };
+    function _normalizeEncoding(enc) {
+      if (!enc) return "utf8";
+      var retried;
+      while (true) {
+        switch (enc) {
+          case "utf8":
+          case "utf-8":
+            return "utf8";
+          case "ucs2":
+          case "ucs-2":
+          case "utf16le":
+          case "utf-16le":
+            return "utf16le";
+          case "latin1":
+          case "binary":
+            return "latin1";
+          case "base64":
+          case "ascii":
+          case "hex":
+            return enc;
+          default:
+            if (retried) return;
+            enc = ("" + enc).toLowerCase();
+            retried = true;
+        }
+      }
+    }
+    function normalizeEncoding(enc) {
+      var nenc = _normalizeEncoding(enc);
+      if (typeof nenc !== "string" && (Buffer3.isEncoding === isEncoding || !isEncoding(enc))) throw new Error("Unknown encoding: " + enc);
+      return nenc || enc;
+    }
+    exports2.StringDecoder = StringDecoder;
+    function StringDecoder(encoding) {
+      this.encoding = normalizeEncoding(encoding);
+      var nb;
+      switch (this.encoding) {
+        case "utf16le":
+          this.text = utf16Text;
+          this.end = utf16End;
+          nb = 4;
+          break;
+        case "utf8":
+          this.fillLast = utf8FillLast;
+          nb = 4;
+          break;
+        case "base64":
+          this.text = base64Text;
+          this.end = base64End;
+          nb = 3;
+          break;
+        default:
+          this.write = simpleWrite;
+          this.end = simpleEnd;
+          return;
+      }
+      this.lastNeed = 0;
+      this.lastTotal = 0;
+      this.lastChar = Buffer3.allocUnsafe(nb);
+    }
+    StringDecoder.prototype.write = function(buf) {
+      if (buf.length === 0) return "";
+      var r;
+      var i;
+      if (this.lastNeed) {
+        r = this.fillLast(buf);
+        if (r === void 0) return "";
+        i = this.lastNeed;
+        this.lastNeed = 0;
+      } else {
+        i = 0;
+      }
+      if (i < buf.length) return r ? r + this.text(buf, i) : this.text(buf, i);
+      return r || "";
+    };
+    StringDecoder.prototype.end = utf8End;
+    StringDecoder.prototype.text = utf8Text;
+    StringDecoder.prototype.fillLast = function(buf) {
+      if (this.lastNeed <= buf.length) {
+        buf.copy(this.lastChar, this.lastTotal - this.lastNeed, 0, this.lastNeed);
+        return this.lastChar.toString(this.encoding, 0, this.lastTotal);
+      }
+      buf.copy(this.lastChar, this.lastTotal - this.lastNeed, 0, buf.length);
+      this.lastNeed -= buf.length;
+    };
+    function utf8CheckByte(byte) {
+      if (byte <= 127) return 0;
+      else if (byte >> 5 === 6) return 2;
+      else if (byte >> 4 === 14) return 3;
+      else if (byte >> 3 === 30) return 4;
+      return byte >> 6 === 2 ? -1 : -2;
+    }
+    function utf8CheckIncomplete(self2, buf, i) {
+      var j2 = buf.length - 1;
+      if (j2 < i) return 0;
+      var nb = utf8CheckByte(buf[j2]);
+      if (nb >= 0) {
+        if (nb > 0) self2.lastNeed = nb - 1;
+        return nb;
+      }
+      if (--j2 < i || nb === -2) return 0;
+      nb = utf8CheckByte(buf[j2]);
+      if (nb >= 0) {
+        if (nb > 0) self2.lastNeed = nb - 2;
+        return nb;
+      }
+      if (--j2 < i || nb === -2) return 0;
+      nb = utf8CheckByte(buf[j2]);
+      if (nb >= 0) {
+        if (nb > 0) {
+          if (nb === 2) nb = 0;
+          else self2.lastNeed = nb - 3;
+        }
+        return nb;
+      }
+      return 0;
+    }
+    function utf8CheckExtraBytes(self2, buf, p) {
+      if ((buf[0] & 192) !== 128) {
+        self2.lastNeed = 0;
+        return "\uFFFD";
+      }
+      if (self2.lastNeed > 1 && buf.length > 1) {
+        if ((buf[1] & 192) !== 128) {
+          self2.lastNeed = 1;
+          return "\uFFFD";
+        }
+        if (self2.lastNeed > 2 && buf.length > 2) {
+          if ((buf[2] & 192) !== 128) {
+            self2.lastNeed = 2;
+            return "\uFFFD";
+          }
+        }
+      }
+    }
+    function utf8FillLast(buf) {
+      var p = this.lastTotal - this.lastNeed;
+      var r = utf8CheckExtraBytes(this, buf, p);
+      if (r !== void 0) return r;
+      if (this.lastNeed <= buf.length) {
+        buf.copy(this.lastChar, p, 0, this.lastNeed);
+        return this.lastChar.toString(this.encoding, 0, this.lastTotal);
+      }
+      buf.copy(this.lastChar, p, 0, buf.length);
+      this.lastNeed -= buf.length;
+    }
+    function utf8Text(buf, i) {
+      var total = utf8CheckIncomplete(this, buf, i);
+      if (!this.lastNeed) return buf.toString("utf8", i);
+      this.lastTotal = total;
+      var end = buf.length - (total - this.lastNeed);
+      buf.copy(this.lastChar, 0, end);
+      return buf.toString("utf8", i, end);
+    }
+    function utf8End(buf) {
+      var r = buf && buf.length ? this.write(buf) : "";
+      if (this.lastNeed) return r + "\uFFFD";
+      return r;
+    }
+    function utf16Text(buf, i) {
+      if ((buf.length - i) % 2 === 0) {
+        var r = buf.toString("utf16le", i);
+        if (r) {
+          var c = r.charCodeAt(r.length - 1);
+          if (c >= 55296 && c <= 56319) {
+            this.lastNeed = 2;
+            this.lastTotal = 4;
+            this.lastChar[0] = buf[buf.length - 2];
+            this.lastChar[1] = buf[buf.length - 1];
+            return r.slice(0, -1);
+          }
+        }
+        return r;
+      }
+      this.lastNeed = 1;
+      this.lastTotal = 2;
+      this.lastChar[0] = buf[buf.length - 1];
+      return buf.toString("utf16le", i, buf.length - 1);
+    }
+    function utf16End(buf) {
+      var r = buf && buf.length ? this.write(buf) : "";
+      if (this.lastNeed) {
+        var end = this.lastTotal - this.lastNeed;
+        return r + this.lastChar.toString("utf16le", 0, end);
+      }
+      return r;
+    }
+    function base64Text(buf, i) {
+      var n = (buf.length - i) % 3;
+      if (n === 0) return buf.toString("base64", i);
+      this.lastNeed = 3 - n;
+      this.lastTotal = 3;
+      if (n === 1) {
+        this.lastChar[0] = buf[buf.length - 1];
+      } else {
+        this.lastChar[0] = buf[buf.length - 2];
+        this.lastChar[1] = buf[buf.length - 1];
+      }
+      return buf.toString("base64", i, buf.length - n);
+    }
+    function base64End(buf) {
+      var r = buf && buf.length ? this.write(buf) : "";
+      if (this.lastNeed) return r + this.lastChar.toString("base64", 0, 3 - this.lastNeed);
+      return r;
+    }
+    function simpleWrite(buf) {
+      return buf.toString(this.encoding);
+    }
+    function simpleEnd(buf) {
+      return buf && buf.length ? this.write(buf) : "";
+    }
+  }
+});
+
+// node_modules/readable-stream/lib/_stream_readable.js
+var require_stream_readable = __commonJS({
+  "node_modules/readable-stream/lib/_stream_readable.js"(exports2, module2) {
+    "use strict";
+    var pna = require_process_nextick_args();
+    module2.exports = Readable;
+    var isArray = require_isarray();
+    var Duplex;
+    Readable.ReadableState = ReadableState;
+    var EE = require("events").EventEmitter;
+    var EElistenerCount = function(emitter, type) {
+      return emitter.listeners(type).length;
+    };
+    var Stream = require_stream();
+    var Buffer3 = require_safe_buffer2().Buffer;
+    var OurUint8Array = (typeof global !== "undefined" ? global : typeof window !== "undefined" ? window : typeof self !== "undefined" ? self : {}).Uint8Array || function() {
+    };
+    function _uint8ArrayToBuffer(chunk) {
+      return Buffer3.from(chunk);
+    }
+    function _isUint8Array(obj) {
+      return Buffer3.isBuffer(obj) || obj instanceof OurUint8Array;
+    }
+    var util2 = Object.create(require_util());
+    util2.inherits = require_inherits();
+    var debugUtil = require("util");
+    var debug = void 0;
+    if (debugUtil && debugUtil.debuglog) {
+      debug = debugUtil.debuglog("stream");
+    } else {
+      debug = function() {
+      };
+    }
+    var BufferList = require_BufferList();
+    var destroyImpl = require_destroy2();
+    var StringDecoder;
+    util2.inherits(Readable, Stream);
+    var kProxyEvents = ["error", "close", "destroy", "pause", "resume"];
+    function prependListener(emitter, event, fn2) {
+      if (typeof emitter.prependListener === "function") return emitter.prependListener(event, fn2);
+      if (!emitter._events || !emitter._events[event]) emitter.on(event, fn2);
+      else if (isArray(emitter._events[event])) emitter._events[event].unshift(fn2);
+      else emitter._events[event] = [fn2, emitter._events[event]];
+    }
+    function ReadableState(options, stream) {
+      Duplex = Duplex || require_stream_duplex();
+      options = options || {};
+      var isDuplex = stream instanceof Duplex;
+      this.objectMode = !!options.objectMode;
+      if (isDuplex) this.objectMode = this.objectMode || !!options.readableObjectMode;
+      var hwm = options.highWaterMark;
+      var readableHwm = options.readableHighWaterMark;
+      var defaultHwm = this.objectMode ? 16 : 16 * 1024;
+      if (hwm || hwm === 0) this.highWaterMark = hwm;
+      else if (isDuplex && (readableHwm || readableHwm === 0)) this.highWaterMark = readableHwm;
+      else this.highWaterMark = defaultHwm;
+      this.highWaterMark = Math.floor(this.highWaterMark);
+      this.buffer = new BufferList();
+      this.length = 0;
+      this.pipes = null;
+      this.pipesCount = 0;
+      this.flowing = null;
+      this.ended = false;
+      this.endEmitted = false;
+      this.reading = false;
+      this.sync = true;
+      this.needReadable = false;
+      this.emittedReadable = false;
+      this.readableListening = false;
+      this.resumeScheduled = false;
+      this.destroyed = false;
+      this.defaultEncoding = options.defaultEncoding || "utf8";
+      this.awaitDrain = 0;
+      this.readingMore = false;
+      this.decoder = null;
+      this.encoding = null;
+      if (options.encoding) {
+        if (!StringDecoder) StringDecoder = require_string_decoder().StringDecoder;
+        this.decoder = new StringDecoder(options.encoding);
+        this.encoding = options.encoding;
+      }
+    }
+    function Readable(options) {
+      Duplex = Duplex || require_stream_duplex();
+      if (!(this instanceof Readable)) return new Readable(options);
+      this._readableState = new ReadableState(options, this);
+      this.readable = true;
+      if (options) {
+        if (typeof options.read === "function") this._read = options.read;
+        if (typeof options.destroy === "function") this._destroy = options.destroy;
+      }
+      Stream.call(this);
+    }
+    Object.defineProperty(Readable.prototype, "destroyed", {
+      get: function() {
+        if (this._readableState === void 0) {
+          return false;
+        }
+        return this._readableState.destroyed;
+      },
+      set: function(value) {
+        if (!this._readableState) {
+          return;
+        }
+        this._readableState.destroyed = value;
+      }
+    });
+    Readable.prototype.destroy = destroyImpl.destroy;
+    Readable.prototype._undestroy = destroyImpl.undestroy;
+    Readable.prototype._destroy = function(err, cb) {
+      this.push(null);
+      cb(err);
+    };
+    Readable.prototype.push = function(chunk, encoding) {
+      var state = this._readableState;
+      var skipChunkCheck;
+      if (!state.objectMode) {
+        if (typeof chunk === "string") {
+          encoding = encoding || state.defaultEncoding;
+          if (encoding !== state.encoding) {
+            chunk = Buffer3.from(chunk, encoding);
+            encoding = "";
+          }
+          skipChunkCheck = true;
+        }
+      } else {
+        skipChunkCheck = true;
+      }
+      return readableAddChunk(this, chunk, encoding, false, skipChunkCheck);
+    };
+    Readable.prototype.unshift = function(chunk) {
+      return readableAddChunk(this, chunk, null, true, false);
+    };
+    function readableAddChunk(stream, chunk, encoding, addToFront, skipChunkCheck) {
+      var state = stream._readableState;
+      if (chunk === null) {
+        state.reading = false;
+        onEofChunk(stream, state);
+      } else {
+        var er2;
+        if (!skipChunkCheck) er2 = chunkInvalid(state, chunk);
+        if (er2) {
+          stream.emit("error", er2);
+        } else if (state.objectMode || chunk && chunk.length > 0) {
+          if (typeof chunk !== "string" && !state.objectMode && Object.getPrototypeOf(chunk) !== Buffer3.prototype) {
+            chunk = _uint8ArrayToBuffer(chunk);
+          }
+          if (addToFront) {
+            if (state.endEmitted) stream.emit("error", new Error("stream.unshift() after end event"));
+            else addChunk(stream, state, chunk, true);
+          } else if (state.ended) {
+            stream.emit("error", new Error("stream.push() after EOF"));
+          } else {
+            state.reading = false;
+            if (state.decoder && !encoding) {
+              chunk = state.decoder.write(chunk);
+              if (state.objectMode || chunk.length !== 0) addChunk(stream, state, chunk, false);
+              else maybeReadMore(stream, state);
+            } else {
+              addChunk(stream, state, chunk, false);
+            }
+          }
+        } else if (!addToFront) {
+          state.reading = false;
+        }
+      }
+      return needMoreData(state);
+    }
+    function addChunk(stream, state, chunk, addToFront) {
+      if (state.flowing && state.length === 0 && !state.sync) {
+        stream.emit("data", chunk);
+        stream.read(0);
+      } else {
+        state.length += state.objectMode ? 1 : chunk.length;
+        if (addToFront) state.buffer.unshift(chunk);
+        else state.buffer.push(chunk);
+        if (state.needReadable) emitReadable(stream);
+      }
+      maybeReadMore(stream, state);
+    }
+    function chunkInvalid(state, chunk) {
+      var er2;
+      if (!_isUint8Array(chunk) && typeof chunk !== "string" && chunk !== void 0 && !state.objectMode) {
+        er2 = new TypeError("Invalid non-string/buffer chunk");
+      }
+      return er2;
+    }
+    function needMoreData(state) {
+      return !state.ended && (state.needReadable || state.length < state.highWaterMark || state.length === 0);
+    }
+    Readable.prototype.isPaused = function() {
+      return this._readableState.flowing === false;
+    };
+    Readable.prototype.setEncoding = function(enc) {
+      if (!StringDecoder) StringDecoder = require_string_decoder().StringDecoder;
+      this._readableState.decoder = new StringDecoder(enc);
+      this._readableState.encoding = enc;
+      return this;
+    };
+    var MAX_HWM = 8388608;
+    function computeNewHighWaterMark(n) {
+      if (n >= MAX_HWM) {
+        n = MAX_HWM;
+      } else {
+        n--;
+        n |= n >>> 1;
+        n |= n >>> 2;
+        n |= n >>> 4;
+        n |= n >>> 8;
+        n |= n >>> 16;
+        n++;
+      }
+      return n;
+    }
+    function howMuchToRead(n, state) {
+      if (n <= 0 || state.length === 0 && state.ended) return 0;
+      if (state.objectMode) return 1;
+      if (n !== n) {
+        if (state.flowing && state.length) return state.buffer.head.data.length;
+        else return state.length;
+      }
+      if (n > state.highWaterMark) state.highWaterMark = computeNewHighWaterMark(n);
+      if (n <= state.length) return n;
+      if (!state.ended) {
+        state.needReadable = true;
+        return 0;
+      }
+      return state.length;
+    }
+    Readable.prototype.read = function(n) {
+      debug("read", n);
+      n = parseInt(n, 10);
+      var state = this._readableState;
+      var nOrig = n;
+      if (n !== 0) state.emittedReadable = false;
+      if (n === 0 && state.needReadable && (state.length >= state.highWaterMark || state.ended)) {
+        debug("read: emitReadable", state.length, state.ended);
+        if (state.length === 0 && state.ended) endReadable(this);
+        else emitReadable(this);
+        return null;
+      }
+      n = howMuchToRead(n, state);
+      if (n === 0 && state.ended) {
+        if (state.length === 0) endReadable(this);
+        return null;
+      }
+      var doRead = state.needReadable;
+      debug("need readable", doRead);
+      if (state.length === 0 || state.length - n < state.highWaterMark) {
+        doRead = true;
+        debug("length less than watermark", doRead);
+      }
+      if (state.ended || state.reading) {
+        doRead = false;
+        debug("reading or ended", doRead);
+      } else if (doRead) {
+        debug("do read");
+        state.reading = true;
+        state.sync = true;
+        if (state.length === 0) state.needReadable = true;
+        this._read(state.highWaterMark);
+        state.sync = false;
+        if (!state.reading) n = howMuchToRead(nOrig, state);
+      }
+      var ret;
+      if (n > 0) ret = fromList(n, state);
+      else ret = null;
+      if (ret === null) {
+        state.needReadable = true;
+        n = 0;
+      } else {
+        state.length -= n;
+      }
+      if (state.length === 0) {
+        if (!state.ended) state.needReadable = true;
+        if (nOrig !== n && state.ended) endReadable(this);
+      }
+      if (ret !== null) this.emit("data", ret);
+      return ret;
+    };
+    function onEofChunk(stream, state) {
+      if (state.ended) return;
+      if (state.decoder) {
+        var chunk = state.decoder.end();
+        if (chunk && chunk.length) {
+          state.buffer.push(chunk);
+          state.length += state.objectMode ? 1 : chunk.length;
+        }
+      }
+      state.ended = true;
+      emitReadable(stream);
+    }
+    function emitReadable(stream) {
+      var state = stream._readableState;
+      state.needReadable = false;
+      if (!state.emittedReadable) {
+        debug("emitReadable", state.flowing);
+        state.emittedReadable = true;
+        if (state.sync) pna.nextTick(emitReadable_, stream);
+        else emitReadable_(stream);
+      }
+    }
+    function emitReadable_(stream) {
+      debug("emit readable");
+      stream.emit("readable");
+      flow(stream);
+    }
+    function maybeReadMore(stream, state) {
+      if (!state.readingMore) {
+        state.readingMore = true;
+        pna.nextTick(maybeReadMore_, stream, state);
+      }
+    }
+    function maybeReadMore_(stream, state) {
+      var len = state.length;
+      while (!state.reading && !state.flowing && !state.ended && state.length < state.highWaterMark) {
+        debug("maybeReadMore read 0");
+        stream.read(0);
+        if (len === state.length)
+          break;
+        else len = state.length;
+      }
+      state.readingMore = false;
+    }
+    Readable.prototype._read = function(n) {
+      this.emit("error", new Error("_read() is not implemented"));
+    };
+    Readable.prototype.pipe = function(dest, pipeOpts) {
+      var src = this;
+      var state = this._readableState;
+      switch (state.pipesCount) {
+        case 0:
+          state.pipes = dest;
+          break;
+        case 1:
+          state.pipes = [state.pipes, dest];
+          break;
+        default:
+          state.pipes.push(dest);
+          break;
+      }
+      state.pipesCount += 1;
+      debug("pipe count=%d opts=%j", state.pipesCount, pipeOpts);
+      var doEnd = (!pipeOpts || pipeOpts.end !== false) && dest !== process.stdout && dest !== process.stderr;
+      var endFn = doEnd ? onend : unpipe;
+      if (state.endEmitted) pna.nextTick(endFn);
+      else src.once("end", endFn);
+      dest.on("unpipe", onunpipe);
+      function onunpipe(readable, unpipeInfo) {
+        debug("onunpipe");
+        if (readable === src) {
+          if (unpipeInfo && unpipeInfo.hasUnpiped === false) {
+            unpipeInfo.hasUnpiped = true;
+            cleanup();
+          }
+        }
+      }
+      function onend() {
+        debug("onend");
+        dest.end();
+      }
+      var ondrain = pipeOnDrain(src);
+      dest.on("drain", ondrain);
+      var cleanedUp = false;
+      function cleanup() {
+        debug("cleanup");
+        dest.removeListener("close", onclose);
+        dest.removeListener("finish", onfinish);
+        dest.removeListener("drain", ondrain);
+        dest.removeListener("error", onerror);
+        dest.removeListener("unpipe", onunpipe);
+        src.removeListener("end", onend);
+        src.removeListener("end", unpipe);
+        src.removeListener("data", ondata);
+        cleanedUp = true;
+        if (state.awaitDrain && (!dest._writableState || dest._writableState.needDrain)) ondrain();
+      }
+      var increasedAwaitDrain = false;
+      src.on("data", ondata);
+      function ondata(chunk) {
+        debug("ondata");
+        increasedAwaitDrain = false;
+        var ret = dest.write(chunk);
+        if (false === ret && !increasedAwaitDrain) {
+          if ((state.pipesCount === 1 && state.pipes === dest || state.pipesCount > 1 && indexOf(state.pipes, dest) !== -1) && !cleanedUp) {
+            debug("false write response, pause", state.awaitDrain);
+            state.awaitDrain++;
+            increasedAwaitDrain = true;
+          }
+          src.pause();
+        }
+      }
+      function onerror(er2) {
+        debug("onerror", er2);
+        unpipe();
+        dest.removeListener("error", onerror);
+        if (EElistenerCount(dest, "error") === 0) dest.emit("error", er2);
+      }
+      prependListener(dest, "error", onerror);
+      function onclose() {
+        dest.removeListener("finish", onfinish);
+        unpipe();
+      }
+      dest.once("close", onclose);
+      function onfinish() {
+        debug("onfinish");
+        dest.removeListener("close", onclose);
+        unpipe();
+      }
+      dest.once("finish", onfinish);
+      function unpipe() {
+        debug("unpipe");
+        src.unpipe(dest);
+      }
+      dest.emit("pipe", src);
+      if (!state.flowing) {
+        debug("pipe resume");
+        src.resume();
+      }
+      return dest;
+    };
+    function pipeOnDrain(src) {
+      return function() {
+        var state = src._readableState;
+        debug("pipeOnDrain", state.awaitDrain);
+        if (state.awaitDrain) state.awaitDrain--;
+        if (state.awaitDrain === 0 && EElistenerCount(src, "data")) {
+          state.flowing = true;
+          flow(src);
+        }
+      };
+    }
+    Readable.prototype.unpipe = function(dest) {
+      var state = this._readableState;
+      var unpipeInfo = { hasUnpiped: false };
+      if (state.pipesCount === 0) return this;
+      if (state.pipesCount === 1) {
+        if (dest && dest !== state.pipes) return this;
+        if (!dest) dest = state.pipes;
+        state.pipes = null;
+        state.pipesCount = 0;
+        state.flowing = false;
+        if (dest) dest.emit("unpipe", this, unpipeInfo);
+        return this;
+      }
+      if (!dest) {
+        var dests = state.pipes;
+        var len = state.pipesCount;
+        state.pipes = null;
+        state.pipesCount = 0;
+        state.flowing = false;
+        for (var i = 0; i < len; i++) {
+          dests[i].emit("unpipe", this, { hasUnpiped: false });
+        }
+        return this;
+      }
+      var index = indexOf(state.pipes, dest);
+      if (index === -1) return this;
+      state.pipes.splice(index, 1);
+      state.pipesCount -= 1;
+      if (state.pipesCount === 1) state.pipes = state.pipes[0];
+      dest.emit("unpipe", this, unpipeInfo);
+      return this;
+    };
+    Readable.prototype.on = function(ev, fn2) {
+      var res = Stream.prototype.on.call(this, ev, fn2);
+      if (ev === "data") {
+        if (this._readableState.flowing !== false) this.resume();
+      } else if (ev === "readable") {
+        var state = this._readableState;
+        if (!state.endEmitted && !state.readableListening) {
+          state.readableListening = state.needReadable = true;
+          state.emittedReadable = false;
+          if (!state.reading) {
+            pna.nextTick(nReadingNextTick, this);
+          } else if (state.length) {
+            emitReadable(this);
+          }
+        }
+      }
+      return res;
+    };
+    Readable.prototype.addListener = Readable.prototype.on;
+    function nReadingNextTick(self2) {
+      debug("readable nexttick read 0");
+      self2.read(0);
+    }
+    Readable.prototype.resume = function() {
+      var state = this._readableState;
+      if (!state.flowing) {
+        debug("resume");
+        state.flowing = true;
+        resume(this, state);
+      }
+      return this;
+    };
+    function resume(stream, state) {
+      if (!state.resumeScheduled) {
+        state.resumeScheduled = true;
+        pna.nextTick(resume_, stream, state);
+      }
+    }
+    function resume_(stream, state) {
+      if (!state.reading) {
+        debug("resume read 0");
+        stream.read(0);
+      }
+      state.resumeScheduled = false;
+      state.awaitDrain = 0;
+      stream.emit("resume");
+      flow(stream);
+      if (state.flowing && !state.reading) stream.read(0);
+    }
+    Readable.prototype.pause = function() {
+      debug("call pause flowing=%j", this._readableState.flowing);
+      if (false !== this._readableState.flowing) {
+        debug("pause");
+        this._readableState.flowing = false;
+        this.emit("pause");
+      }
+      return this;
+    };
+    function flow(stream) {
+      var state = stream._readableState;
+      debug("flow", state.flowing);
+      while (state.flowing && stream.read() !== null) {
+      }
+    }
+    Readable.prototype.wrap = function(stream) {
+      var _this = this;
+      var state = this._readableState;
+      var paused = false;
+      stream.on("end", function() {
+        debug("wrapped end");
+        if (state.decoder && !state.ended) {
+          var chunk = state.decoder.end();
+          if (chunk && chunk.length) _this.push(chunk);
+        }
+        _this.push(null);
+      });
+      stream.on("data", function(chunk) {
+        debug("wrapped data");
+        if (state.decoder) chunk = state.decoder.write(chunk);
+        if (state.objectMode && (chunk === null || chunk === void 0)) return;
+        else if (!state.objectMode && (!chunk || !chunk.length)) return;
+        var ret = _this.push(chunk);
+        if (!ret) {
+          paused = true;
+          stream.pause();
+        }
+      });
+      for (var i in stream) {
+        if (this[i] === void 0 && typeof stream[i] === "function") {
+          this[i] = /* @__PURE__ */ function(method) {
+            return function() {
+              return stream[method].apply(stream, arguments);
+            };
+          }(i);
+        }
+      }
+      for (var n = 0; n < kProxyEvents.length; n++) {
+        stream.on(kProxyEvents[n], this.emit.bind(this, kProxyEvents[n]));
+      }
+      this._read = function(n2) {
+        debug("wrapped _read", n2);
+        if (paused) {
+          paused = false;
+          stream.resume();
+        }
+      };
+      return this;
+    };
+    Object.defineProperty(Readable.prototype, "readableHighWaterMark", {
+      // making it explicit this property is not enumerable
+      // because otherwise some prototype manipulation in
+      // userland will fail
+      enumerable: false,
+      get: function() {
+        return this._readableState.highWaterMark;
+      }
+    });
+    Readable._fromList = fromList;
+    function fromList(n, state) {
+      if (state.length === 0) return null;
+      var ret;
+      if (state.objectMode) ret = state.buffer.shift();
+      else if (!n || n >= state.length) {
+        if (state.decoder) ret = state.buffer.join("");
+        else if (state.buffer.length === 1) ret = state.buffer.head.data;
+        else ret = state.buffer.concat(state.length);
+        state.buffer.clear();
+      } else {
+        ret = fromListPartial(n, state.buffer, state.decoder);
+      }
+      return ret;
+    }
+    function fromListPartial(n, list, hasStrings) {
+      var ret;
+      if (n < list.head.data.length) {
+        ret = list.head.data.slice(0, n);
+        list.head.data = list.head.data.slice(n);
+      } else if (n === list.head.data.length) {
+        ret = list.shift();
+      } else {
+        ret = hasStrings ? copyFromBufferString(n, list) : copyFromBuffer(n, list);
+      }
+      return ret;
+    }
+    function copyFromBufferString(n, list) {
+      var p = list.head;
+      var c = 1;
+      var ret = p.data;
+      n -= ret.length;
+      while (p = p.next) {
+        var str = p.data;
+        var nb = n > str.length ? str.length : n;
+        if (nb === str.length) ret += str;
+        else ret += str.slice(0, n);
+        n -= nb;
+        if (n === 0) {
+          if (nb === str.length) {
+            ++c;
+            if (p.next) list.head = p.next;
+            else list.head = list.tail = null;
+          } else {
+            list.head = p;
+            p.data = str.slice(nb);
+          }
+          break;
+        }
+        ++c;
+      }
+      list.length -= c;
+      return ret;
+    }
+    function copyFromBuffer(n, list) {
+      var ret = Buffer3.allocUnsafe(n);
+      var p = list.head;
+      var c = 1;
+      p.data.copy(ret);
+      n -= p.data.length;
+      while (p = p.next) {
+        var buf = p.data;
+        var nb = n > buf.length ? buf.length : n;
+        buf.copy(ret, ret.length - n, 0, nb);
+        n -= nb;
+        if (n === 0) {
+          if (nb === buf.length) {
+            ++c;
+            if (p.next) list.head = p.next;
+            else list.head = list.tail = null;
+          } else {
+            list.head = p;
+            p.data = buf.slice(nb);
+          }
+          break;
+        }
+        ++c;
+      }
+      list.length -= c;
+      return ret;
+    }
+    function endReadable(stream) {
+      var state = stream._readableState;
+      if (state.length > 0) throw new Error('"endReadable()" called on non-empty stream');
+      if (!state.endEmitted) {
+        state.ended = true;
+        pna.nextTick(endReadableNT, state, stream);
+      }
+    }
+    function endReadableNT(state, stream) {
+      if (!state.endEmitted && state.length === 0) {
+        state.endEmitted = true;
+        stream.readable = false;
+        stream.emit("end");
+      }
+    }
+    function indexOf(xs, x2) {
+      for (var i = 0, l = xs.length; i < l; i++) {
+        if (xs[i] === x2) return i;
+      }
+      return -1;
+    }
+  }
+});
+
+// node_modules/readable-stream/lib/_stream_transform.js
+var require_stream_transform = __commonJS({
+  "node_modules/readable-stream/lib/_stream_transform.js"(exports2, module2) {
+    "use strict";
+    module2.exports = Transform;
+    var Duplex = require_stream_duplex();
+    var util2 = Object.create(require_util());
+    util2.inherits = require_inherits();
+    util2.inherits(Transform, Duplex);
+    function afterTransform(er2, data) {
+      var ts = this._transformState;
+      ts.transforming = false;
+      var cb = ts.writecb;
+      if (!cb) {
+        return this.emit("error", new Error("write callback called multiple times"));
+      }
+      ts.writechunk = null;
+      ts.writecb = null;
+      if (data != null)
+        this.push(data);
+      cb(er2);
+      var rs2 = this._readableState;
+      rs2.reading = false;
+      if (rs2.needReadable || rs2.length < rs2.highWaterMark) {
+        this._read(rs2.highWaterMark);
+      }
+    }
+    function Transform(options) {
+      if (!(this instanceof Transform)) return new Transform(options);
+      Duplex.call(this, options);
+      this._transformState = {
+        afterTransform: afterTransform.bind(this),
+        needTransform: false,
+        transforming: false,
+        writecb: null,
+        writechunk: null,
+        writeencoding: null
+      };
+      this._readableState.needReadable = true;
+      this._readableState.sync = false;
+      if (options) {
+        if (typeof options.transform === "function") this._transform = options.transform;
+        if (typeof options.flush === "function") this._flush = options.flush;
+      }
+      this.on("prefinish", prefinish);
+    }
+    function prefinish() {
+      var _this = this;
+      if (typeof this._flush === "function") {
+        this._flush(function(er2, data) {
+          done(_this, er2, data);
+        });
+      } else {
+        done(this, null, null);
+      }
+    }
+    Transform.prototype.push = function(chunk, encoding) {
+      this._transformState.needTransform = false;
+      return Duplex.prototype.push.call(this, chunk, encoding);
+    };
+    Transform.prototype._transform = function(chunk, encoding, cb) {
+      throw new Error("_transform() is not implemented");
+    };
+    Transform.prototype._write = function(chunk, encoding, cb) {
+      var ts = this._transformState;
+      ts.writecb = cb;
+      ts.writechunk = chunk;
+      ts.writeencoding = encoding;
+      if (!ts.transforming) {
+        var rs2 = this._readableState;
+        if (ts.needTransform || rs2.needReadable || rs2.length < rs2.highWaterMark) this._read(rs2.highWaterMark);
+      }
+    };
+    Transform.prototype._read = function(n) {
+      var ts = this._transformState;
+      if (ts.writechunk !== null && ts.writecb && !ts.transforming) {
+        ts.transforming = true;
+        this._transform(ts.writechunk, ts.writeencoding, ts.afterTransform);
+      } else {
+        ts.needTransform = true;
+      }
+    };
+    Transform.prototype._destroy = function(err, cb) {
+      var _this2 = this;
+      Duplex.prototype._destroy.call(this, err, function(err2) {
+        cb(err2);
+        _this2.emit("close");
+      });
+    };
+    function done(stream, er2, data) {
+      if (er2) return stream.emit("error", er2);
+      if (data != null)
+        stream.push(data);
+      if (stream._writableState.length) throw new Error("Calling transform done when ws.length != 0");
+      if (stream._transformState.transforming) throw new Error("Calling transform done when still transforming");
+      return stream.push(null);
+    }
+  }
+});
+
+// node_modules/readable-stream/lib/_stream_passthrough.js
+var require_stream_passthrough = __commonJS({
+  "node_modules/readable-stream/lib/_stream_passthrough.js"(exports2, module2) {
+    "use strict";
+    module2.exports = PassThrough;
+    var Transform = require_stream_transform();
+    var util2 = Object.create(require_util());
+    util2.inherits = require_inherits();
+    util2.inherits(PassThrough, Transform);
+    function PassThrough(options) {
+      if (!(this instanceof PassThrough)) return new PassThrough(options);
+      Transform.call(this, options);
+    }
+    PassThrough.prototype._transform = function(chunk, encoding, cb) {
+      cb(null, chunk);
+    };
+  }
+});
+
+// node_modules/readable-stream/readable.js
+var require_readable = __commonJS({
+  "node_modules/readable-stream/readable.js"(exports2, module2) {
+    var Stream = require("stream");
+    if (process.env.READABLE_STREAM === "disable" && Stream) {
+      module2.exports = Stream;
+      exports2 = module2.exports = Stream.Readable;
+      exports2.Readable = Stream.Readable;
+      exports2.Writable = Stream.Writable;
+      exports2.Duplex = Stream.Duplex;
+      exports2.Transform = Stream.Transform;
+      exports2.PassThrough = Stream.PassThrough;
+      exports2.Stream = Stream;
+    } else {
+      exports2 = module2.exports = require_stream_readable();
+      exports2.Stream = Stream || exports2;
+      exports2.Readable = exports2;
+      exports2.Writable = require_stream_writable();
+      exports2.Duplex = require_stream_duplex();
+      exports2.Transform = require_stream_transform();
+      exports2.PassThrough = require_stream_passthrough();
+    }
+  }
+});
+
+// node_modules/buffer-from/index.js
+var require_buffer_from = __commonJS({
+  "node_modules/buffer-from/index.js"(exports2, module2) {
+    var toString2 = Object.prototype.toString;
+    var isModern = typeof Buffer !== "undefined" && typeof Buffer.alloc === "function" && typeof Buffer.allocUnsafe === "function" && typeof Buffer.from === "function";
+    function isArrayBuffer(input) {
+      return toString2.call(input).slice(8, -1) === "ArrayBuffer";
+    }
+    function fromArrayBuffer(obj, byteOffset, length) {
+      byteOffset >>>= 0;
+      var maxLength = obj.byteLength - byteOffset;
+      if (maxLength < 0) {
+        throw new RangeError("'offset' is out of bounds");
+      }
+      if (length === void 0) {
+        length = maxLength;
+      } else {
+        length >>>= 0;
+        if (length > maxLength) {
+          throw new RangeError("'length' is out of bounds");
+        }
+      }
+      return isModern ? Buffer.from(obj.slice(byteOffset, byteOffset + length)) : new Buffer(new Uint8Array(obj.slice(byteOffset, byteOffset + length)));
+    }
+    function fromString(string, encoding) {
+      if (typeof encoding !== "string" || encoding === "") {
+        encoding = "utf8";
+      }
+      if (!Buffer.isEncoding(encoding)) {
+        throw new TypeError('"encoding" must be a valid string encoding');
+      }
+      return isModern ? Buffer.from(string, encoding) : new Buffer(string, encoding);
+    }
+    function bufferFrom(value, encodingOrOffset, length) {
+      if (typeof value === "number") {
+        throw new TypeError('"value" argument must not be a number');
+      }
+      if (isArrayBuffer(value)) {
+        return fromArrayBuffer(value, encodingOrOffset, length);
+      }
+      if (typeof value === "string") {
+        return fromString(value, encodingOrOffset);
+      }
+      return isModern ? Buffer.from(value) : new Buffer(value);
+    }
+    module2.exports = bufferFrom;
+  }
+});
+
+// node_modules/typedarray/index.js
+var require_typedarray = __commonJS({
+  "node_modules/typedarray/index.js"(exports2) {
+    var undefined2 = void 0;
+    var MAX_ARRAY_LENGTH = 1e5;
+    var ECMAScript = /* @__PURE__ */ function() {
+      var opts = Object.prototype.toString, ophop = Object.prototype.hasOwnProperty;
+      return {
+        // Class returns internal [[Class]] property, used to avoid cross-frame instanceof issues:
+        Class: function(v) {
+          return opts.call(v).replace(/^\[object *|\]$/g, "");
+        },
+        HasProperty: function(o, p) {
+          return p in o;
+        },
+        HasOwnProperty: function(o, p) {
+          return ophop.call(o, p);
+        },
+        IsCallable: function(o) {
+          return typeof o === "function";
+        },
+        ToInt32: function(v) {
+          return v >> 0;
+        },
+        ToUint32: function(v) {
+          return v >>> 0;
+        }
+      };
+    }();
+    var LN2 = Math.LN2;
+    var abs = Math.abs;
+    var floor = Math.floor;
+    var log = Math.log;
+    var min = Math.min;
+    var pow = Math.pow;
+    var round = Math.round;
+    function configureProperties(obj) {
+      if (getOwnPropNames && defineProp) {
+        var props = getOwnPropNames(obj), i;
+        for (i = 0; i < props.length; i += 1) {
+          defineProp(obj, props[i], {
+            value: obj[props[i]],
+            writable: false,
+            enumerable: false,
+            configurable: false
+          });
+        }
+      }
+    }
+    var defineProp;
+    if (Object.defineProperty && function() {
+      try {
+        Object.defineProperty({}, "x", {});
+        return true;
+      } catch (e) {
+        return false;
+      }
+    }()) {
+      defineProp = Object.defineProperty;
+    } else {
+      defineProp = function(o, p, desc) {
+        if (!o === Object(o)) throw new TypeError("Object.defineProperty called on non-object");
+        if (ECMAScript.HasProperty(desc, "get") && Object.prototype.__defineGetter__) {
+          Object.prototype.__defineGetter__.call(o, p, desc.get);
+        }
+        if (ECMAScript.HasProperty(desc, "set") && Object.prototype.__defineSetter__) {
+          Object.prototype.__defineSetter__.call(o, p, desc.set);
+        }
+        if (ECMAScript.HasProperty(desc, "value")) {
+          o[p] = desc.value;
+        }
+        return o;
+      };
+    }
+    var getOwnPropNames = Object.getOwnPropertyNames || function(o) {
+      if (o !== Object(o)) throw new TypeError("Object.getOwnPropertyNames called on non-object");
+      var props = [], p;
+      for (p in o) {
+        if (ECMAScript.HasOwnProperty(o, p)) {
+          props.push(p);
+        }
+      }
+      return props;
+    };
+    function makeArrayAccessors(obj) {
+      if (!defineProp) {
+        return;
+      }
+      if (obj.length > MAX_ARRAY_LENGTH) throw new RangeError("Array too large for polyfill");
+      function makeArrayAccessor(index) {
+        defineProp(obj, index, {
+          "get": function() {
+            return obj._getter(index);
+          },
+          "set": function(v) {
+            obj._setter(index, v);
+          },
+          enumerable: true,
+          configurable: false
+        });
+      }
+      var i;
+      for (i = 0; i < obj.length; i += 1) {
+        makeArrayAccessor(i);
+      }
+    }
+    function as_signed(value, bits) {
+      var s = 32 - bits;
+      return value << s >> s;
+    }
+    function as_unsigned(value, bits) {
+      var s = 32 - bits;
+      return value << s >>> s;
+    }
+    function packI8(n) {
+      return [n & 255];
+    }
+    function unpackI8(bytes) {
+      return as_signed(bytes[0], 8);
+    }
+    function packU8(n) {
+      return [n & 255];
+    }
+    function unpackU8(bytes) {
+      return as_unsigned(bytes[0], 8);
+    }
+    function packU8Clamped(n) {
+      n = round(Number(n));
+      return [n < 0 ? 0 : n > 255 ? 255 : n & 255];
+    }
+    function packI16(n) {
+      return [n >> 8 & 255, n & 255];
+    }
+    function unpackI16(bytes) {
+      return as_signed(bytes[0] << 8 | bytes[1], 16);
+    }
+    function packU16(n) {
+      return [n >> 8 & 255, n & 255];
+    }
+    function unpackU16(bytes) {
+      return as_unsigned(bytes[0] << 8 | bytes[1], 16);
+    }
+    function packI32(n) {
+      return [n >> 24 & 255, n >> 16 & 255, n >> 8 & 255, n & 255];
+    }
+    function unpackI32(bytes) {
+      return as_signed(bytes[0] << 24 | bytes[1] << 16 | bytes[2] << 8 | bytes[3], 32);
+    }
+    function packU32(n) {
+      return [n >> 24 & 255, n >> 16 & 255, n >> 8 & 255, n & 255];
+    }
+    function unpackU32(bytes) {
+      return as_unsigned(bytes[0] << 24 | bytes[1] << 16 | bytes[2] << 8 | bytes[3], 32);
+    }
+    function packIEEE754(v, ebits, fbits) {
+      var bias = (1 << ebits - 1) - 1, s, e, f2, ln2, i, bits, str, bytes;
+      function roundToEven(n) {
+        var w2 = floor(n), f3 = n - w2;
+        if (f3 < 0.5)
+          return w2;
+        if (f3 > 0.5)
+          return w2 + 1;
+        return w2 % 2 ? w2 + 1 : w2;
+      }
+      if (v !== v) {
+        e = (1 << ebits) - 1;
+        f2 = pow(2, fbits - 1);
+        s = 0;
+      } else if (v === Infinity || v === -Infinity) {
+        e = (1 << ebits) - 1;
+        f2 = 0;
+        s = v < 0 ? 1 : 0;
+      } else if (v === 0) {
+        e = 0;
+        f2 = 0;
+        s = 1 / v === -Infinity ? 1 : 0;
+      } else {
+        s = v < 0;
+        v = abs(v);
+        if (v >= pow(2, 1 - bias)) {
+          e = min(floor(log(v) / LN2), 1023);
+          f2 = roundToEven(v / pow(2, e) * pow(2, fbits));
+          if (f2 / pow(2, fbits) >= 2) {
+            e = e + 1;
+            f2 = 1;
+          }
+          if (e > bias) {
+            e = (1 << ebits) - 1;
+            f2 = 0;
+          } else {
+            e = e + bias;
+            f2 = f2 - pow(2, fbits);
+          }
+        } else {
+          e = 0;
+          f2 = roundToEven(v / pow(2, 1 - bias - fbits));
+        }
+      }
+      bits = [];
+      for (i = fbits; i; i -= 1) {
+        bits.push(f2 % 2 ? 1 : 0);
+        f2 = floor(f2 / 2);
+      }
+      for (i = ebits; i; i -= 1) {
+        bits.push(e % 2 ? 1 : 0);
+        e = floor(e / 2);
+      }
+      bits.push(s ? 1 : 0);
+      bits.reverse();
+      str = bits.join("");
+      bytes = [];
+      while (str.length) {
+        bytes.push(parseInt(str.substring(0, 8), 2));
+        str = str.substring(8);
+      }
+      return bytes;
+    }
+    function unpackIEEE754(bytes, ebits, fbits) {
+      var bits = [], i, j2, b2, str, bias, s, e, f2;
+      for (i = bytes.length; i; i -= 1) {
+        b2 = bytes[i - 1];
+        for (j2 = 8; j2; j2 -= 1) {
+          bits.push(b2 % 2 ? 1 : 0);
+          b2 = b2 >> 1;
+        }
+      }
+      bits.reverse();
+      str = bits.join("");
+      bias = (1 << ebits - 1) - 1;
+      s = parseInt(str.substring(0, 1), 2) ? -1 : 1;
+      e = parseInt(str.substring(1, 1 + ebits), 2);
+      f2 = parseInt(str.substring(1 + ebits), 2);
+      if (e === (1 << ebits) - 1) {
+        return f2 !== 0 ? NaN : s * Infinity;
+      } else if (e > 0) {
+        return s * pow(2, e - bias) * (1 + f2 / pow(2, fbits));
+      } else if (f2 !== 0) {
+        return s * pow(2, -(bias - 1)) * (f2 / pow(2, fbits));
+      } else {
+        return s < 0 ? -0 : 0;
+      }
+    }
+    function unpackF64(b2) {
+      return unpackIEEE754(b2, 11, 52);
+    }
+    function packF64(v) {
+      return packIEEE754(v, 11, 52);
+    }
+    function unpackF32(b2) {
+      return unpackIEEE754(b2, 8, 23);
+    }
+    function packF32(v) {
+      return packIEEE754(v, 8, 23);
+    }
+    (function() {
+      var ArrayBuffer2 = function ArrayBuffer3(length) {
+        length = ECMAScript.ToInt32(length);
+        if (length < 0) throw new RangeError("ArrayBuffer size is not a small enough positive integer");
+        this.byteLength = length;
+        this._bytes = [];
+        this._bytes.length = length;
+        var i;
+        for (i = 0; i < this.byteLength; i += 1) {
+          this._bytes[i] = 0;
+        }
+        configureProperties(this);
+      };
+      exports2.ArrayBuffer = exports2.ArrayBuffer || ArrayBuffer2;
+      var ArrayBufferView = function ArrayBufferView2() {
+      };
+      function makeConstructor(bytesPerElement, pack, unpack) {
+        var ctor;
+        ctor = function(buffer, byteOffset, length) {
+          var array, sequence, i, s;
+          if (!arguments.length || typeof arguments[0] === "number") {
+            this.length = ECMAScript.ToInt32(arguments[0]);
+            if (length < 0) throw new RangeError("ArrayBufferView size is not a small enough positive integer");
+            this.byteLength = this.length * this.BYTES_PER_ELEMENT;
+            this.buffer = new ArrayBuffer2(this.byteLength);
+            this.byteOffset = 0;
+          } else if (typeof arguments[0] === "object" && arguments[0].constructor === ctor) {
+            array = arguments[0];
+            this.length = array.length;
+            this.byteLength = this.length * this.BYTES_PER_ELEMENT;
+            this.buffer = new ArrayBuffer2(this.byteLength);
+            this.byteOffset = 0;
+            for (i = 0; i < this.length; i += 1) {
+              this._setter(i, array._getter(i));
+            }
+          } else if (typeof arguments[0] === "object" && !(arguments[0] instanceof ArrayBuffer2 || ECMAScript.Class(arguments[0]) === "ArrayBuffer")) {
+            sequence = arguments[0];
+            this.length = ECMAScript.ToUint32(sequence.length);
+            this.byteLength = this.length * this.BYTES_PER_ELEMENT;
+            this.buffer = new ArrayBuffer2(this.byteLength);
+            this.byteOffset = 0;
+            for (i = 0; i < this.length; i += 1) {
+              s = sequence[i];
+              this._setter(i, Number(s));
+            }
+          } else if (typeof arguments[0] === "object" && (arguments[0] instanceof ArrayBuffer2 || ECMAScript.Class(arguments[0]) === "ArrayBuffer")) {
+            this.buffer = buffer;
+            this.byteOffset = ECMAScript.ToUint32(byteOffset);
+            if (this.byteOffset > this.buffer.byteLength) {
+              throw new RangeError("byteOffset out of range");
+            }
+            if (this.byteOffset % this.BYTES_PER_ELEMENT) {
+              throw new RangeError("ArrayBuffer length minus the byteOffset is not a multiple of the element size.");
+            }
+            if (arguments.length < 3) {
+              this.byteLength = this.buffer.byteLength - this.byteOffset;
+              if (this.byteLength % this.BYTES_PER_ELEMENT) {
+                throw new RangeError("length of buffer minus byteOffset not a multiple of the element size");
+              }
+              this.length = this.byteLength / this.BYTES_PER_ELEMENT;
+            } else {
+              this.length = ECMAScript.ToUint32(length);
+              this.byteLength = this.length * this.BYTES_PER_ELEMENT;
+            }
+            if (this.byteOffset + this.byteLength > this.buffer.byteLength) {
+              throw new RangeError("byteOffset and length reference an area beyond the end of the buffer");
+            }
+          } else {
+            throw new TypeError("Unexpected argument type(s)");
+          }
+          this.constructor = ctor;
+          configureProperties(this);
+          makeArrayAccessors(this);
+        };
+        ctor.prototype = new ArrayBufferView();
+        ctor.prototype.BYTES_PER_ELEMENT = bytesPerElement;
+        ctor.prototype._pack = pack;
+        ctor.prototype._unpack = unpack;
+        ctor.BYTES_PER_ELEMENT = bytesPerElement;
+        ctor.prototype._getter = function(index) {
+          if (arguments.length < 1) throw new SyntaxError("Not enough arguments");
+          index = ECMAScript.ToUint32(index);
+          if (index >= this.length) {
+            return undefined2;
+          }
+          var bytes = [], i, o;
+          for (i = 0, o = this.byteOffset + index * this.BYTES_PER_ELEMENT; i < this.BYTES_PER_ELEMENT; i += 1, o += 1) {
+            bytes.push(this.buffer._bytes[o]);
+          }
+          return this._unpack(bytes);
+        };
+        ctor.prototype.get = ctor.prototype._getter;
+        ctor.prototype._setter = function(index, value) {
+          if (arguments.length < 2) throw new SyntaxError("Not enough arguments");
+          index = ECMAScript.ToUint32(index);
+          if (index >= this.length) {
+            return undefined2;
+          }
+          var bytes = this._pack(value), i, o;
+          for (i = 0, o = this.byteOffset + index * this.BYTES_PER_ELEMENT; i < this.BYTES_PER_ELEMENT; i += 1, o += 1) {
+            this.buffer._bytes[o] = bytes[i];
+          }
+        };
+        ctor.prototype.set = function(index, value) {
+          if (arguments.length < 1) throw new SyntaxError("Not enough arguments");
+          var array, sequence, offset, len, i, s, d2, byteOffset, byteLength, tmp;
+          if (typeof arguments[0] === "object" && arguments[0].constructor === this.constructor) {
+            array = arguments[0];
+            offset = ECMAScript.ToUint32(arguments[1]);
+            if (offset + array.length > this.length) {
+              throw new RangeError("Offset plus length of array is out of range");
+            }
+            byteOffset = this.byteOffset + offset * this.BYTES_PER_ELEMENT;
+            byteLength = array.length * this.BYTES_PER_ELEMENT;
+            if (array.buffer === this.buffer) {
+              tmp = [];
+              for (i = 0, s = array.byteOffset; i < byteLength; i += 1, s += 1) {
+                tmp[i] = array.buffer._bytes[s];
+              }
+              for (i = 0, d2 = byteOffset; i < byteLength; i += 1, d2 += 1) {
+                this.buffer._bytes[d2] = tmp[i];
+              }
+            } else {
+              for (i = 0, s = array.byteOffset, d2 = byteOffset; i < byteLength; i += 1, s += 1, d2 += 1) {
+                this.buffer._bytes[d2] = array.buffer._bytes[s];
+              }
+            }
+          } else if (typeof arguments[0] === "object" && typeof arguments[0].length !== "undefined") {
+            sequence = arguments[0];
+            len = ECMAScript.ToUint32(sequence.length);
+            offset = ECMAScript.ToUint32(arguments[1]);
+            if (offset + len > this.length) {
+              throw new RangeError("Offset plus length of array is out of range");
+            }
+            for (i = 0; i < len; i += 1) {
+              s = sequence[i];
+              this._setter(offset + i, Number(s));
+            }
+          } else {
+            throw new TypeError("Unexpected argument type(s)");
+          }
+        };
+        ctor.prototype.subarray = function(start, end) {
+          function clamp(v, min2, max) {
+            return v < min2 ? min2 : v > max ? max : v;
+          }
+          start = ECMAScript.ToInt32(start);
+          end = ECMAScript.ToInt32(end);
+          if (arguments.length < 1) {
+            start = 0;
+          }
+          if (arguments.length < 2) {
+            end = this.length;
+          }
+          if (start < 0) {
+            start = this.length + start;
+          }
+          if (end < 0) {
+            end = this.length + end;
+          }
+          start = clamp(start, 0, this.length);
+          end = clamp(end, 0, this.length);
+          var len = end - start;
+          if (len < 0) {
+            len = 0;
+          }
+          return new this.constructor(
+            this.buffer,
+            this.byteOffset + start * this.BYTES_PER_ELEMENT,
+            len
+          );
+        };
+        return ctor;
+      }
+      var Int8Array2 = makeConstructor(1, packI8, unpackI8);
+      var Uint8Array2 = makeConstructor(1, packU8, unpackU8);
+      var Uint8ClampedArray2 = makeConstructor(1, packU8Clamped, unpackU8);
+      var Int16Array2 = makeConstructor(2, packI16, unpackI16);
+      var Uint16Array2 = makeConstructor(2, packU16, unpackU16);
+      var Int32Array2 = makeConstructor(4, packI32, unpackI32);
+      var Uint32Array2 = makeConstructor(4, packU32, unpackU32);
+      var Float32Array2 = makeConstructor(4, packF32, unpackF32);
+      var Float64Array2 = makeConstructor(8, packF64, unpackF64);
+      exports2.Int8Array = exports2.Int8Array || Int8Array2;
+      exports2.Uint8Array = exports2.Uint8Array || Uint8Array2;
+      exports2.Uint8ClampedArray = exports2.Uint8ClampedArray || Uint8ClampedArray2;
+      exports2.Int16Array = exports2.Int16Array || Int16Array2;
+      exports2.Uint16Array = exports2.Uint16Array || Uint16Array2;
+      exports2.Int32Array = exports2.Int32Array || Int32Array2;
+      exports2.Uint32Array = exports2.Uint32Array || Uint32Array2;
+      exports2.Float32Array = exports2.Float32Array || Float32Array2;
+      exports2.Float64Array = exports2.Float64Array || Float64Array2;
+    })();
+    (function() {
+      function r(array, index) {
+        return ECMAScript.IsCallable(array.get) ? array.get(index) : array[index];
+      }
+      var IS_BIG_ENDIAN = function() {
+        var u16array = new exports2.Uint16Array([4660]), u8array = new exports2.Uint8Array(u16array.buffer);
+        return r(u8array, 0) === 18;
+      }();
+      var DataView2 = function DataView3(buffer, byteOffset, byteLength) {
+        if (arguments.length === 0) {
+          buffer = new exports2.ArrayBuffer(0);
+        } else if (!(buffer instanceof exports2.ArrayBuffer || ECMAScript.Class(buffer) === "ArrayBuffer")) {
+          throw new TypeError("TypeError");
+        }
+        this.buffer = buffer || new exports2.ArrayBuffer(0);
+        this.byteOffset = ECMAScript.ToUint32(byteOffset);
+        if (this.byteOffset > this.buffer.byteLength) {
+          throw new RangeError("byteOffset out of range");
+        }
+        if (arguments.length < 3) {
+          this.byteLength = this.buffer.byteLength - this.byteOffset;
+        } else {
+          this.byteLength = ECMAScript.ToUint32(byteLength);
+        }
+        if (this.byteOffset + this.byteLength > this.buffer.byteLength) {
+          throw new RangeError("byteOffset and length reference an area beyond the end of the buffer");
+        }
+        configureProperties(this);
+      };
+      function makeGetter(arrayType2) {
+        return function(byteOffset, littleEndian) {
+          byteOffset = ECMAScript.ToUint32(byteOffset);
+          if (byteOffset + arrayType2.BYTES_PER_ELEMENT > this.byteLength) {
+            throw new RangeError("Array index out of range");
+          }
+          byteOffset += this.byteOffset;
+          var uint8Array = new exports2.Uint8Array(this.buffer, byteOffset, arrayType2.BYTES_PER_ELEMENT), bytes = [], i;
+          for (i = 0; i < arrayType2.BYTES_PER_ELEMENT; i += 1) {
+            bytes.push(r(uint8Array, i));
+          }
+          if (Boolean(littleEndian) === Boolean(IS_BIG_ENDIAN)) {
+            bytes.reverse();
+          }
+          return r(new arrayType2(new exports2.Uint8Array(bytes).buffer), 0);
+        };
+      }
+      DataView2.prototype.getUint8 = makeGetter(exports2.Uint8Array);
+      DataView2.prototype.getInt8 = makeGetter(exports2.Int8Array);
+      DataView2.prototype.getUint16 = makeGetter(exports2.Uint16Array);
+      DataView2.prototype.getInt16 = makeGetter(exports2.Int16Array);
+      DataView2.prototype.getUint32 = makeGetter(exports2.Uint32Array);
+      DataView2.prototype.getInt32 = makeGetter(exports2.Int32Array);
+      DataView2.prototype.getFloat32 = makeGetter(exports2.Float32Array);
+      DataView2.prototype.getFloat64 = makeGetter(exports2.Float64Array);
+      function makeSetter(arrayType2) {
+        return function(byteOffset, value, littleEndian) {
+          byteOffset = ECMAScript.ToUint32(byteOffset);
+          if (byteOffset + arrayType2.BYTES_PER_ELEMENT > this.byteLength) {
+            throw new RangeError("Array index out of range");
+          }
+          var typeArray = new arrayType2([value]), byteArray = new exports2.Uint8Array(typeArray.buffer), bytes = [], i, byteView;
+          for (i = 0; i < arrayType2.BYTES_PER_ELEMENT; i += 1) {
+            bytes.push(r(byteArray, i));
+          }
+          if (Boolean(littleEndian) === Boolean(IS_BIG_ENDIAN)) {
+            bytes.reverse();
+          }
+          byteView = new exports2.Uint8Array(this.buffer, byteOffset, arrayType2.BYTES_PER_ELEMENT);
+          byteView.set(bytes);
+        };
+      }
+      DataView2.prototype.setUint8 = makeSetter(exports2.Uint8Array);
+      DataView2.prototype.setInt8 = makeSetter(exports2.Int8Array);
+      DataView2.prototype.setUint16 = makeSetter(exports2.Uint16Array);
+      DataView2.prototype.setInt16 = makeSetter(exports2.Int16Array);
+      DataView2.prototype.setUint32 = makeSetter(exports2.Uint32Array);
+      DataView2.prototype.setInt32 = makeSetter(exports2.Int32Array);
+      DataView2.prototype.setFloat32 = makeSetter(exports2.Float32Array);
+      DataView2.prototype.setFloat64 = makeSetter(exports2.Float64Array);
+      exports2.DataView = exports2.DataView || DataView2;
+    })();
+  }
+});
+
+// node_modules/concat-stream/index.js
+var require_concat_stream = __commonJS({
+  "node_modules/concat-stream/index.js"(exports2, module2) {
+    var Writable = require_readable().Writable;
+    var inherits = require_inherits();
+    var bufferFrom = require_buffer_from();
+    if (typeof Uint8Array === "undefined") {
+      U8 = require_typedarray().Uint8Array;
+    } else {
+      U8 = Uint8Array;
+    }
+    var U8;
+    function ConcatStream(opts, cb) {
+      if (!(this instanceof ConcatStream)) return new ConcatStream(opts, cb);
+      if (typeof opts === "function") {
+        cb = opts;
+        opts = {};
+      }
+      if (!opts) opts = {};
+      var encoding = opts.encoding;
+      var shouldInferEncoding = false;
+      if (!encoding) {
+        shouldInferEncoding = true;
+      } else {
+        encoding = String(encoding).toLowerCase();
+        if (encoding === "u8" || encoding === "uint8") {
+          encoding = "uint8array";
+        }
+      }
+      Writable.call(this, { objectMode: true });
+      this.encoding = encoding;
+      this.shouldInferEncoding = shouldInferEncoding;
+      if (cb) this.on("finish", function() {
+        cb(this.getBody());
+      });
+      this.body = [];
+    }
+    module2.exports = ConcatStream;
+    inherits(ConcatStream, Writable);
+    ConcatStream.prototype._write = function(chunk, enc, next) {
+      this.body.push(chunk);
+      next();
+    };
+    ConcatStream.prototype.inferEncoding = function(buff) {
+      var firstBuffer = buff === void 0 ? this.body[0] : buff;
+      if (Buffer.isBuffer(firstBuffer)) return "buffer";
+      if (typeof Uint8Array !== "undefined" && firstBuffer instanceof Uint8Array) return "uint8array";
+      if (Array.isArray(firstBuffer)) return "array";
+      if (typeof firstBuffer === "string") return "string";
+      if (Object.prototype.toString.call(firstBuffer) === "[object Object]") return "object";
+      return "buffer";
+    };
+    ConcatStream.prototype.getBody = function() {
+      if (!this.encoding && this.body.length === 0) return [];
+      if (this.shouldInferEncoding) this.encoding = this.inferEncoding();
+      if (this.encoding === "array") return arrayConcat(this.body);
+      if (this.encoding === "string") return stringConcat(this.body);
+      if (this.encoding === "buffer") return bufferConcat(this.body);
+      if (this.encoding === "uint8array") return u8Concat(this.body);
+      return this.body;
+    };
+    var isArray = Array.isArray || function(arr) {
+      return Object.prototype.toString.call(arr) == "[object Array]";
+    };
+    function isArrayish(arr) {
+      return /Array\]$/.test(Object.prototype.toString.call(arr));
+    }
+    function isBufferish(p) {
+      return typeof p === "string" || isArrayish(p) || p && typeof p.subarray === "function";
+    }
+    function stringConcat(parts) {
+      var strings = [];
+      var needsToString = false;
+      for (var i = 0; i < parts.length; i++) {
+        var p = parts[i];
+        if (typeof p === "string") {
+          strings.push(p);
+        } else if (Buffer.isBuffer(p)) {
+          strings.push(p);
+        } else if (isBufferish(p)) {
+          strings.push(bufferFrom(p));
+        } else {
+          strings.push(bufferFrom(String(p)));
+        }
+      }
+      if (Buffer.isBuffer(parts[0])) {
+        strings = Buffer.concat(strings);
+        strings = strings.toString("utf8");
+      } else {
+        strings = strings.join("");
+      }
+      return strings;
+    }
+    function bufferConcat(parts) {
+      var bufs = [];
+      for (var i = 0; i < parts.length; i++) {
+        var p = parts[i];
+        if (Buffer.isBuffer(p)) {
+          bufs.push(p);
+        } else if (isBufferish(p)) {
+          bufs.push(bufferFrom(p));
+        } else {
+          bufs.push(bufferFrom(String(p)));
+        }
+      }
+      return Buffer.concat(bufs);
+    }
+    function arrayConcat(parts) {
+      var res = [];
+      for (var i = 0; i < parts.length; i++) {
+        res.push.apply(res, parts[i]);
+      }
+      return res;
+    }
+    function u8Concat(parts) {
+      var len = 0;
+      for (var i = 0; i < parts.length; i++) {
+        if (typeof parts[i] === "string") {
+          parts[i] = bufferFrom(parts[i]);
+        }
+        len += parts[i].length;
+      }
+      var u8 = new U8(len);
+      for (var i = 0, offset = 0; i < parts.length; i++) {
+        var part = parts[i];
+        for (var j2 = 0; j2 < part.length; j2++) {
+          u8[offset++] = part[j2];
+        }
+      }
+      return u8;
+    }
+  }
+});
+
+// node_modules/multer/storage/memory.js
+var require_memory = __commonJS({
+  "node_modules/multer/storage/memory.js"(exports2, module2) {
+    var concat = require_concat_stream();
+    function MemoryStorage(opts) {
+    }
+    MemoryStorage.prototype._handleFile = function _handleFile(req, file, cb) {
+      file.stream.pipe(concat({ encoding: "buffer" }, function(data) {
+        cb(null, {
+          buffer: data,
+          size: data.length
+        });
+      }));
+    };
+    MemoryStorage.prototype._removeFile = function _removeFile(req, file, cb) {
+      delete file.buffer;
+      cb(null);
+    };
+    module2.exports = function(opts) {
+      return new MemoryStorage(opts);
+    };
+  }
+});
+
+// node_modules/multer/index.js
+var require_multer = __commonJS({
+  "node_modules/multer/index.js"(exports2, module2) {
+    var makeMiddleware = require_make_middleware();
+    var diskStorage = require_disk();
+    var memoryStorage = require_memory();
+    var MulterError = require_multer_error();
+    function allowAll(req, file, cb) {
+      cb(null, true);
+    }
+    function Multer(options) {
+      if (options.storage) {
+        this.storage = options.storage;
+      } else if (options.dest) {
+        this.storage = diskStorage({ destination: options.dest });
+      } else {
+        this.storage = memoryStorage();
+      }
+      this.limits = options.limits;
+      this.preservePath = options.preservePath;
+      this.fileFilter = options.fileFilter || allowAll;
+    }
+    Multer.prototype._makeMiddleware = function(fields, fileStrategy) {
+      function setup() {
+        var fileFilter = this.fileFilter;
+        var filesLeft = /* @__PURE__ */ Object.create(null);
+        fields.forEach(function(field) {
+          if (typeof field.maxCount === "number") {
+            filesLeft[field.name] = field.maxCount;
+          } else {
+            filesLeft[field.name] = Infinity;
+          }
+        });
+        function wrappedFileFilter(req, file, cb) {
+          if ((filesLeft[file.fieldname] || 0) <= 0) {
+            return cb(new MulterError("LIMIT_UNEXPECTED_FILE", file.fieldname));
+          }
+          filesLeft[file.fieldname] -= 1;
+          fileFilter(req, file, cb);
+        }
+        return {
+          limits: this.limits,
+          preservePath: this.preservePath,
+          storage: this.storage,
+          fileFilter: wrappedFileFilter,
+          fileStrategy
+        };
+      }
+      return makeMiddleware(setup.bind(this));
+    };
+    Multer.prototype.single = function(name) {
+      return this._makeMiddleware([{ name, maxCount: 1 }], "VALUE");
+    };
+    Multer.prototype.array = function(name, maxCount) {
+      return this._makeMiddleware([{ name, maxCount }], "ARRAY");
+    };
+    Multer.prototype.fields = function(fields) {
+      return this._makeMiddleware(fields, "OBJECT");
+    };
+    Multer.prototype.none = function() {
+      return this._makeMiddleware([], "NONE");
+    };
+    Multer.prototype.any = function() {
+      function setup() {
+        return {
+          limits: this.limits,
+          preservePath: this.preservePath,
+          storage: this.storage,
+          fileFilter: this.fileFilter,
+          fileStrategy: "ARRAY"
+        };
+      }
+      return makeMiddleware(setup.bind(this));
+    };
+    function multer2(options) {
+      if (options === void 0) {
+        return new Multer({});
+      }
+      if (typeof options === "object" && options !== null) {
+        return new Multer(options);
+      }
+      throw new TypeError("Expected object for argument options");
+    }
+    module2.exports = multer2;
+    module2.exports.diskStorage = diskStorage;
+    module2.exports.memoryStorage = memoryStorage;
+    module2.exports.MulterError = MulterError;
   }
 });
 
@@ -42634,78 +49870,8 @@ var require_cookie_parser = __commonJS({
   }
 });
 
-// node_modules/object-assign/index.js
-var require_object_assign = __commonJS({
-  "node_modules/object-assign/index.js"(exports2, module2) {
-    "use strict";
-    var getOwnPropertySymbols = Object.getOwnPropertySymbols;
-    var hasOwnProperty = Object.prototype.hasOwnProperty;
-    var propIsEnumerable = Object.prototype.propertyIsEnumerable;
-    function toObject(val) {
-      if (val === null || val === void 0) {
-        throw new TypeError("Object.assign cannot be called with null or undefined");
-      }
-      return Object(val);
-    }
-    function shouldUseNative() {
-      try {
-        if (!Object.assign) {
-          return false;
-        }
-        var test1 = new String("abc");
-        test1[5] = "de";
-        if (Object.getOwnPropertyNames(test1)[0] === "5") {
-          return false;
-        }
-        var test2 = {};
-        for (var i = 0; i < 10; i++) {
-          test2["_" + String.fromCharCode(i)] = i;
-        }
-        var order2 = Object.getOwnPropertyNames(test2).map(function(n) {
-          return test2[n];
-        });
-        if (order2.join("") !== "0123456789") {
-          return false;
-        }
-        var test3 = {};
-        "abcdefghijklmnopqrst".split("").forEach(function(letter) {
-          test3[letter] = letter;
-        });
-        if (Object.keys(Object.assign({}, test3)).join("") !== "abcdefghijklmnopqrst") {
-          return false;
-        }
-        return true;
-      } catch (err) {
-        return false;
-      }
-    }
-    module2.exports = shouldUseNative() ? Object.assign : function(target, source) {
-      var from;
-      var to2 = toObject(target);
-      var symbols;
-      for (var s = 1; s < arguments.length; s++) {
-        from = Object(arguments[s]);
-        for (var key in from) {
-          if (hasOwnProperty.call(from, key)) {
-            to2[key] = from[key];
-          }
-        }
-        if (getOwnPropertySymbols) {
-          symbols = getOwnPropertySymbols(from);
-          for (var i = 0; i < symbols.length; i++) {
-            if (propIsEnumerable.call(from, symbols[i])) {
-              to2[symbols[i]] = from[symbols[i]];
-            }
-          }
-        }
-      }
-      return to2;
-    };
-  }
-});
-
 // node_modules/cors/lib/index.js
-var require_lib3 = __commonJS({
+var require_lib4 = __commonJS({
   "node_modules/cors/lib/index.js"(exports2, module2) {
     (function() {
       "use strict";
@@ -43570,7 +50736,7 @@ var require_keyword = __commonJS({
 });
 
 // node_modules/esutils/lib/utils.js
-var require_utils3 = __commonJS({
+var require_utils4 = __commonJS({
   "node_modules/esutils/lib/utils.js"(exports2) {
     (function() {
       "use strict";
@@ -43680,7 +50846,7 @@ var require_typed = __commonJS({
     (function() {
       "use strict";
       var Syntax, Token, source, length, index, previous, token, value, esutils, utility, rangeOffset, addRange;
-      esutils = require_utils3();
+      esutils = require_utils4();
       utility = require_utility();
       Syntax = {
         NullableLiteral: "NullableLiteral",
@@ -44685,7 +51851,7 @@ var require_doctrine = __commonJS({
     (function() {
       "use strict";
       var typed, utility, jsdoc, esutils, hasOwnProperty;
-      esutils = require_utils3();
+      esutils = require_utils4();
       typed = require_typed();
       utility = require_utility();
       function sliceSource(source, index, last) {
@@ -45367,7 +52533,7 @@ var require_doctrine = __commonJS({
 });
 
 // node_modules/@apidevtools/swagger-parser/lib/util.js
-var require_util = __commonJS({
+var require_util2 = __commonJS({
   "node_modules/@apidevtools/swagger-parser/lib/util.js"(exports2) {
     "use strict";
     var util2 = require("util");
@@ -60454,7 +67620,7 @@ var require_schema4 = __commonJS({
 });
 
 // node_modules/@apidevtools/openapi-schemas/lib/index.js
-var require_lib4 = __commonJS({
+var require_lib5 = __commonJS({
   "node_modules/@apidevtools/openapi-schemas/lib/index.js"(exports2, module2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -60480,10 +67646,10 @@ var require_lib4 = __commonJS({
 var require_schema5 = __commonJS({
   "node_modules/@apidevtools/swagger-parser/lib/validators/schema.js"(exports2, module2) {
     "use strict";
-    var util2 = require_util();
+    var util2 = require_util2();
     var { ono } = require_cjs();
     var ZSchema = require_ZSchema();
-    var { openapi } = require_lib4();
+    var { openapi } = require_lib5();
     module2.exports = validateSchema;
     var zSchema = initializeZSchema();
     function validateSchema(api) {
@@ -60522,7 +67688,7 @@ var require_schema5 = __commonJS({
 });
 
 // node_modules/@apidevtools/swagger-methods/lib/index.js
-var require_lib5 = __commonJS({
+var require_lib6 = __commonJS({
   "node_modules/@apidevtools/swagger-methods/lib/index.js"(exports2, module2) {
     "use strict";
     module2.exports = [
@@ -60541,9 +67707,9 @@ var require_lib5 = __commonJS({
 var require_spec = __commonJS({
   "node_modules/@apidevtools/swagger-parser/lib/validators/spec.js"(exports2, module2) {
     "use strict";
-    var util2 = require_util();
+    var util2 = require_util2();
     var { ono } = require_cjs();
-    var swaggerMethods = require_lib5();
+    var swaggerMethods = require_lib6();
     var primitiveTypes = ["array", "boolean", "integer", "number", "string"];
     var schemaTypes = ["array", "boolean", "integer", "number", "string", "object", "null", void 0];
     module2.exports = validateSpec;
@@ -65287,7 +72453,7 @@ var require_dereference = __commonJS({
 });
 
 // node_modules/@apidevtools/json-schema-ref-parser/lib/index.js
-var require_lib6 = __commonJS({
+var require_lib7 = __commonJS({
   "node_modules/@apidevtools/json-schema-ref-parser/lib/index.js"(exports2, module2) {
     "use strict";
     var $Refs = require_refs();
@@ -65424,17 +72590,17 @@ var require_lib6 = __commonJS({
 });
 
 // node_modules/@apidevtools/swagger-parser/lib/index.js
-var require_lib7 = __commonJS({
+var require_lib8 = __commonJS({
   "node_modules/@apidevtools/swagger-parser/lib/index.js"(exports2, module2) {
     "use strict";
     var validateSchema = require_schema5();
     var validateSpec = require_spec();
     var normalizeArgs = require_normalize_args();
-    var util2 = require_util();
+    var util2 = require_util2();
     var Options = require_options2();
     var maybe = require_maybe();
     var { ono } = require_cjs();
-    var $RefParser = require_lib6();
+    var $RefParser = require_lib7();
     var dereference = require_dereference();
     module2.exports = SwaggerParser;
     function SwaggerParser() {
@@ -65525,7 +72691,7 @@ var require_lib7 = __commonJS({
 var require_swagger_parser = __commonJS({
   "node_modules/swagger-parser/index.js"(exports2, module2) {
     "use strict";
-    module2.exports = require_lib7();
+    module2.exports = require_lib8();
   }
 });
 
@@ -74109,7 +81275,7 @@ var require_lodash10 = __commonJS({
 });
 
 // node_modules/swagger-jsdoc/src/utils.js
-var require_utils4 = __commonJS({
+var require_utils5 = __commonJS({
   "node_modules/swagger-jsdoc/src/utils.js"(exports2, module2) {
     var fs = require("fs");
     var path2 = require("path");
@@ -74215,7 +81381,7 @@ var require_specification = __commonJS({
       mergeDeep,
       extractYamlFromJsDoc,
       isTagPresentInTags
-    } = require_utils4();
+    } = require_utils5();
     function prepare(definition) {
       const swaggerObject = JSON.parse(JSON.stringify(definition));
       const specificationTemplate = {
@@ -74453,7 +81619,7 @@ Imbedded within:
 });
 
 // node_modules/swagger-jsdoc/src/lib.js
-var require_lib8 = __commonJS({
+var require_lib9 = __commonJS({
   "node_modules/swagger-jsdoc/src/lib.js"(exports2, module2) {
     var { build } = require_specification();
     module2.exports = (options) => {
@@ -74478,7 +81644,7 @@ var require_lib8 = __commonJS({
 // node_modules/swagger-jsdoc/index.js
 var require_swagger_jsdoc = __commonJS({
   "node_modules/swagger-jsdoc/index.js"(exports2, module2) {
-    module2.exports = require_lib8();
+    module2.exports = require_lib9();
   }
 });
 
@@ -77544,7 +84710,7 @@ var require_supports_color = __commonJS({
 });
 
 // node_modules/engine.io/node_modules/debug/src/node.js
-var require_node2 = __commonJS({
+var require_node3 = __commonJS({
   "node_modules/engine.io/node_modules/debug/src/node.js"(exports2, module2) {
     var tty = require("tty");
     var util2 = require("util");
@@ -77723,7 +84889,7 @@ var require_src2 = __commonJS({
     if (typeof process === "undefined" || process.type === "renderer" || process.browser === true || process.__nwjs) {
       module2.exports = require_browser2();
     } else {
-      module2.exports = require_node2();
+      module2.exports = require_node3();
     }
   }
 });
@@ -81782,7 +88948,7 @@ var require_websocket2 = __commonJS({
 });
 
 // node_modules/ws/lib/stream.js
-var require_stream = __commonJS({
+var require_stream2 = __commonJS({
   "node_modules/ws/lib/stream.js"(exports2, module2) {
     "use strict";
     var { Duplex } = require("stream");
@@ -82315,7 +89481,7 @@ var require_ws = __commonJS({
   "node_modules/ws/index.js"(exports2, module2) {
     "use strict";
     var WebSocket = require_websocket2();
-    WebSocket.createWebSocketStream = require_stream();
+    WebSocket.createWebSocketStream = require_stream2();
     WebSocket.Server = require_websocket_server();
     WebSocket.Receiver = require_receiver();
     WebSocket.Sender = require_sender();
@@ -82389,7 +89555,7 @@ var require_server = __commonJS({
           }, opts.cookie);
         }
         if (this.opts.cors) {
-          this.use(require_lib3()(this.opts.cors));
+          this.use(require_lib4()(this.opts.cors));
         }
         if (opts.perMessageDeflate) {
           this.opts.perMessageDeflate = Object.assign({
@@ -84550,7 +91716,7 @@ var require_browser3 = __commonJS({
 });
 
 // node_modules/socket.io-parser/node_modules/debug/src/node.js
-var require_node3 = __commonJS({
+var require_node4 = __commonJS({
   "node_modules/socket.io-parser/node_modules/debug/src/node.js"(exports2, module2) {
     var tty = require("tty");
     var util2 = require("util");
@@ -84729,7 +91895,7 @@ var require_src3 = __commonJS({
     if (typeof process === "undefined" || process.type === "renderer" || process.browser === true || process.__nwjs) {
       module2.exports = require_browser3();
     } else {
-      module2.exports = require_node3();
+      module2.exports = require_node4();
     }
   }
 });
@@ -85341,7 +92507,7 @@ var require_browser4 = __commonJS({
 });
 
 // node_modules/socket.io/node_modules/debug/src/node.js
-var require_node4 = __commonJS({
+var require_node5 = __commonJS({
   "node_modules/socket.io/node_modules/debug/src/node.js"(exports2, module2) {
     var tty = require("tty");
     var util2 = require("util");
@@ -85520,7 +92686,7 @@ var require_src4 = __commonJS({
     if (typeof process === "undefined" || process.type === "renderer" || process.browser === true || process.__nwjs) {
       module2.exports = require_browser4();
     } else {
-      module2.exports = require_node4();
+      module2.exports = require_node5();
     }
   }
 });
@@ -88478,7 +95644,7 @@ var require_browser5 = __commonJS({
 });
 
 // node_modules/socket.io-adapter/node_modules/debug/src/node.js
-var require_node5 = __commonJS({
+var require_node6 = __commonJS({
   "node_modules/socket.io-adapter/node_modules/debug/src/node.js"(exports2, module2) {
     var tty = require("tty");
     var util2 = require("util");
@@ -88657,7 +95823,7 @@ var require_src5 = __commonJS({
     if (typeof process === "undefined" || process.type === "renderer" || process.browser === true || process.__nwjs) {
       module2.exports = require_browser5();
     } else {
-      module2.exports = require_node5();
+      module2.exports = require_node6();
     }
   }
 });
@@ -89689,7 +96855,7 @@ var require_dist3 = __commonJS({
     } });
     var typed_events_1 = require_typed_events();
     var uws_1 = require_uws();
-    var cors_1 = __importDefault(require_lib3());
+    var cors_1 = __importDefault(require_lib4());
     var debug = (0, debug_1.default)("socket.io:server");
     var clientVersion = require_package3().version;
     var dotMapRegex = /\.map/;
@@ -98409,6 +105575,7 @@ var managementRoutes_default = router;
 
 // src/api/v1/routes/facultyRoutes.js
 var import_express2 = __toESM(require_express2(), 1);
+var import_multer = __toESM(require_multer(), 1);
 
 // src/api/v1/controllers/facultyController.js
 var import_jsonwebtoken3 = __toESM(require_jsonwebtoken(), 1);
@@ -98645,15 +105812,223 @@ var getStudentStatuses2 = async (req, res, next) => {
     next(error);
   }
 };
+var submitProposal = async (req, res, next) => {
+  try {
+    const { studentId } = req.params;
+    const { title, description, submissionDate, researchArea, file } = req.body;
+    const student = await db_default.student.findUnique({
+      where: { id: studentId },
+      include: {
+        statuses: {
+          where: {
+            isCurrent: true
+          },
+          take: 1
+        }
+      }
+    });
+    if (!student) {
+      const error = new Error("Student not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    const proposal = await db_default.proposal.create({
+      data: {
+        title,
+        description,
+        submissionDate: new Date(submissionDate),
+        researchArea,
+        fileData: file.buffer,
+        fileName: file.originalname,
+        fileType: file.mimetype,
+        isCurrent: true,
+        student: {
+          connect: { id: studentId }
+        },
+        submittedBy: {
+          connect: { id: req.user.id }
+        }
+      }
+    });
+    if (student.statuses[0]) {
+      await db_default.studentStatus.update({
+        where: { id: student.statuses[0].id },
+        data: { endDate: /* @__PURE__ */ new Date() }
+      });
+    }
+    await db_default.studentStatus.create({
+      data: {
+        student: {
+          connect: { id: studentId }
+        },
+        definition: {
+          connect: { code: "PROPOSAL_RECEIVED" }
+        },
+        updatedBy: {
+          connect: { id: req.user.id }
+        },
+        startDate: /* @__PURE__ */ new Date()
+      }
+    });
+    res.status(201).set({
+      "Content-Type": "multipart/mixed",
+      "Content-Disposition": `attachment; filename="${file.originalname}"`
+    }).send({
+      message: "Proposal submitted successfully",
+      file: file.buffer
+    });
+    file.buffer = null;
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var getProposal = async (req, res, next) => {
+  try {
+    const { studentId, proposalId } = req.params;
+    const proposal = await db_default.proposal.findFirst({
+      where: {
+        id: proposalId,
+        studentId
+      },
+      include: {
+        student: true,
+        submittedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true
+          }
+        },
+        grade: true
+      }
+    });
+    if (!proposal) {
+      const error = new Error("Proposal not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    res.status(200).json({ proposal });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var getStudentProposals = async (req, res, next) => {
+  try {
+    const { studentId } = req.params;
+    const proposals = await db_default.proposal.findMany({
+      where: {
+        studentId
+      },
+      include: {
+        student: true,
+        submittedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true
+          }
+        },
+        grades: true,
+        reviewers: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      },
+      orderBy: {
+        submittedAt: "desc"
+      }
+    });
+    res.status(200).json({ proposals });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+var gradeProposal = async (req, res, next) => {
+  try {
+    const { studentId, proposalId } = req.params;
+    const { grade, feedback } = req.body;
+    const proposal = await db_default.proposal.findFirst({
+      where: {
+        id: proposalId,
+        studentId
+      }
+    });
+    if (!proposal) {
+      const error = new Error("Proposal not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    const gradedProposal = await db_default.proposalGrade.create({
+      data: {
+        grade,
+        feedback,
+        proposal: {
+          connect: { id: proposalId }
+        },
+        gradedBy: {
+          connect: { id: req.user.id }
+        }
+      }
+    });
+    await db_default.studentStatus.create({
+      data: {
+        student: {
+          connect: { id: studentId }
+        },
+        definition: {
+          connect: { code: "PROPOSAL_GRADED" }
+        },
+        updatedBy: {
+          connect: { id: req.user.id }
+        }
+      }
+    });
+    res.status(200).json({
+      message: "Proposal graded successfully",
+      grade: gradedProposal
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
 
 // src/api/v1/routes/facultyRoutes.js
 var router2 = import_express2.default.Router();
+var storage = import_multer.default.memoryStorage();
+var upload = (0, import_multer.default)({
+  storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024
+    // 10MB limit
+  }
+});
 router2.post("/login", loginFaculty);
 router2.get("/profile", authentication_default, getFacultyProfile);
 router2.put("/password", authentication_default, updateFacultyPassword);
 router2.get("/students/:studentId", authentication_default, roleAuthorization_default("SCHOOL_ADMIN"), getStudent2);
 router2.get("/students", authentication_default, roleAuthorization_default("SCHOOL_ADMIN"), getAllStudents2);
 router2.get("/students/:studentId/statuses", authentication_default, roleAuthorization_default("SCHOOL_ADMIN"), getStudentStatuses2);
+router2.post("/proposals/:studentId", authentication_default, roleAuthorization_default("SCHOOL_ADMIN"), upload.single("proposalFile"), submitProposal);
+router2.get("/proposals/:studentId/:proposalId", authentication_default, roleAuthorization_default("SCHOOL_ADMIN"), getProposal);
+router2.post("/proposals/:studentId/:proposalId/grade", authentication_default, roleAuthorization_default("SCHOOL_ADMIN"), gradeProposal);
+router2.get("/proposals/:studentId", authentication_default, roleAuthorization_default("SCHOOL_ADMIN"), getStudentProposals);
 var facultyRoutes_default = router2;
 
 // src/api/v1/middleware/requestLogger.mjs
@@ -98691,7 +106066,7 @@ var api_default = router4;
 // src/app.mjs
 var import_compression = __toESM(require_compression(), 1);
 var import_cookie_parser = __toESM(require_cookie_parser(), 1);
-var import_cors = __toESM(require_lib3(), 1);
+var import_cors = __toESM(require_lib4(), 1);
 
 // node_modules/express-rate-limit/dist/index.mjs
 var import_buffer = require("buffer");
@@ -100144,6 +107519,13 @@ express/index.js:
      *)
   *)
 
+object-assign/index.js:
+  (*
+  object-assign
+  (c) Sindre Sorhus
+  @license MIT
+  *)
+
 negotiator/index.js:
   (*!
    * negotiator
@@ -100202,13 +107584,6 @@ cookie-parser/index.js:
    * Copyright(c) 2015 Douglas Christopher Wilson
    * MIT Licensed
    *)
-
-object-assign/index.js:
-  (*
-  object-assign
-  (c) Sindre Sorhus
-  @license MIT
-  *)
 
 base64id/lib/base64id.js:
   (*!
