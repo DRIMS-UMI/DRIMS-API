@@ -130,6 +130,7 @@ model statusDefinition {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   studentStatuses studentStatus[] // All student statuses using this definition
+  proposalStatuses proposalStatus[] // All proposal statuses using this definition
 }
 
 model studentStatus {
@@ -172,7 +173,7 @@ model proposal {
   id          String            @id @default(auto()) @map("_id") @db.ObjectId
   title       String
   description String?
-  researchArea String
+  researchArea String?
   fileData    Bytes
   fileName    String
   fileType    String
@@ -183,15 +184,35 @@ model proposal {
   submittedById String?        @db.ObjectId
   reviewerIds String[]          @db.ObjectId
   reviewers   reviewer[]       @relation(fields: [reviewerIds], references: [id])
-  status      String           // Pending Review, Reviewed, Defended, Graded-Passed, Graded-Failed
   submittedAt DateTime         @default(now())
   defenseDate DateTime?
-  panelists   String[]
+  panelists   panelist[]       @relation(fields: [panelistIds], references: [id])
+  panelistIds String[]         @db.ObjectId
+
   comments    String?
   markRange   Int?
   grades      proposalGrade[]
+  statuses    proposalStatus[] // Track proposal status history
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
+  submissionDate DateTime      @default(now())
+
+}
+
+model proposalStatus {
+  id                String           @id @default(auto()) @map("_id") @db.ObjectId
+  proposal          proposal         @relation(fields: [proposalId], references: [id])
+  proposalId        String           @db.ObjectId
+  definition        statusDefinition @relation(fields: [definitionId], references: [id])
+  definitionId      String           @db.ObjectId
+  startDate         DateTime         @default(now())
+  endDate           DateTime?
+  duration          Int?             // Actual duration in days
+  conditions        String?          // Conditions or remarks
+  isActive          Boolean          @default(true)
+  isCurrent         Boolean          @default(true)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
 }
 
 model proposalGrade {
@@ -205,6 +226,7 @@ model proposalGrade {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 }
+
 
 
 model book {
@@ -277,6 +299,20 @@ model reviewer {
   email     String             @unique
   proposalIds String[]         @db.ObjectId
   proposals proposal[]          @relation(fields: [proposalIds], references: [id])
+  campus    campus?            @relation(fields: [campusId], references: [id])
+  campusId  String?            @db.ObjectId
+}
+
+model panelist {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  email       String    @unique
+  proposalIds String[]  @db.ObjectId
+  proposals   proposal[] @relation(fields: [proposalIds], references: [id])
+  campus      campus?   @relation(fields: [campusId], references: [id])
+  campusId    String?   @db.ObjectId
+  createdAt   DateTime?  @default(now())
+  updatedAt   DateTime?  @updatedAt
 }
 
 model viva {
@@ -322,6 +358,8 @@ model campus {
   facultyMembers facultyMember[]
   supervisors supervisor[]
   students    student[]
+  reviewers   reviewer[]
+  panelists   panelist[]
 }
 
 model schoolMember {

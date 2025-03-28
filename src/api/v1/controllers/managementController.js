@@ -1908,6 +1908,9 @@ export const createStudent = async (req, res, next) => {
                 startDate: new Date(),
                 endDate: new Date(),
                 conditions: "Initial admission",
+                updatedBy: {
+                    connect: { id: req.user?.id }
+                },
                 isCurrent: false
             }
         });
