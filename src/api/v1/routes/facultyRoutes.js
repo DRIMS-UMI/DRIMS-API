@@ -15,7 +15,7 @@ const upload = multer({
 });
 
 // Import faculty controllers
-import { loginFaculty, getFacultyProfile, updateFacultyPassword, getStudent, getAllStudents, getStudentStatuses, submitProposal, getProposal, gradeProposal, getStudentProposals, addReviewers, getReviewers, addPanelists, getPanelists } from '../controllers/facultyController.js';
+import { loginFaculty, getFacultyProfile, updateFacultyPassword, getStudent, getAllStudents, getStudentStatuses, submitProposal, getProposal, gradeProposal, getStudentProposals, addReviewers, getReviewers, addPanelists, getPanelists, getSchoolProposals, deleteReviewer, deletePanelist, addReviewerMark, addPanelistMark } from '../controllers/facultyController.js';
 
 // Faculty authentication routes
 router.post('/login', loginFaculty);
@@ -31,16 +31,27 @@ router.get('/students/:studentId/statuses', authenticateToken, authorizeRoles('S
 
 // Proposal management routes
 router.post('/proposals/:studentId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), upload.single('proposalFile'), submitProposal);
-router.get('/proposals/:studentId/:proposalId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), getProposal);
 router.post('/proposals/:studentId/:proposalId/grade', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), gradeProposal);
 router.get('/proposals/:studentId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), getStudentProposals);
 
 // Reviewer management routes
 router.post('/reviewers/:proposalId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), addReviewers);
 router.get('/reviewers', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), getReviewers);
+router.delete('/reviewers/:proposalId/:reviewerId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), deleteReviewer);
 
 // Panelist management routes
 router.post('/panelists/:proposalId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), addPanelists);
 router.get('/panelists', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), getPanelists);
+router.delete('/panelists/:proposalId/:panelistId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), deletePanelist);
+
+// Get all proposals in a school
+router.get('/proposals', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), getSchoolProposals);
+router.get('/proposal/:proposalId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), getProposal);
+
+// Add reviewer mark to proposal
+router.post('/reviewer-marks/:proposalId/:reviewerId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), addReviewerMark);
+
+// Add panelist mark to proposal
+router.post('/panelist-marks/:proposalId/:panelistId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), addPanelistMark);
 
 export default router;

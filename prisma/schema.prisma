@@ -29,7 +29,8 @@ model user {
    updatedStatuses studentStatus[]  // Add this line
 
   submittedProposals proposal[]        @relation("submittedProposals")
-   submittedGrades    proposalGrade[] 
+   submittedProposalReviewGrades    proposalReviewGrade[] 
+   submittedProposalDefenseGrades    proposalDefenseGrade[] 
   
   createdAt DateTime? @default(now())
   updatedAt DateTime? @updatedAt
@@ -191,12 +192,30 @@ model proposal {
 
   comments    String?
   markRange   Int?
-  grades      proposalGrade[]
+
+averageReviewMark Float?       
+averageDefenseMark Float?
+  reviewGrades      proposalReviewGrade[]
+  defenseGrades proposalDefenseGrade[]
+
   statuses    proposalStatus[] // Track proposal status history
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
   submissionDate DateTime      @default(now())
+}
 
+model proposalDefenseGrade {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  proposal    proposal  @relation(fields: [proposalId], references: [id])
+  proposalId  String    @db.ObjectId
+  grade       Float
+  feedback    String?
+  gradedBy    panelist  @relation(fields: [gradedById], references: [id])
+  gradedById  String    @db.ObjectId
+   submittedBy    user      @relation(fields: [submittedById], references: [id])
+  submittedById  String    @db.ObjectId
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
 model proposalStatus {
@@ -215,12 +234,14 @@ model proposalStatus {
   updatedAt         DateTime         @updatedAt
 }
 
-model proposalGrade {
+model proposalReviewGrade {
   id          String    @id @default(auto()) @map("_id") @db.ObjectId
   proposal    proposal  @relation(fields: [proposalId], references: [id])
   proposalId  String    @db.ObjectId
   grade       Float
   feedback    String?
+  gradedBy    reviewer  @relation(fields: [gradedById], references: [id])
+  gradedById  String    @db.ObjectId
   submittedBy    user      @relation(fields: [submittedById], references: [id])
   submittedById  String    @db.ObjectId
   createdAt   DateTime  @default(now())
@@ -301,6 +322,7 @@ model reviewer {
   proposals proposal[]          @relation(fields: [proposalIds], references: [id])
   campus    campus?            @relation(fields: [campusId], references: [id])
   campusId  String?            @db.ObjectId
+  grades    proposalReviewGrade[]
 }
 
 model panelist {
@@ -311,6 +333,7 @@ model panelist {
   proposals   proposal[] @relation(fields: [proposalIds], references: [id])
   campus      campus?   @relation(fields: [campusId], references: [id])
   campusId    String?   @db.ObjectId
+  grades      proposalDefenseGrade[]
   createdAt   DateTime?  @default(now())
   updatedAt   DateTime?  @updatedAt
 }
