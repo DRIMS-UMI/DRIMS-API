@@ -956,7 +956,7 @@ export const addReviewerMark = async (req, res, next) => {
         const { grade, feedback } = req.body;
 
         // Get the currently logged-in faculty user
-        const submittedById = req.user.id; // Assuming req.user contains the logged-in user's information
+        const submittedById = req.user.id;
 
         // Validate input
         if (!proposalId || !reviewerId || grade === undefined || !feedback) {
@@ -970,7 +970,13 @@ export const addReviewerMark = async (req, res, next) => {
             where: { id: proposalId },
             include: {
                 reviewGrades: true,
-                reviewers: true
+                reviewers: true,
+                student: true,
+                statuses: {
+                    include: {
+                        definition: true
+                    }
+                }
             }
         });
 
@@ -989,35 +995,134 @@ export const addReviewerMark = async (req, res, next) => {
             throw error;
         }
 
+        let updatedOrNewGrade;
         // Create or update the review grade
-        const existingGrade = proposal.reviewGrades.find(grade => grade.reviewerId === reviewerId);
+        const existingGrade = proposal.reviewGrades.find(grade => grade.gradedById === reviewerId);
 
         if (existingGrade) {
             // Update existing grade
-            const updatedGrade = await prisma.proposalReviewGrade.update({
+            updatedOrNewGrade = await prisma.proposalReviewGrade.update({
                 where: { id: existingGrade.id },
-                data: { grade, feedback, submittedBy: { connect: { id: submittedById } } } // Connect the submittedById
-            });
-            res.status(200).json({
-                message: 'Reviewer mark updated successfully',
-                grade: updatedGrade
+                data: { grade, feedback, updatedBy: { connect: { id: submittedById } } }
             });
         } else {
             // Create new grade
-            const newGrade = await prisma.proposalReviewGrade.create({
+            updatedOrNewGrade = await prisma.proposalReviewGrade.create({
                 data: {
                     proposal: { connect: { id: proposalId } },
                     gradedBy: { connect: { id: reviewerId } },
                     grade,
                     feedback,
-                    submittedBy: { connect: { id: submittedById } } // Connect the submittedById
+                    submittedBy: { connect: { id: submittedById } }
                 }
             });
-            res.status(201).json({
-                message: 'Reviewer mark added successfully',
-                grade: newGrade
-            });
         }
+
+        // Calculate average grade after update
+        const updatedProposal = await prisma.proposal.findUnique({
+            where: { id: proposalId },
+            include: {
+                reviewGrades: true,
+                reviewers: true,
+                student: true,
+                statuses: {
+                    include: {
+                        definition: true
+                    }
+                }
+            }
+        });
+
+        const totalGrades = updatedProposal.reviewGrades.reduce((sum, grade) => sum + grade.grade, 0);
+        const averageGrade = totalGrades / updatedProposal.reviewGrades.length;
+
+        // Update the proposal's average review mark
+        await prisma.proposal.update({
+            where: { id: proposalId },
+            data: {
+                averageReviewMark: averageGrade
+            }
+        });
+
+        // Check if current status is already "Proposal Review Finished"
+        const currentStatus = updatedProposal.statuses.find(status => status.isCurrent);
+        const isAlreadyFinished = currentStatus?.definition?.name === 'proposal review finished';
+
+        // Only update status if not already finished and all conditions are met
+        if (!isAlreadyFinished && updatedProposal.reviewGrades.length === updatedProposal.reviewers.length && averageGrade >= 60) {
+            // Update proposal status
+            await prisma.proposalStatus.updateMany({
+                where: {
+                    proposalId,
+                    isCurrent: true
+                },
+                data: {
+                    isCurrent: false,
+                    endDate: new Date()
+                }
+            });
+
+            // Get the status definition ID for "Proposal Review Finished"
+            const proposalReviewFinishedStatus = await prisma.statusDefinition.findFirst({
+                where: {
+                    name: 'proposal review finished'
+                }
+            });
+
+            if (!proposalReviewFinishedStatus) {
+                throw new Error('Status definition not found');
+            }
+
+            await prisma.proposalStatus.create({
+                data: {
+                    proposal: { connect: { id: proposalId } },
+                    definition: { connect: { id: proposalReviewFinishedStatus.id } },
+                    isCurrent: true,
+                    startDate: new Date()
+                }
+            });
+
+            // Update student status if proposal passed review
+            if (updatedProposal.student) {
+                await prisma.studentStatus.updateMany({
+                    where: {
+                        studentId: updatedProposal.student.id,
+                        isCurrent: true
+                    },
+                    data: {
+                        isCurrent: false,
+                        endDate: new Date()
+                    }
+                });
+
+                // Get the status definition ID for "Proposal Review Passed"
+                // const proposalReviewPassedStatus = await prisma.statusDefinition.findFirst({
+                //     where: {
+                //         name: 'Proposal Review Passed'
+                //     }
+                // });
+
+                // if (!proposalReviewPassedStatus) {
+                //     throw new Error('Status definition not found');
+                // }
+
+                await prisma.studentStatus.create({
+                    data: {
+                        student: { connect: { id: updatedProposal.student.id } },
+                        definition: { connect: { id: proposalReviewFinishedStatus.id } },
+                        isCurrent: true,
+                        startDate: new Date(),
+                        updatedBy: { connect: { id: submittedById } }
+                    }
+                });
+            }
+        }
+
+        res.status(existingGrade ? 200 : 201).json({
+            message: existingGrade ? 'Reviewer mark updated successfully' : 'Reviewer mark added successfully',
+            grade: updatedOrNewGrade,
+            averageGrade
+        });
 
     } catch (error) {
         if (!error.statusCode) {
@@ -1312,7 +1417,13 @@ export const addPanelistMark = async (req, res, next) => {
             where: { id: proposalId },
             include: {
                 panelists: true,
-                defenseGrades: true
+                defenseGrades: true,
+                student: true,
+                statuses: {
+                    include: {
+                        definition: true
+                    }
+                }
             }
         });
 
@@ -1331,35 +1442,122 @@ export const addPanelistMark = async (req, res, next) => {
             throw error;
         }
 
+        let resultingGrade;
+
         // Create or update the defense grade
-        const existingGrade = proposal.defenseGrades.find(grade => grade.panelistId === panelistId);
+        const existingGrade = proposal.defenseGrades.find(grade => grade.gradedById === panelistId);
 
         if (existingGrade) {
             // Update existing grade
-            const updatedGrade = await prisma.proposalDefenseGrade.update({
+            resultingGrade = await prisma.proposalDefenseGrade.update({
                 where: { id: existingGrade.id },
-                data: { grade, feedback, submittedBy: { connect: { id: req.user.id } } } // Connect the submittedById
-            });
-            res.status(200).json({
-                message: 'Panelist mark updated successfully',
-                grade: updatedGrade
+                data: { grade, feedback, updatedBy: { connect: { id: req.user.id } } }
             });
         } else {
             // Create new grade
-            const newGrade = await prisma.proposalDefenseGrade.create({
+            resultingGrade = await prisma.proposalDefenseGrade.create({
                 data: {
                     proposal: { connect: { id: proposalId } },
                     gradedBy: { connect: { id: panelistId } },
                     grade,
                     feedback,
-                    submittedBy: { connect: { id: req.user.id } } // Connect the submittedById
+                    submittedBy: { connect: { id: req.user.id } }
                 }
             });
-            res.status(201).json({
-                message: 'Panelist mark added successfully',
-                grade: newGrade
-            });
         }
+
+        // Calculate average if there are multiple grades
+        const updatedProposal = await prisma.proposal.findUnique({
+            where: { id: proposalId },
+            include: { defenseGrades: true }
+        });
+
+        if (updatedProposal.defenseGrades.length > 1) {
+            const totalGrade = updatedProposal.defenseGrades.reduce((sum, grade) => sum + grade.grade, 0);
+            const averageGrade = totalGrade / updatedProposal.defenseGrades.length;
+
+            // Update proposal with average defense mark
+            await prisma.proposal.update({
+                where: { id: proposalId },
+                data: {
+                    averageDefenseMark: averageGrade
+                }
+            });
+
+            // Update proposal status
+            await prisma.proposalStatus.updateMany({
+                where: {
+                    proposalId,
+                    isCurrent: true
+                },
+                data: {
+                    isCurrent: false,
+                    endDate: new Date()
+                }
+            });
+
+            // Get status definitions based on grade
+            const passedStatus = await prisma.statusDefinition.findFirst({
+                where: { name: 'passed-proposal graded' }
+            });
+
+            const failedStatus = await prisma.statusDefinition.findFirst({
+                where: { name: 'failed-proposal graded' }
+            });
+
+            if (!passedStatus || !failedStatus) {
+                throw new Error('Status definitions not found');
+            }
+
+            // Create new proposal status
+            await prisma.proposalStatus.create({
+                data: {
+                    proposal: { connect: { id: proposalId } },
+                    definition: {
+                        connect: {
+                            id: averageGrade >= 60 ? passedStatus.id : failedStatus.id
+                        }
+                    },
+                    isCurrent: true,
+                    startDate: new Date()
+                }
+            });
+
+            // Update student status if student exists
+            if (proposal.student) {
+                // Set current student status to not current
+                await prisma.studentStatus.updateMany({
+                    where: {
+                        studentId: proposal.student.id,
+                        isCurrent: true
+                    },
+                    data: {
+                        isCurrent: false,
+                        endDate: new Date()
+                    }
+                });
+
+                // Create new student status
+                await prisma.studentStatus.create({
+                    data: {
+                        student: { connect: { id: proposal.student.id } },
+                        definition: { 
+                            connect: { 
+                                id: averageGrade >= 60 ? passedStatus.id : failedStatus.id 
+                            } 
+                        },
+                        isCurrent: true,
+                        startDate: new Date(),
+                        updatedBy: { connect: { id: req.user.id } }
+                    }
+                });
+            }
+        }
+
+        res.status(existingGrade ? 200 : 201).json({
+            message: existingGrade ? 'Panelist mark updated successfully' : 'Panelist mark added successfully',
+            grade: resultingGrade
+        });
 
     } catch (error) {
         if (!error.statusCode) {
@@ -1483,6 +1681,254 @@ export const deletePanelist = async (req, res, next) => {
         next(error);
     }
 };
+
+// Add defense date to proposal
+export const addDefenseDate = async (req, res, next) => {
+    try {
+        const { proposalId } = req.params;
+        const { defenseDate, type } = req.body;
+
+        // Validate input
+        if (!proposalId || !defenseDate || !type) {
+            const error = new Error('Invalid input data');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if proposal exists
+        const proposal = await prisma.proposal.findUnique({
+            where: { id: proposalId },
+            include: {
+                student: true,
+                panelists: true,
+                statuses: {
+                    where: {
+                        isCurrent: true
+                    },
+                    include: {
+                        definition: true
+                    }
+                }
+            }
+        });
+
+        if (!proposal) {
+            const error = new Error('Proposal not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // If type is reschedule, just update the defense date
+        if (type === 'reschedule') {
+            const updatedProposal = await prisma.proposal.update({
+                where: { id: proposalId },
+                data: {
+                    defenseDate: new Date(defenseDate)
+                }
+            });
+
+            return res.status(200).json({
+                message: 'Defense date rescheduled successfully',
+                proposal: updatedProposal
+            });
+        }
+
+        // For new defense date scheduling, continue with status updates
+        // Update current proposal status to not current
+        await prisma.proposalStatus.updateMany({
+            where: {
+                proposalId,
+                isCurrent: true
+            },
+            data: {
+                isCurrent: false,
+                endDate: new Date()
+            }
+        });
+
+        // Get the status definition for "waiting for proposal defense"
+        const waitingForDefenseStatus = await prisma.statusDefinition.findFirst({
+            where: {
+                name: 'waiting for proposal defense'
+            }
+        });
+
+        if (!waitingForDefenseStatus) {
+            throw new Error('Status definition not found');
+        }
+
+        // Create new proposal status
+        await prisma.proposalStatus.create({
+            data: {
+                proposal: { connect: { id: proposalId } },
+                definition: { connect: { id: waitingForDefenseStatus.id } },
+                isCurrent: true,
+                startDate: new Date()
+            }
+        });
+
+        // Update student status
+        if (proposal.student) {
+            // Set current student status to not current
+            await prisma.studentStatus.updateMany({
+                where: {
+                    studentId: proposal.student.id,
+                    isCurrent: true
+                },
+                data: {
+                    isCurrent: false,
+                    endDate: new Date()
+                }
+            });
+
+            // Create new student status
+            await prisma.studentStatus.create({
+                data: {
+                    student: { connect: { id: proposal.student.id } },
+                    definition: { connect: { id: waitingForDefenseStatus.id } },
+                    isCurrent: true,
+                    startDate: new Date(),
+                    updatedBy: { connect: { id: req.user.id } }
+                }
+            });
+        }
+
+        // Update proposal with defense date
+        const updatedProposal = await prisma.proposal.update({
+            where: { id: proposalId },
+            data: {
+                defenseDate: new Date(defenseDate)
+            }
+        });
+
+        res.status(200).json({
+            message: 'Defense date added successfully',
+            proposal: updatedProposal
+        });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+export const addComplianceReportDate = async (req, res, next) => {
+    try {
+        const { proposalId } = req.params;
+        const { complianceReportDate } = req.body;
+
+        // Validate input
+        if (!proposalId || !complianceReportDate) {
+            const error = new Error('Invalid input data');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if proposal exists
+        const proposal = await prisma.proposal.findUnique({
+            where: { id: proposalId },
+            include: {
+                student: true,
+                statuses: {
+                    include: {
+                        definition: true
+                    }
+                }
+            }
+        });
+
+        if (!proposal) {
+            const error = new Error('Proposal not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Get status definition for compliance report submitted
+        const complianceReportSubmittedStatus = await prisma.statusDefinition.findFirst({
+            where: { name: 'compliance report submitted' }
+        });
+
+        if (!complianceReportSubmittedStatus) {
+            throw new Error('Status definition not found');
+        }
+
+        // Update current status to not current
+        await prisma.proposalStatus.updateMany({
+            where: {
+                proposalId,
+                isCurrent: true
+            },
+            data: {
+                isCurrent: false,
+                endDate: new Date()
+            }
+        });
+
+        // Create new status for compliance report submitted
+        await prisma.proposalStatus.create({
+            data: {
+                proposal: { connect: { id: proposalId } },
+                definition: { connect: { id: complianceReportSubmittedStatus.id } },
+                isCurrent: true,
+                startDate: new Date()
+            }
+        });
+
+        // Update student status if student exists
+        if (proposal.student) {
+            // Set current student status to not current
+            await prisma.studentStatus.updateMany({
+                where: {
+                    studentId: proposal.student.id,
+                    isCurrent: true
+                },
+                data: {
+                    isCurrent: false,
+                    endDate: new Date()
+                }
+            });
+
+            // Create new student status
+            await prisma.studentStatus.create({
+                data: {
+                    student: { connect: { id: proposal.student.id } },
+                    definition: { connect: { id: complianceReportSubmittedStatus.id } },
+                    isCurrent: true,
+                    startDate: new Date(),
+                    updatedBy: { connect: { id: req.user.id } }
+                }
+            });
+        }
+
+        // Update proposal with compliance report date
+        const updatedProposal = await prisma.proposal.update({
+            where: { id: proposalId },
+            data: {
+                complianceReportDate: new Date(complianceReportDate),
+               
+            }
+        });
+
+        res.status(200).json({
+            message: 'Compliance report date added successfully',
+            proposal: updatedProposal
+        });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+
+
+
+
+
 
 
 

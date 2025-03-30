@@ -34,6 +34,10 @@ model user {
   
   createdAt DateTime? @default(now())
   updatedAt DateTime? @updatedAt
+
+  // Add these relation fields
+  updatedDefenseGrades proposalDefenseGrade[] @relation("updatedDefenseGrades")
+  updatedReviewGrades  proposalReviewGrade[]  @relation("updatedReviewGrades")
 }
 
 enum Role {
@@ -187,6 +191,7 @@ model proposal {
   reviewers   reviewer[]       @relation(fields: [reviewerIds], references: [id])
   submittedAt DateTime         @default(now())
   defenseDate DateTime?
+  complianceReportDate DateTime?
   panelists   panelist[]       @relation(fields: [panelistIds], references: [id])
   panelistIds String[]         @db.ObjectId
 
@@ -212,8 +217,10 @@ model proposalDefenseGrade {
   feedback    String?
   gradedBy    panelist  @relation(fields: [gradedById], references: [id])
   gradedById  String    @db.ObjectId
-   submittedBy    user      @relation(fields: [submittedById], references: [id])
+  submittedBy    user      @relation(fields: [submittedById], references: [id])
   submittedById  String    @db.ObjectId
+  updatedBy      user?     @relation("updatedDefenseGrades", fields: [updatedById], references: [id])
+  updatedById    String?   @db.ObjectId
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 }
@@ -244,11 +251,11 @@ model proposalReviewGrade {
   gradedById  String    @db.ObjectId
   submittedBy    user      @relation(fields: [submittedById], references: [id])
   submittedById  String    @db.ObjectId
+  updatedBy      user?     @relation("updatedReviewGrades", fields: [updatedById], references: [id])
+  updatedById    String?   @db.ObjectId
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 }
-
-
 
 model book {
   id                           String    @id @default(auto()) @map("_id") @db.ObjectId
