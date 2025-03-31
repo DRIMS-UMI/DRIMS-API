@@ -46,6 +46,7 @@ export const corsOptions = {
         'http://localhost:5176',
         'http://localhost:5177',
         'http://localhost:5178',
+        "http://138.68.132.20"
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
