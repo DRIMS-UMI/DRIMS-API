@@ -2,6 +2,13 @@ import prisma from '../../../utils/db.mjs';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
+import fs from 'fs/promises';
+import path from 'path';
+import os from 'os';
+import PDFNet from '@pdftron/pdfnet-node';
+
+
+
 // Faculty login controller
 export const loginFaculty = async (req, res, next) => {
     try {
@@ -1917,6 +1924,340 @@ export const addComplianceReportDate = async (req, res, next) => {
         });
 
     } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Generate and send field letter controller
+export const generateFieldLetter = async (req, res, next) => {
+    try {
+        const { proposalId } = req.params;
+        // const { file: req.file } = req;
+        const { emailTo } = req.body;
+        console.log('here')
+        // Validate file exists
+        if (!req.file) {
+            const error = new Error('No DOCX file provided');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Get proposal with related data
+        const proposal = await prisma.proposal.findUnique({
+            where: { id: proposalId },
+            include: {
+                student: true,
+            }
+        });
+
+        if (!proposal) {
+            const error = new Error('Proposal not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Get letter to field status definition
+        const letterToFieldStatus = await prisma.statusDefinition.findFirst({
+            where: { name: 'letter to field issued' }
+        });
+
+        if (!letterToFieldStatus) {
+            const error = new Error('Letter to field status definition not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Get fieldwork status definition
+        const fieldworkStatus = await prisma.statusDefinition.findFirst({
+            where: { name: 'fieldwork' }
+        });
+
+        if (!fieldworkStatus) {
+            const error = new Error('Fieldwork status definition not found');
+            error.statusCode = 404;
+            throw error;
+        }
+        console.log('here ddddd')
+
+        // Convert DOCX to PDF using PDFNet
+        let pdfBuffer;
+        try {
+            pdfBuffer = await PDFNet.runWithCleanup(async () => {
+                const pdfdoc = await PDFNet.PDFDoc.create();
+                await pdfdoc.initSecurityHandler();
+                
+                // Create a temporary buffer from the uploaded file
+                const docxBuffer = req.file.buffer;
+                
+                // Convert DOCX to PDF
+                await PDFNet.Convert.toPdf(pdfdoc, docxBuffer);
+                
+                // Save to memory buffer
+                return await pdfdoc.saveMemoryBuffer(PDFNet.SDFDoc.SaveOptions.e_linearized);
+            });
+        } catch (conversionError) {
+            console.error('PDF conversion error:', conversionError);
+            const error = new Error('Failed to convert DOCX to PDF');
+            error.statusCode = 500;
+            throw error;
+        }
+
+        console.log('here')
+        // Send email with PDF attachment
+        try {
+            const nodemailer = require('nodemailer');
+            const transporter = nodemailer.createTransport({
+                service: 'gmail',
+                auth: {
+                    user: process.env.NODE_MAILER_USERCRED,
+                    pass: process.env.NODE_MAILER_PASSCRED
+                }
+            });
+
+            await transporter.sendMail({
+                to: process.env.NODE_MAILER_EMAIL_TO,
+                cc: process.env.NODE_MAILER_EMAIL_CC,
+                subject: `Field Letter - ${proposal.student.firstName} ${proposal.student.lastName}`,
+                text: `Please find attached the field letter for ${proposal.student.firstName} ${proposal.student.lastName}`,
+                attachments: [{
+                    filename: `field-letter-${proposal.student.firstName}-${proposal.student.lastName}.pdf`,
+                    content: pdfBuffer
+                }]
+            });
+        } catch (emailError) {
+            console.error('Failed to send email:', emailError);
+        }
+
+        // Database transaction
+        const updatedProposal = await prisma.$transaction(async (prisma) => {
+            // Update student status
+            await prisma.studentStatus.updateMany({
+                where: {
+                    studentId: proposal.student.id,
+                    isCurrent: true
+                },
+                data: {
+                    isCurrent: false,
+                    endDate: new Date()
+                }
+            });
+
+            // Create letter to field status
+            await prisma.studentStatus.create({
+                data: {
+                    student: { connect: { id: proposal.student.id } },
+                    definition: { connect: { id: letterToFieldStatus.id } },
+                    isCurrent: false,
+                    startDate: new Date(),
+                    endDate: new Date(),
+                    updatedBy: { connect: { id: req.user.id } }
+                }
+            });
+
+            // Create fieldwork status
+            await prisma.studentStatus.create({
+                data: {
+                    student: { connect: { id: proposal.student.id } },
+                    definition: { connect: { id: fieldworkStatus.id } },
+                    isCurrent: true,
+                    startDate: new Date(),
+                    updatedBy: { connect: { id: req.user.id } }
+                }
+            });
+
+            // Store the PDF file
+            const pdfDoc = await prisma.letterDocument.create({
+                data: {
+                    name: `field-letter-${proposal.student.firstName}-${proposal.student.lastName}.pdf`,
+                    type: 'FIELD_LETTER',
+                    file: pdfBuffer,
+                    proposal: { connect: { id: proposalId } },
+                    uploadedBy: { connect: { id: req.user.id } }
+                }
+            });
+
+            // Update proposal statuses
+            await prisma.proposalStatus.updateMany({
+                where: {
+                    proposalId: proposalId,
+                    isCurrent: true
+                },
+                data: {
+                    isCurrent: false,
+                    endDate: new Date()
+                }
+            });
+
+            await prisma.proposalStatus.create({
+                data: {
+                    proposal: { connect: { id: proposalId } },
+                    definition: { connect: { id: letterToFieldStatus.id } },
+                    isCurrent: true,
+                    startDate: new Date(),
+                    endDate: new Date()
+                }
+            });
+
+            // Update proposal
+            return await prisma.proposal.update({
+                where: { id: proposalId },
+                data: {
+                    fieldLetterDate: new Date(),
+                }
+            });
+        });
+
+        res.status(200).json({
+            message: 'Field letter processed and sent successfully',
+            proposal: updatedProposal
+        });
+
+    } catch (error) {
+        console.error('Error in generateFieldLetter:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    } finally {
+        PDFNet.shutdown();
+    }
+};
+
+/**
+ * Update field letter date for a proposal
+ * @route PUT /api/v1/faculty/field-letter-date/:proposalId
+ * @access Private (School Admin)
+ */
+export const updateFieldLetterDate = async (req, res, next) => {
+    try {
+        const { proposalId } = req.params;
+        const { fieldLetterDate } = req.body;
+
+        if (!fieldLetterDate) {
+            const error = new Error('Field letter date is required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Validate date format
+        const dateObj = new Date(fieldLetterDate);
+        if (isNaN(dateObj.getTime())) {
+            const error = new Error('Invalid date format');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if proposal exists
+        const proposal = await prisma.proposal.findUnique({
+            where: { id: proposalId },
+            include: {
+                student: true,
+            }
+        });
+
+        if (!proposal) {
+            const error = new Error('Proposal not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Get letter to field status definition
+        const letterToFieldStatus = await prisma.statusDefinition.findFirst({
+            where: { name: 'letter to field issued' }
+        });
+
+        if (!letterToFieldStatus) {
+            const error = new Error('Letter to field status definition not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Get fieldwork status definition
+        const fieldworkStatus = await prisma.statusDefinition.findFirst({
+            where: { name: 'fieldwork' }
+        });
+
+        if (!fieldworkStatus) {
+            const error = new Error('Fieldwork status definition not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Update student status
+        await prisma.studentStatus.updateMany({
+            where: {
+                studentId: proposal.student.id,
+                isCurrent: true
+            },
+            data: {
+                isCurrent: false,
+                endDate: new Date()
+            }
+        });
+
+        // Create letter to field status
+        await prisma.studentStatus.create({
+            data: {
+                student: { connect: { id: proposal.student.id } },
+                definition: { connect: { id: letterToFieldStatus.id } },
+                isCurrent: false,
+                startDate: new Date(),
+                endDate: new Date(),
+                updatedBy: { connect: { id: req.user.id } }
+            }
+        });
+
+        // Create fieldwork status
+        await prisma.studentStatus.create({
+            data: {
+                student: { connect: { id: proposal.student.id } },
+                definition: { connect: { id: fieldworkStatus.id } },
+                isCurrent: true,
+                startDate: new Date(),
+                updatedBy: { connect: { id: req.user.id } }
+            }
+        });
+
+        // Update proposal statuses
+        await prisma.proposalStatus.updateMany({
+            where: {
+                proposalId: proposalId,
+                isCurrent: true
+            },
+            data: {
+                isCurrent: false,
+                endDate: new Date()
+            }
+        });
+
+        await prisma.proposalStatus.create({
+            data: {
+                proposal: { connect: { id: proposalId } },
+                definition: { connect: { id: letterToFieldStatus.id } },
+                isCurrent: true,
+                startDate: new Date(),
+                endDate: new Date()
+            }
+        });
+
+        // Update the field letter date
+        const updatedProposal = await prisma.proposal.update({
+            where: { id: proposalId },
+            data: {
+                fieldLetterDate: new Date(fieldLetterDate)
+            }
+        });
+
+        res.status(200).json({
+            message: 'Field letter date updated successfully',
+            proposal: updatedProposal
+        });
+
+    } catch (error) {
+        console.error('Error in updateFieldLetterDate:', error);
         if (!error.statusCode) {
             error.statusCode = 500;
         }

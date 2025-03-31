@@ -29,11 +29,14 @@ model user {
    updatedStatuses studentStatus[]  // Add this line
 
   submittedProposals proposal[]        @relation("submittedProposals")
-   submittedProposalReviewGrades    proposalReviewGrade[] 
-   submittedProposalDefenseGrades    proposalDefenseGrade[] 
+  submittedProposalReviewGrades    proposalReviewGrade[] 
+  submittedProposalDefenseGrades    proposalDefenseGrade[] 
   
+  submittedBooks book[]        @relation("submittedBooks")
   createdAt DateTime? @default(now())
   updatedAt DateTime? @updatedAt
+
+  uploadedDocuments letterDocument[]
 
   // Add these relation fields
   updatedDefenseGrades proposalDefenseGrade[] @relation("updatedDefenseGrades")
@@ -136,6 +139,7 @@ model statusDefinition {
   updatedAt       DateTime @updatedAt
   studentStatuses studentStatus[] // All student statuses using this definition
   proposalStatuses proposalStatus[] // All proposal statuses using this definition
+  bookStatuses  bookStatus[]
 }
 
 model studentStatus {
@@ -203,10 +207,25 @@ averageDefenseMark Float?
   reviewGrades      proposalReviewGrade[]
   defenseGrades proposalDefenseGrade[]
 
+ fieldLetters letterDocument[]
+ fieldLetterDate DateTime?
+
   statuses    proposalStatus[] // Track proposal status history
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
   submissionDate DateTime      @default(now())
+}
+
+model letterDocument {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  type        String
+  file        Bytes
+  proposalId  String   @db.ObjectId
+  uploadedById String  @db.ObjectId
+  proposal    proposal @relation(fields: [proposalId], references: [id])
+  uploadedBy  user     @relation(fields: [uploadedById], references: [id])
+  
 }
 
 model proposalDefenseGrade {
@@ -258,57 +277,121 @@ model proposalReviewGrade {
 }
 
 model book {
-  id                           String    @id @default(auto()) @map("_id") @db.ObjectId
-  student                      student?   @relation(fields: [studentId], references: [id])
-  studentId                    String?    @db.ObjectId
-  submittedAt                  DateTime  @default(now())
+  id                           String      @id @default(auto()) @map("_id") @db.ObjectId
+  bookCode                     String      @unique
+  title                       String
+  description                 String?
+  student                      student?    @relation(fields: [studentId], references: [id])
+  studentId                    String?     @db.ObjectId
+  submittedAt                  DateTime    @default(now())
+  submissionDate              DateTime
   externalSubmissionDate       DateTime?
   internalSubmissionDate       DateTime?
   externalReportSubmissionDate DateTime?
   internalReportSubmissionDate DateTime?
-  isCurrent                    Boolean   @default(false)
-  submissionCondition         String    // Normal or Resubmission
-  researchAdminUpdated        Boolean   @default(false)
-  examiner            examiner[] @relation(fields: [examinerIds], references: [id])
-  examinerIds          String[]   @db.ObjectId
-  externalMarks               Int?
-  internalMarks               Int?
-  finalGrade                  Float?    // Average of external and internal marks
-  status                      String    // Under Examination, Passed, Failed, Resubmission Required
+  isCurrent                    Boolean     @default(false)
+  submissionCondition         String      // Normal or Resubmission
+  researchAdminUpdated        Boolean     @default(false)
+  examiners                    examiner[]  @relation(fields: [examinerIds], references: [id])
+  examinerIds                 String[]    @db.ObjectId
+  externalMarks              Int?
+  internalMarks              Int?
+  finalGrade                 Float?       // Average of external and internal marks
+  statuses                   bookStatus[]
+  averageExamMark           Float?
+  averageVivaMark           Float?
+  defenseDate               DateTime?
+  submittedBy               user?        @relation(name: "submittedBooks", fields: [submittedById], references: [id])
+  submittedById             String?      @db.ObjectId
+  createdAt                 DateTime     @default(now())
+  updatedAt                 DateTime     @updatedAt
+  examinerAssignments       examinerBookAssignment[]
+}
+
+model bookStatus {
+  id             String           @id @default(auto()) @map("_id") @db.ObjectId
+  book           book             @relation(fields: [bookId], references: [id])
+  bookId         String           @db.ObjectId
+  definition     statusDefinition @relation(fields: [definitionId], references: [id])
+  definitionId   String           @db.ObjectId
+  startDate      DateTime         @default(now())
+  endDate        DateTime?
+  duration       Int?             // Actual duration in days
+  conditions     String?          // Conditions or remarks
+  isActive       Boolean          @default(true)
+  isCurrent      Boolean          @default(true)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 }
 
 model examiner {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  name            String
+  primaryEmail    String    @unique
+  secondaryEmail  String?
+  primaryPhone    String?
+  secondaryPhone  String?
+  type            String    // Internal or External
+  bookIds         String[]  @db.ObjectId
+  books           book[]    @relation(fields: [bookIds], references: [id])
+  title           String?
+  designation     String?
+  institution     String?
+  address         String?
+  specialization  String?
+ 
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  campus          campus?   @relation(fields: [campusId], references: [id])
+  campusId        String?   @db.ObjectId
+  school          school?   @relation(fields: [schoolId], references: [id])
+  schoolId        String?   @db.ObjectId
+  department      department? @relation(fields: [departmentId], references: [id])
+  departmentId    String?   @db.ObjectId
+  bookAssignments examinerBookAssignment[]
+}
+
+model examinerBookAssignment {
   id          String    @id @default(auto()) @map("_id") @db.ObjectId
-  name        String
-  email       String    @unique
-  type        String    // Internal or External
-  submittedAt DateTime?
-  bookIds     String[]  @db.ObjectId
-  books       book[]    @relation(fields: [bookIds], references: [id])
+  examiner    examiner  @relation(fields: [examinerId], references: [id])
+  examinerId  String    @db.ObjectId
+  book        book      @relation(fields: [bookId], references: [id])
+  bookId      String    @db.ObjectId
+  assignedAt  DateTime  @default(now())
+  status      String    // Pending, Accepted, Rejected, Completed
+  submissionType String? // Type of submission (e.g., Initial, Revised)
+  isCurrent   Boolean   @default(true)
+  grade       Float?
+  feedback    String?
+  reportFile  Bytes?
+  reportFileName String?
+  reportSubmittedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
 model supervisor {
-  id       String    @id @default(auto()) @map("_id") @db.ObjectId
-  name     String
-  title    String?
-  employeeId String?
-  designation String?
-  role        Role
-  workEmail     String    @unique
-  personalEmail String?
-  primaryPhone  String
+  id             String      @id @default(auto()) @map("_id") @db.ObjectId
+  name           String
+  title          String?
+  employeeId     String?
+  designation    String?
+  role           Role
+  workEmail      String      @unique
+  personalEmail  String?
+  primaryPhone   String
   secondaryPhone String?
-  facultyType   String    // dean, school_admin, faculty
-  studentIds String[]  @db.ObjectId
-  students student[] @relation(fields: [studentIds], references:[id])
-  user     user?    @relation(fields: [userId], references: [id])
-  userId   String?  @unique @db.ObjectId
-  school   school?  @relation(fields: [schoolId], references: [id])
-  schoolId String?  @db.ObjectId
-  campus   campus?  @relation(fields: [campusId], references: [id])
-  campusId String?  @db.ObjectId
-  department department? @relation(fields: [departmentId], references: [id])
-  departmentId String? @db.ObjectId
+  facultyType    String      // dean, school_admin, faculty
+  studentIds     String[]    @db.ObjectId
+  students       student[]   @relation(fields: [studentIds], references: [id])
+  user           user?       @relation(fields: [userId], references: [id])
+  userId         String?     @unique @db.ObjectId
+  school         school?     @relation(fields: [schoolId], references: [id])
+  schoolId       String?     @db.ObjectId
+  campus         campus?     @relation(fields: [campusId], references: [id])
+  campusId       String?     @db.ObjectId
+  department     department? @relation(fields: [departmentId], references: [id])
+  departmentId   String?     @db.ObjectId
 }
 
 model fieldWork {
@@ -378,6 +461,7 @@ model school {
   facultyMembers facultyMember[]
   supervisors supervisor[]
   students    student[]
+  examiners   examiner[]
 }
 
 model campus {
@@ -390,6 +474,7 @@ model campus {
   students    student[]
   reviewers   reviewer[]
   panelists   panelist[]
+  examiners   examiner[]
 }
 
 model schoolMember {
@@ -414,6 +499,7 @@ model department {
   adminEmail     String @unique
   supervisors supervisor[]
   students    student[]
+  examiners   examiner[]
 }
 
 model facultyMember {

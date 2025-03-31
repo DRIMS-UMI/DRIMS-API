@@ -15,7 +15,7 @@ const upload = multer({
 });
 
 // Import faculty controllers
-import { loginFaculty, getFacultyProfile, updateFacultyPassword, getStudent, getAllStudents, getStudentStatuses, submitProposal, getProposal, gradeProposal, getStudentProposals, addReviewers, getReviewers, addPanelists, getPanelists, getSchoolProposals, deleteReviewer, deletePanelist, addReviewerMark, addPanelistMark, addDefenseDate, addComplianceReportDate } from '../controllers/facultyController.js';
+import { loginFaculty, getFacultyProfile, updateFacultyPassword, getStudent, getAllStudents, getStudentStatuses, submitProposal, getProposal, gradeProposal, getStudentProposals, addReviewers, getReviewers, addPanelists, getPanelists, getSchoolProposals, deleteReviewer, deletePanelist, addReviewerMark, addPanelistMark, addDefenseDate, addComplianceReportDate, generateFieldLetter, updateFieldLetterDate } from '../controllers/facultyController.js';
 
 // Faculty authentication routes
 router.post('/login', loginFaculty);
@@ -55,5 +55,11 @@ router.post('/reviewer-marks/:proposalId/:reviewerId', authenticateToken, author
 
 // Add panelist mark to proposal
 router.post('/panelist-marks/:proposalId/:panelistId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), addPanelistMark);
+
+// Generate and send field letter
+router.post('/generate-field-letter/:proposalId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), upload.single('docxFile'), generateFieldLetter);
+
+// Update field letter date
+router.put('/update-field-letter-date/:proposalId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), updateFieldLetterDate);
 
 export default router;

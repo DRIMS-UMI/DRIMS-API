@@ -1,7 +1,7 @@
 import express from 'express';
 import authenticateToken from '../middleware/authentication.js';
 import authorizeRoles from '../middleware/roleAuthorization.js';
-import { registerSuperAdmin, accessManagementPortal, loginSuperAdmin, loginResearchCentreAdmin, getLoggedInUserDetails, addSchool, addSchoolMembers, getAllSchools, getSchool, updateSchool, deleteSchool, createCampus, getAllCampuses, getCampus, updateCampus, deleteCampus, addDepartment, getAllDepartments, getDepartment, updateDepartment, deleteDepartment, updateSchoolMembers, createFacultyMember, getAllFacultyMembers, getFacultyMember, updateFacultyMember, deleteFacultyMember, createSupervisor, createStudent, updateStudent, deleteStudent, getStudent, getAllStudents, changeStudentPassword, createStatusDefinition, getAllStatusDefinitions, getStatusDefinition, updateStatusDefinition, deleteStatusDefinition, changeFacultyPassword, getAllSupervisors, getSupervisor, updateSupervisor, deleteSupervisor, assignStudentsToSupervisor, getAssignedStudents, getStudentStatuses } from '../controllers/managementController.js';
+import { registerSuperAdmin, accessManagementPortal, loginSuperAdmin, loginResearchCentreAdmin, getLoggedInUserDetails, addSchool, addSchoolMembers, getAllSchools, getSchool, updateSchool, deleteSchool, createCampus, getAllCampuses, getCampus, updateCampus, deleteCampus, addDepartment, getAllDepartments, getDepartment, updateDepartment, deleteDepartment, updateSchoolMembers, createFacultyMember, getAllFacultyMembers, getFacultyMember, updateFacultyMember, deleteFacultyMember, createSupervisor, createStudent, updateStudent, deleteStudent, getStudent, getAllStudents, changeStudentPassword, createStatusDefinition, getAllStatusDefinitions, getStatusDefinition, updateStatusDefinition, deleteStatusDefinition, changeFacultyPassword, getAllSupervisors, getSupervisor, updateSupervisor, deleteSupervisor, assignStudentsToSupervisor, getAssignedStudents, getStudentStatuses, getAllProposals, getProposal, getStudentProposals, submitStudentBook, getStudentBooks, getAllBooks, getBook, createExaminer, getAllExaminers, getExaminer, updateExaminer, deleteExaminer, assignExaminersToBook } from '../controllers/managementController.js';
 
 
 const router = express.Router();
@@ -76,7 +76,36 @@ router.get('/status-definitions/:id', authenticateToken, authorizeRoles('SUPERAD
 router.put('/status-definitions/:id', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), updateStatusDefinition);
 router.delete('/status-definitions/:id', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), deleteStatusDefinition);
 
+// Proposal management routes
+router.get('/proposals', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getAllProposals);
+router.get('/proposals/:proposalId', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getProposal);
+// Student proposal routes
+router.get('/students/:studentId/proposals', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getStudentProposals);
+
+// router.put('/proposals/:proposalId', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), updateProposal);
+// router.delete('/proposals/:proposalId', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), deleteProposal);
+
+// Student book routes
+router.post('/students/:studentId/books', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), submitStudentBook);
+router.get('/students/:studentId/books', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getStudentBooks);
+
+// Grade Book management routes
+router.get('/books', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getAllBooks);
+router.get('/books/:bookId', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getBook);
 
 router.get('/management', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), accessManagementPortal);
 
-export default router; 
+
+// Examiner management routes
+router.post('/examiners', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), createExaminer);
+router.get('/examiners', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getAllExaminers);
+router.get('/examiners/:examinerId', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getExaminer);
+router.put('/examiners/:examinerId', authenticateToken, authorizeRoles('SUPERADMIN'), updateExaminer);
+router.delete('/examiners/:examinerId', authenticateToken, authorizeRoles('SUPERADMIN'), deleteExaminer);   
+
+// Book-Examiner assignment routes
+router.post('/books/:bookId/examiners', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), assignExaminersToBook);
+
+
+
+export default router;  
