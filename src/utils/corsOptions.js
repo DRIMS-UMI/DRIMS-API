@@ -46,7 +46,8 @@ export const corsOptions = {
         'http://localhost:5176',
         'http://localhost:5177',
         'http://localhost:5178',
-        "https://umiapi.alero.co.ke"
+        "https://umifaculty.netlify.app",
+        'https://umimanagement.netlify.app',
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
