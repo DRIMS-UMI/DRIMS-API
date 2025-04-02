@@ -363,8 +363,6 @@ model examinerBookAssignment {
   isCurrent   Boolean   @default(true)
   grade       Float?
   feedback    String?
-  reportFile  Bytes?
-  reportFileName String?
   reportSubmittedAt DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

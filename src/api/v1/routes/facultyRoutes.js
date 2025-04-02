@@ -15,7 +15,7 @@ const upload = multer({
 });
 
 // Import faculty controllers
-import { loginFaculty, getFacultyProfile, updateFacultyPassword, getStudent, getAllStudents, getStudentStatuses, submitProposal, getProposal, gradeProposal, getStudentProposals, addReviewers, getReviewers, addPanelists, getPanelists, getSchoolProposals, deleteReviewer, deletePanelist, addReviewerMark, addPanelistMark, addDefenseDate, addComplianceReportDate, generateFieldLetter, updateFieldLetterDate } from '../controllers/facultyController.js';
+import { loginFaculty, getFacultyProfile, updateFacultyPassword, getStudent, getAllStudents, getStudentStatuses, submitProposal, getProposal, gradeProposal, getStudentProposals, addReviewers, getReviewers, addPanelists, getPanelists, getSchoolProposals, deleteReviewer, deletePanelist, addReviewerMark, addPanelistMark, addDefenseDate, addComplianceReportDate, generateFieldLetter, updateFieldLetterDate, getAllBooks, getBook, getStudentBooks, createExaminer, getAllExaminers, getExaminer, updateExaminer, deleteExaminer, assignExaminersToBook, updateInternalExaminerMark } from '../controllers/facultyController.js';
 
 // Faculty authentication routes
 router.post('/login', loginFaculty);
@@ -61,5 +61,23 @@ router.post('/generate-field-letter/:proposalId', authenticateToken, authorizeRo
 
 // Update field letter date
 router.put('/update-field-letter-date/:proposalId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), updateFieldLetterDate);
+
+// Book management routes
+router.get('/books', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), getAllBooks);
+router.get('/books/:bookId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), getBook);
+router.get('/student-books/:studentId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), getStudentBooks);
+
+// Examiner management routes
+router.post('/examiners', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), createExaminer);
+router.get('/examiners', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), getAllExaminers);
+router.get('/examiners/:examinerId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), getExaminer);
+router.put('/examiners/:examinerId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), updateExaminer);
+router.delete('/examiners/:examinerId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), deleteExaminer);
+
+// Examiner assignment routes
+router.post('/books/:bookId/examiners', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), assignExaminersToBook);
+router.put('/internal-examiner-mark/:assignmentId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), updateInternalExaminerMark);
+
+
 
 export default router;

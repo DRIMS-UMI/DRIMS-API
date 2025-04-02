@@ -4214,6 +4214,18 @@ export const getStudentBooks = async (req, res, next) => {
                         updatedAt: 'desc'
                     }
                 },
+                examinerAssignments: {
+                    include: {
+                        examiner: {
+                            select: {
+                                id: true,
+                                name: true,
+                                primaryEmail: true,
+                                type: true
+                            }
+                        }
+                    }
+                },
                 submittedBy: {
                     select: {
                         id: true,
@@ -4567,19 +4579,53 @@ export const assignExaminersToBook = async (req, res, next) => {
             });
         }
 
-        // For each examiner, record when this book was assigned to them
-        for (const examinerId of examinerIds) {
-            await prisma.examinerBookAssignment.create({
-                    data: {
-                        examiner: { connect: { id: examinerId } },
-                        book: { connect: { id: bookId } },
-                        assignedAt: assignmentDate,
-                        submissionType: "Normal",
-                        status: "Pending",
-                        isCurrent: true
-                    }
-                });
-        }
+          // Checkassignment if existing is external examiner
+          // Check if there's an existing external examiner assignment
+          const existingAssignment = await prisma.examinerBookAssignment.findFirst({
+            where: {
+              examiner: { type: "External" },
+              bookId,
+              isCurrent: true
+            }
+          });
+
+          // Create assignments for each examiner
+          for (const examinerId of examinerIds) {
+            if (existingAssignment) {
+              // Deactivate existing external examiner assignment
+              await prisma.examinerBookAssignment.update({
+                where: { id: existingAssignment.id },
+                data: {
+                  isCurrent: false,
+                
+                }
+              });
+
+              // Create new resubmission assignment
+              await prisma.examinerBookAssignment.create({
+                data: {
+                  examiner: { connect: { id: examinerId } },
+                  book: { connect: { id: bookId } },
+                  assignedAt: assignmentDate,
+                  submissionType: "Resubmission",
+                  status: "Pending",
+                  isCurrent: true
+                }
+              });
+            } else {
+              // Create new normal assignment
+              await prisma.examinerBookAssignment.create({
+                data: {
+                  examiner: { connect: { id: examinerId } },
+                  book: { connect: { id: bookId } },
+                  assignedAt: assignmentDate,
+                  submissionType: "Normal", 
+                  status: "Pending",
+                  isCurrent: true
+                }
+              });
+            }
+          }
 
         res.status(200).json({
             message: 'Examiners assigned to book successfully and status updated to Under Examination',
@@ -4635,6 +4681,313 @@ export const getExaminer = async (req, res, next) => {
         }
         next(error);
     }
+};
+
+// Controller for updating examiner mark
+export const updateExternalExaminerMark = async (req, res, next) => {
+  try {
+    const { assignmentId } = req.params;
+    const { mark, comments } = req.body;
+
+    if (!assignmentId) {
+      const error = new Error("Assignment ID is required");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (mark === undefined || mark === null) {
+      const error = new Error("Mark is required");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (!comments) {
+      const error = new Error("Comments are required");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // Check if assignment exists
+    const existingAssignment = await prisma.examinerBookAssignment.findUnique({
+      where: {
+        id: assignmentId,
+      },
+      include: {
+        examiner: true,
+        book: {
+          include: {
+            examinerAssignments: {
+              include: {
+                examiner: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!existingAssignment) {
+      const error = new Error("Assignment not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const parsedMark = parseFloat(mark);
+    let status = null;
+    let averageMark = parsedMark;
+
+    // Check if examiner is external
+    if (existingAssignment.examiner.type === "External") {
+      // Check if there is an active internal examiner
+      const internalExaminerAssignment =
+        existingAssignment.book.examinerAssignments.find(
+          (assignment) =>
+            assignment.examiner.type === "Internal" &&
+            assignment.grade !== null &&
+            assignment.id !== assignmentId &&
+            assignment.isCurrent === true
+        );
+
+        console.log("internalExaminerAssignment", internalExaminerAssignment);
+
+      const student = await prisma.student.findUnique({
+        where: {
+          id: existingAssignment.book.studentId,
+        },
+      });
+
+      const resubmissionRequiredStatus =
+        await prisma.statusDefinition.findFirst({
+          where: {
+            name: "failed & resubmission required",
+          },
+        });
+
+      if (!resubmissionRequiredStatus) {
+        const error = new Error(
+          "Resubmission required status definition not found"
+        );
+        error.statusCode = 404;
+        throw error;
+      }
+
+      const passedStatus = await prisma.statusDefinition.findFirst({
+        where: {
+          name: "passed & authorized for viva",
+        },
+      });
+
+      if (!passedStatus) {
+        const error = new Error("Passed status definition not found");
+        error.statusCode = 404;
+        throw error;
+      }
+
+      // If mark is below 60%, status is failed
+      if (parsedMark < 60) {
+        status = "FAILED";
+        if (internalExaminerAssignment) {
+          averageMark = (parsedMark + internalExaminerAssignment.grade) / 2;
+
+          // Update the book with the average mark
+          await prisma.book.update({
+            where: {
+              id: existingAssignment.bookId,
+            },
+            data: {
+              averageExamMark: averageMark,
+            },
+          });
+        } else {
+        }
+
+        // Update the previous student status to not be current
+        await prisma.studentStatus.updateMany({
+          where: {
+            studentId: student.id,
+            isCurrent: true,
+          },
+          data: {
+            isCurrent: false,
+            endDate: new Date(),
+          },
+        });
+
+        // Update the student status to indicate resubmission is required
+        await prisma.studentStatus.create({
+          data: {
+            student: { connect: { id: student.id } },
+            definition: { connect: { id: resubmissionRequiredStatus.id } },
+            isActive: true,
+            startDate: new Date(),
+            isCurrent: true,
+            updatedBy: { connect: { id: req.user.id } },
+          },
+        });
+
+        // Update the previous book status to not be current
+        await prisma.bookStatus.updateMany({
+          where: {
+            bookId: existingAssignment.bookId,
+            isCurrent: true,
+          },
+          data: {
+            isCurrent: false,
+            endDate: new Date(),
+          },
+        });
+
+        // Create new book status for resubmission
+        await prisma.bookStatus.create({
+          data: {
+            book: { connect: { id: existingAssignment.bookId } },
+            definition: { connect: { id: resubmissionRequiredStatus.id } },
+            isActive: true,
+            startDate: new Date(),
+            isCurrent: true,
+            // updatedBy: { connect: { id: req.user.id } },
+          },
+        });
+      } else {
+        status = "PASSED";
+        // If internal examiner exists, calculate average
+        if (internalExaminerAssignment) {
+          averageMark = (parsedMark + internalExaminerAssignment.grade) / 2;
+
+          // Update the book with the average mark
+          await prisma.book.update({
+            where: {
+              id: existingAssignment.bookId,
+            },
+            data: {
+              averageExamMark: averageMark,
+            },
+          });
+
+          if (averageMark >= 60) {
+            // Update the previous student status to not be current
+            await prisma.studentStatus.updateMany({
+              where: {
+                studentId: student.id,
+                isCurrent: true,
+              },
+              data: {
+                isCurrent: false,
+                endDate: new Date(),
+              },
+            });
+
+            // Update the student status to indicate resubmission is required
+            await prisma.studentStatus.create({
+              data: {
+                student: { connect: { id: student.id } },
+                definition: { connect: { id: passedStatus.id } },
+                isActive: true,
+                startDate: new Date(),
+                isCurrent: true,
+                updatedBy: { connect: { id: req.user.id } },
+              },
+            });
+
+            // Update the previous book status to not be current
+            await prisma.bookStatus.updateMany({
+              where: {
+                bookId: existingAssignment.bookId,
+                isCurrent: true,
+              },
+              data: {
+                isCurrent: false,
+                endDate: new Date(),
+              },
+            });
+
+            // Create new book status for resubmission
+            await prisma.bookStatus.create({
+              data: {
+                book: { connect: { id: existingAssignment.bookId } },
+                definition: { connect: { id: passedStatus.id } },
+                isActive: true,
+                startDate: new Date(),
+                isCurrent: true,
+                // updatedBy: { connect: { id: req.user.id } },
+              },
+            });
+          } else {
+            // Update the previous student status to not be current
+            await prisma.studentStatus.updateMany({
+              where: {
+                studentId: student.id,
+                isCurrent: true,
+              },
+              data: {
+                isCurrent: false,
+                endDate: new Date(),
+              },
+            });
+
+            // Update the student status to indicate resubmission is required
+            await prisma.studentStatus.create({
+              data: {
+                student: { connect: { id: student.id } },
+                definition: { connect: { id: resubmissionRequiredStatus.id } },
+                isActive: true,
+                startDate: new Date(),
+                isCurrent: true,
+                updatedBy: { connect: { id: req.user.id } },
+              },
+            });
+
+            // Update the previous book status to not be current
+            await prisma.bookStatus.updateMany({
+              where: {
+                bookId: existingAssignment.bookId,
+                isCurrent: true,
+              },
+              data: {
+                isCurrent: false,
+                endDate: new Date(),
+              },
+            });
+
+            // Create new book status for resubmission
+            await prisma.bookStatus.create({
+              data: {
+                book: { connect: { id: existingAssignment.bookId } },
+                definition: { connect: { id: resubmissionRequiredStatus.id } },
+                isActive: true,
+                startDate: new Date(),
+                isCurrent: true,
+                // updatedBy: { connect: { id: req.user.id } },
+              },
+            });
+          }
+        }
+      }
+    }
+
+    // Update the assignment with mark, comments and status
+    const updatedAssignment = await prisma.examinerBookAssignment.update({
+      where: {
+        id: assignmentId,
+      },
+      data: {
+        grade: parsedMark,
+        feedback: comments,
+        reportSubmittedAt: new Date(),
+        status: status,
+      },
+    });
+
+    res.status(200).json({
+      message: "Examiner mark updated successfully",
+      assignment: updatedAssignment,
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
 };
 
 // Controller for updating an examiner
