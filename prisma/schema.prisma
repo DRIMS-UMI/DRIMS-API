@@ -22,11 +22,22 @@ model user {
   phone     String?
   designation String?
   role      Role     // Defines user roles
+  isActive  Boolean? @default(true)
+  deactivatedAt DateTime?
+  deactivatedBy user? @relation("deactivatedUsers", fields: [deactivatedById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  deactivatedById String? @db.ObjectId
+  deactivatedUsers user[] @relation("deactivatedUsers")
+
+  reactivatedAt DateTime?
+   reactivatedBy user? @relation("reactivatedUsers", fields: [reactivatedById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  reactivatedById String? @db.ObjectId
+  reactivatedUsers user[] @relation("reactivatedUsers")
+  
   activities userActivity[]
   student     student? 
   facultyMember facultyMember?
   supervisor   supervisor?
-   updatedStatuses studentStatus[]  // Add this line
+  updatedStatuses studentStatus[]  // Add this line
 
   submittedProposals proposal[]        @relation("submittedProposals")
   submittedProposalReviewGrades    proposalReviewGrade[] 
@@ -41,6 +52,10 @@ model user {
   // Add these relation fields
   updatedDefenseGrades proposalDefenseGrade[] @relation("updatedDefenseGrades")
   updatedReviewGrades  proposalReviewGrade[]  @relation("updatedReviewGrades")
+  
+  // Add campus relation
+  campus    campus?   @relation(fields: [campusId], references: [id])
+  campusId  String?   @db.ObjectId
 }
 
 enum Role {
@@ -473,6 +488,7 @@ model campus {
   reviewers   reviewer[]
   panelists   panelist[]
   examiners   examiner[]
+  users       user[]   // Add this relation field
 }
 
 model schoolMember {

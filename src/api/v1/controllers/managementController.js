@@ -5136,6 +5136,496 @@ export const deleteExaminer = async (req, res, next) => {
 
 
 
+// Create a new user
+export const createUser = async (req, res, next) => {
+    try {
+        const { 
+            name, 
+            email, 
+            role, 
+            password, 
+            title, 
+            phone, 
+            designation, 
+            campus 
+        } = req.body;
+
+        // Validate required fields
+        if (!name || !email || !role || !password) {
+            const error = new Error('Name, email, role, and password are required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if user with email already exists
+        const existingUser = await prisma.user.findUnique({
+            where: { email }
+        });
+
+        if (existingUser) {
+            const error = new Error('User with this email already exists');
+            error.statusCode = 409;
+            throw error;
+        }
+
+        // Hash the password
+        const hashedPassword = await bcrypt.hash(password, 12);
+
+        // Create the new user
+        const newUser = await prisma.user.create({
+            data: {
+                name,
+                email,
+                role,
+                password: hashedPassword,
+                title,
+                phone,
+                designation,
+                campus: { connect: { id: campus } }
+            }
+        });
+
+        // Remove password from response
+        const { password: _, ...userWithoutPassword } = newUser;
+
+        res.status(201).json({
+            message: 'User created successfully',
+            user: userWithoutPassword
+        });
+
+    } catch (error) {
+        console.error('Error in createUser:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Get all users except the logged in user
+export const getAllUsers = async (req, res, next) => {
+    try {
+        const loggedInUserId = req.user.id;
+
+        const users = await prisma.user.findMany({
+            where: {
+                id: {
+                    not: loggedInUserId
+                },
+                role: {
+                    in: ['SUPERADMIN', 'RESEARCH_ADMIN', 'MANAGER', 'REGISTRY_ADMIN']
+                }
+            },
+            select: {
+                id: true,
+                name: true,
+                email: true,
+                role: true,
+                title: true,
+                phone: true,
+                designation: true,
+                campus: true,
+                isActive: true,
+                createdAt: true,
+                updatedAt: true
+            },
+            orderBy: {
+                createdAt: 'desc'
+            }
+        });
+
+        res.status(200).json({
+            users
+        });
+
+    } catch (error) {
+        console.error('Error in getAllUsers:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+
+// Deactivate user
+export const deactivateUser = async (req, res, next) => {
+    try {
+        const { userId } = req.params;
+        console.log(userId);
+
+        if (!userId) {
+            const error = new Error('User ID is required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if user exists
+        const existingUser = await prisma.user.findUnique({
+            where: { id: userId }
+        });
+
+        if (!existingUser) {
+            const error = new Error('User not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Update user to deactivated status
+        const deactivatedUser = await prisma.user.update({
+            where: { id: userId },
+            data: { 
+                isActive: false,
+                deactivatedAt: new Date(),
+                deactivatedBy: req.user ? { connect: { id: req.user.id } } : undefined
+            }
+        });
+
+        // Remove password from response
+        const { password: _, ...userWithoutPassword } = deactivatedUser;
+
+        res.status(200).json({
+            message: 'User deactivated successfully',
+            user: userWithoutPassword
+        });
+
+    } catch (error) {
+        console.error('Error in deactivateUser:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Reactivate user
+export const reactivateUser = async (req, res, next) => {
+    try {
+        const { userId } = req.params;
+
+        if (!userId) {
+            const error = new Error('User ID is required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if user exists
+        const existingUser = await prisma.user.findUnique({
+            where: { id: userId }
+        });
+
+        if (!existingUser) {
+            const error = new Error('User not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Update user to activated status
+        const reactivatedUser = await prisma.user.update({
+            where: { id: userId },
+            data: { 
+                isActive: true,
+                deactivatedAt: null,
+                reactivatedAt: new Date(),
+                reactivatedBy: req.user ? { connect: { id: req.user.id } } : undefined
+            }
+        });
+
+        // Remove password from response
+        const { password: _, ...userWithoutPassword } = reactivatedUser;
+
+        res.status(200).json({
+            message: 'User reactivated successfully',
+            user: userWithoutPassword
+        });
+
+    } catch (error) {
+        console.error('Error in reactivateUser:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Update user
+export const updateUser = async (req, res, next) => {
+    try {
+        const { userId } = req.params;
+        const { name, email, phone, designation, role, campusId } = req.body;
+
+        if (!userId) {
+            const error = new Error('User ID is required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if user exists
+        const existingUser = await prisma.user.findUnique({
+            where: { id: userId }
+        });
+
+        if (!existingUser) {
+            const error = new Error('User not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Prepare update data
+        const updateData = {};
+        const changes = {};
+        
+        if (name && name !== existingUser.name) {
+            updateData.name = name;
+            changes.oldName = existingUser.name;
+            changes.newName = name;
+        } else if (name) {
+            updateData.name = name;
+        }
+        
+        if (email && email !== existingUser.email) {
+            updateData.email = email;
+            changes.oldEmail = existingUser.email;
+            changes.newEmail = email;
+        } else if (email) {
+            updateData.email = email;
+        }
+        
+        if (phone && phone !== existingUser.phone) {
+            updateData.phone = phone;
+            changes.oldPhone = existingUser.phone;
+            changes.newPhone = phone;
+        } else if (phone) {
+            updateData.phone = phone;
+        }
+        
+        if (designation && designation !== existingUser.designation) {
+            updateData.designation = designation;
+            changes.oldDesignation = existingUser.designation;
+            changes.newDesignation = designation;
+        } else if (designation) {
+            updateData.designation = designation;
+        }
+        
+        // if (role && role !== existingUser.role) {
+        //     updateData.role = role;
+        //     changes.push({ field: 'role', oldValue: existingUser.role, newValue: role });
+        // } else if (role) {
+        //     updateData.role = role;
+        // }
+        
+    
+        
+        // Handle campus connection/disconnection
+        // if (campusId) {
+        //     updateData.campus = { connect: { id: campusId } };
+        // } else if (campusId === null) {
+        //     updateData.campus = { disconnect: true };
+        // }
+
+        // Update user
+        const updatedUser = await prisma.user.update({
+            where: { id: userId },
+            data: updateData
+        });
+
+        // Remove password from response
+        const { password: _, ...userWithoutPassword } = updatedUser;
+
+          // Store changes in the update data if there are any
+          if (Object.keys(changes).length > 0) {
+            // Log activity
+       await prisma.userActivity.create({
+           data: {
+               userId: req.user.id,
+               action: `Updated user: ${existingUser.name}`,
+               entityType: 'user',
+               entityId: userId,
+               details: JSON.stringify(changes)
+           }
+       });
+       }
+
+        res.status(200).json({
+            message: 'User updated successfully',
+            user: userWithoutPassword
+        });
+
+    } catch (error) {
+        console.error('Error in updateUser:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Get user details with activities
+export const getUser = async (req, res, next) => {
+    try {
+        const { userId } = req.params;
+
+        if (!userId) {
+            const error = new Error('User ID is required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Fetch user with campus information
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            include: {
+                campus: true
+            }
+        });
+
+        if (!user) {
+            const error = new Error('User not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Fetch user activities
+        const activities = await prisma.userActivity.findMany({
+            where: { userId },
+            
+            orderBy: { timestamp: 'desc' }
+        });
+
+        // Remove password from response
+        const { password: _, ...userWithoutPassword } = user;
+
+        res.status(200).json({
+            message: 'User retrieved successfully',
+            user: userWithoutPassword,
+            activities
+        });
+
+    } catch (error) {
+        console.error('Error in getUser:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+
+// Delete user
+export const deleteUser = async (req, res, next) => {
+    try {
+        const { userId } = req.params;
+
+        if (!userId) {
+            const error = new Error('User ID is required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if user exists
+        const existingUser = await prisma.user.findUnique({
+            where: { id: userId }
+        });
+
+        if (!existingUser) {
+            const error = new Error('User not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Delete user
+        await prisma.user.delete({
+            where: { id: userId }
+        });
+
+        // Log activity
+        await prisma.userActivity.create({
+            data: {
+                userId: req.user.id,
+                action: `Deleted user: ${existingUser.name}`,
+                entityType: 'user',
+                entityId: userId,
+                details: JSON.stringify({
+                    name: existingUser.name,
+                    email: existingUser.email,
+                    phone: existingUser.phone,
+                    designation: existingUser.designation
+                })
+            }
+        });
+
+        res.status(200).json({
+            message: 'User deleted successfully'
+        });
+
+    } catch (error) {
+        console.error('Error in deleteUser:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Update user password
+export const updateUserPassword = async (req, res, next) => {
+    try {
+        const { userId } = req.params;
+        const { newPassword } = req.body;
+
+        if (!userId) {
+            const error = new Error('User ID is required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        if (!newPassword) {
+            const error = new Error('New password is required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if user exists
+        const existingUser = await prisma.user.findUnique({
+            where: { id: userId }
+        });
+
+        if (!existingUser) {
+            const error = new Error('User not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Hash the new password
+        const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+        // Update user password
+        await prisma.user.update({
+            where: { id: userId },
+            data: { password: hashedPassword }
+        });
+
+        // Log activity
+        await prisma.userActivity.create({
+            data: {
+                userId: req.user.id,
+                action: `Updated password for user: ${existingUser.name}`
+            }
+        });
+
+        res.status(200).json({
+            message: 'User password updated successfully'
+        });
+
+    } catch (error) {
+        console.error('Error in updateUserPassword:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
 
 
 

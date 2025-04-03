@@ -1,7 +1,7 @@
 import express from 'express';
 import authenticateToken from '../middleware/authentication.js';
 import authorizeRoles from '../middleware/roleAuthorization.js';
-import { registerSuperAdmin, accessManagementPortal, loginSuperAdmin, loginResearchCentreAdmin, getLoggedInUserDetails, addSchool, addSchoolMembers, getAllSchools, getSchool, updateSchool, deleteSchool, createCampus, getAllCampuses, getCampus, updateCampus, deleteCampus, addDepartment, getAllDepartments, getDepartment, updateDepartment, deleteDepartment, updateSchoolMembers, createFacultyMember, getAllFacultyMembers, getFacultyMember, updateFacultyMember, deleteFacultyMember, createSupervisor, createStudent, updateStudent, deleteStudent, getStudent, getAllStudents, changeStudentPassword, createStatusDefinition, getAllStatusDefinitions, getStatusDefinition, updateStatusDefinition, deleteStatusDefinition, changeFacultyPassword, getAllSupervisors, getSupervisor, updateSupervisor, deleteSupervisor, assignStudentsToSupervisor, getAssignedStudents, getStudentStatuses, getAllProposals, getProposal, getStudentProposals, submitStudentBook, getStudentBooks, getAllBooks, getBook, createExaminer, getAllExaminers, getExaminer, updateExaminer, deleteExaminer, assignExaminersToBook, updateExternalExaminerMark } from '../controllers/managementController.js';
+import { registerSuperAdmin, accessManagementPortal, loginSuperAdmin, loginResearchCentreAdmin, getLoggedInUserDetails, addSchool, addSchoolMembers, getAllSchools, getSchool, updateSchool, deleteSchool, createCampus, getAllCampuses, getCampus, updateCampus, deleteCampus, addDepartment, getAllDepartments, getDepartment, updateDepartment, deleteDepartment, updateSchoolMembers, createFacultyMember, getAllFacultyMembers, getFacultyMember, updateFacultyMember, deleteFacultyMember, createSupervisor, createStudent, updateStudent, deleteStudent, getStudent, getAllStudents, changeStudentPassword, createStatusDefinition, getAllStatusDefinitions, getStatusDefinition, updateStatusDefinition, deleteStatusDefinition, changeFacultyPassword, getAllSupervisors, getSupervisor, updateSupervisor, deleteSupervisor, assignStudentsToSupervisor, getAssignedStudents, getStudentStatuses, getAllProposals, getProposal, getStudentProposals, submitStudentBook, getStudentBooks, getAllBooks, getBook, createExaminer, getAllExaminers, getExaminer, updateExaminer, deleteExaminer, assignExaminersToBook, updateExternalExaminerMark, getAllUsers, createUser, updateUser, deleteUser, updateUserPassword, deactivateUser, reactivateUser, getUser } from '../controllers/managementController.js';
 
 
 const router = express.Router();
@@ -108,6 +108,16 @@ router.post('/books/:bookId/examiners', authenticateToken, authorizeRoles('SUPER
 
 // Examiner mark routes
 router.post('/examiner-marks/:assignmentId', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), updateExternalExaminerMark);
+
+// User roles management routes
+router.get('/users', authenticateToken, authorizeRoles('SUPERADMIN'), getAllUsers);
+router.get('/users/:userId', authenticateToken, authorizeRoles('SUPERADMIN'), getUser);
+router.post('/users', authenticateToken, authorizeRoles('SUPERADMIN'), createUser);
+router.put('/users/:userId', authenticateToken, authorizeRoles('SUPERADMIN'), updateUser);
+router.delete('/users/:userId', authenticateToken, authorizeRoles('SUPERADMIN'), deleteUser);   
+router.put('/users/:userId/password', authenticateToken, authorizeRoles('SUPERADMIN'), updateUserPassword);
+router.put('/users/:userId/deactivate', authenticateToken, authorizeRoles('SUPERADMIN'), deactivateUser);
+router.put('/users/:userId/reactivate', authenticateToken, authorizeRoles('SUPERADMIN'), reactivateUser);
 
 
 export default router;  
