@@ -2182,7 +2182,7 @@ export const getStudent = async (req, res, next) => {
                 proposals: true,
                 notifications: true,
                 fieldWork: true,
-                vivas: true,
+              
                 school: true,
                 campus: true,
                 department: true,
@@ -2220,7 +2220,7 @@ export const getAllStudents = async (req, res, next) => {
                 proposals: true,
                 notifications: true,
                 fieldWork: true,
-                vivas: true,
+               
                 school: true,
                 campus: true,
                 department: true,
@@ -5628,8 +5628,770 @@ export const updateUserPassword = async (req, res, next) => {
 
 
 
+// Add panelists to a book
+export const addPanelistsToBook = async (req, res, next) => {
+    try {
+        const { bookId } = req.params;
+        const { panelists } = req.body;
+
+        // Validate input
+        if (!bookId) {
+            const error = new Error('Book ID is required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        if (!panelists || !Array.isArray(panelists) || panelists.length === 0) {
+            const error = new Error('At least one panelist is required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Validate panelist objects
+        for (const panelist of panelists) {
+            if (!panelist.name || !panelist.email) {
+                const error = new Error('Each panelist must have name and email');
+                error.statusCode = 400;
+                throw error;
+            }
+        }
+
+        // Check if book exists
+        const existingBook = await prisma.book.findUnique({
+            where: { id: bookId },
+            include: {
+                panelists: true,
+                student: true
+            }
+        });
+
+        if (!existingBook) {
+            const error = new Error('Book not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Get user's campus
+        const faculty = await prisma.facultyMember.findUnique({
+            where: { userId: req.user.id },
+            select: { campusId: true }
+        });
+
+        if (!faculty || !faculty.campusId) {
+            const error = new Error('Faculty campus not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Process each panelist
+        const panelistsToAdd = [];
+        for (const panelist of panelists) {
+            // Check if panelist already exists
+            let existingPanelist = await prisma.panelist.findFirst({
+                where: {
+                    email: panelist.email,
+                    campusId: faculty.campusId
+                }
+            });
+
+            // Create panelist if doesn't exist
+            if (!existingPanelist) {
+                existingPanelist = await prisma.panelist.create({
+                    data: {
+                        name: panelist.name,
+                        email: panelist.email,
+                        campus: {
+                            connect: { id: faculty.campusId }
+                        }
+                    }
+                });
+            }
+
+            // Check if panelist is already assigned to this book
+            const alreadyAssigned = existingBook.panelists.some(p => p.id === existingPanelist.id);
+            if (!alreadyAssigned) {
+                panelistsToAdd.push(existingPanelist.id);
+            }
+        }
+
+        // Add panelists to book
+        if (panelistsToAdd.length > 0) {
+            await prisma.book.update({
+                where: { id: bookId },
+                data: {
+                    panelists: {
+                        connect: panelistsToAdd.map(id => ({ id }))
+                    }
+                }
+            });
+        } else {
+            return res.status(200).json({
+                message: 'All panelists are already assigned to this book',
+                book: existingBook
+            });
+        }
+
+        // Get updated book with panelists
+        const updatedBook = await prisma.book.findUnique({
+            where: { id: bookId },
+            include: {
+                panelists: true,
+                student: true
+            }
+        });
+
+        // Log activity
+        await prisma.userActivity.create({
+            data: {
+                userId: req.user.id,
+                action: `Added ${panelistsToAdd.length} panelists to book: ${existingBook.title || `Book for ${existingBook.student?.name || 'Unknown Student'}`}`,
+                entityId: updatedBook.id,
+                entityType: "Student Book"
+            }
+        });
+
+        res.status(200).json({
+            message: 'Panelists added to book successfully',
+            book: updatedBook
+        });
+
+    } catch (error) {
+        console.error('Error in addPanelistsToBook:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+
+
 
 // Controller for accessing the management portal
 export const accessManagementPortal = (req, res) => {
     res.send('Welcome to the Management Portal');
 }; 
+
+// Controller for recording viva verdict
+export const recordVivaVerdict = async (req, res, next) => {
+    try {
+        const { vivaId } = req.params;
+        const { verdict, comments } = req.body;
+
+        // Validate inputs
+        if (!vivaId || !verdict) {
+            const error = new Error('Viva ID and verdict are required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if viva exists
+        const existingViva = await prisma.viva.findUnique({
+            where: { id: vivaId },
+            include: { 
+                book: {
+                    include: {
+                        student: true
+                    }
+                }
+            }
+        });
+
+        if (!existingViva) {
+            const error = new Error('Viva not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Determine viva status based on verdict
+        let vivaStatus;
+        switch (verdict) {
+            case 'PASS':
+            case 'PASS_WITH_MINOR_CORRECTIONS':
+            case 'PASS_WITH_MAJOR_CORRECTIONS':
+                vivaStatus = 'COMPLETED';
+                break;
+            case 'FAIL':
+                vivaStatus = 'FAILED';
+                break;
+            case 'RESCHEDULE':
+                vivaStatus = 'RESCHEDULED';
+                break;
+            default:
+                vivaStatus = 'COMPLETED';
+        }
+
+        // Update viva with verdict
+        const updatedViva = await prisma.viva.update({
+            where: { id: vivaId },
+            data: {
+                verdict,
+                comments,
+                status: vivaStatus,
+                completedAt: new Date()
+            },
+            include: {
+                book: {
+                    include: {
+                        student: true
+                    }
+                },
+                panelists: true
+            }
+        });
+
+        // Update student and book status if passed
+        if (verdict === 'PASS' || verdict === 'PASS_WITH_MINOR_CORRECTIONS' || verdict === 'PASS_WITH_MAJOR_CORRECTIONS') {
+            // Find status definition for minutes pending
+            const minutesPendingStatus = await prisma.statusDefinition.findFirst({
+                where: { name: 'minutes pending' }
+            });
+
+            if (minutesPendingStatus) {
+                // First, update all current statuses to not current
+                await prisma.studentStatus.updateMany({
+                    where: {
+                        studentId: existingViva.book.student.id,
+                        isCurrent: true
+                    },
+                    data: {
+                        isCurrent: false,
+                        endDate: new Date()
+                    }
+                });
+                
+                // Update student status
+                await prisma.studentStatus.create({
+                    data: {
+                        student: {connect: {id: existingViva.book.student.id}},
+                        definition: {connect: {id: minutesPendingStatus.id}},
+                        startDate: new Date(),
+                        isCurrent: true
+                    }
+                });
+
+                // First, update all current book statuses to not current
+                await prisma.bookStatus.updateMany({
+                    where: {
+                        bookId: existingViva.bookId,
+                        isCurrent: true
+                    },
+                    data: {
+                        isCurrent: false,
+                        endDate: new Date()
+                    }
+                });
+                
+                // Create new book status
+                await prisma.bookStatus.create({
+                    data: {
+                        book: {connect: {id: existingViva.bookId}},
+                        definition: {connect: {id: minutesPendingStatus.id}},
+                        startDate: new Date(),
+                        isCurrent: true
+                    }
+                });
+            }
+        }
+
+        // Log activity
+        await prisma.userActivity.create({
+            data: {
+                userId: req.user.id,
+                action: `Recorded viva verdict: ${verdict} for ${existingViva.book?.title || `Book ID: ${existingViva.bookId}`}`,
+                entityId: existingViva.bookId,
+                entityType: "Student Book"
+            }
+        });
+
+        res.status(200).json({
+            message: 'Viva verdict recorded successfully',
+            viva: updatedViva
+        });
+
+    } catch (error) {
+        console.error('Error in recordVivaVerdict:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for scheduling viva
+export const scheduleViva = async (req, res, next) => {
+    try {
+        const { bookId } = req.params;
+        const { date, panelists, attempt, location, startTime, endTime } = req.body;
+
+        // Validate inputs
+        if (!bookId || !date || !panelists || panelists.length === 0) {
+            const error = new Error('Book ID, date, and at least one panelist are required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if book exists
+        const existingBook = await prisma.book.findUnique({
+            where: { id: bookId },
+            include: { student: true }
+        });
+
+        if (!existingBook) {
+            const error = new Error('Book not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Find status definition for viva scheduled
+        const statusDefinition = await prisma.statusDefinition.findFirst({
+            where: { name: 'scheduled for viva' }
+        });
+
+        // Set any existing vivas for this book to not current
+        await prisma.viva.updateMany({
+            where: { 
+                bookId: bookId,
+                isCurrent: true 
+            },
+            data: { isCurrent: false }
+        });
+
+        // Create new viva
+        const newViva = await prisma.viva.create({
+            data: {
+                bookId,
+                scheduledDate: new Date(date),
+                status: 'SCHEDULED',
+                attempt: attempt || 1,
+                isCurrent: true,
+                // location: location || 'To be announced',
+                // startTime: startTime || null,
+                // endTime: endTime || null,
+                panelists: {
+                    connect: panelists.map(id => ({ id }))
+                }
+            },
+            include: {
+                book: {
+                    include: {
+                        student: true
+                    }
+                },
+                panelists: true
+            }
+        });
+
+        // Update book status
+        if (statusDefinition) {
+            // Set all current book statuses to not current
+            await prisma.bookStatus.updateMany({
+                where: { 
+                    bookId: bookId,
+                    isCurrent: true 
+                },
+                data: { isCurrent: false, endDate: new Date() }
+            });
+
+            // Create new book status
+            await prisma.bookStatus.create({
+                data: {
+                    book: { connect: { id: bookId } },
+                    definition: { connect: { id: statusDefinition.id } },
+                    startDate: new Date(),
+                    isActive: true,
+                    isCurrent: true
+                }
+            });
+
+            // Update student status if needed
+            if (existingBook.student) {
+                // Set all current student statuses to not current
+                await prisma.studentStatus.updateMany({
+                    where: { 
+                        studentId: existingBook.student.id,
+                        isCurrent: true 
+                    },
+                    data: { isCurrent: false, endDate: new Date() }
+                });
+
+                // Create new student status
+                await prisma.studentStatus.create({
+                    data: {
+                        student: { connect: { id: existingBook.student.id } },
+                        definition: { connect: { id: statusDefinition.id } },
+                        startDate: new Date(),
+                        isActive: true,
+                        isCurrent: true
+                    }
+                });
+            }
+        }
+
+        // Log activity
+        await prisma.userActivity.create({
+            data: {
+                userId: req.user.id,
+                action: `Scheduled viva for ${existingBook.title || `Book for ${existingBook.student?.name || 'Unknown Student'}`}`,
+                entityId: bookId,
+                entityType: "Student Book"
+            }
+        });
+
+        res.status(201).json({
+            message: 'Viva scheduled successfully',
+            viva: newViva
+        });
+
+    } catch (error) {
+        console.error('Error in scheduleViva:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for adding a new panelist
+export const addNewPanelist = async (req, res, next) => {
+    try {
+       
+        const { name, email, institution } = req.body;
+
+        // Validate inputs
+        if (!name || !email) {
+            const error = new Error('Name and email are required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if panelist already exists
+        const existingPanelist = await prisma.panelist.findUnique({
+            where: { email }
+        });
+
+        if (existingPanelist) {
+            const error = new Error('Panelist with this email already exists');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Create new panelist
+        const newPanelist = await prisma.panelist.create({
+            data: {
+                name,
+                email,
+                institution
+            }
+        });
+
+        res.status(201).json({
+            message: 'Panelist added successfully',
+            panelist: newPanelist
+        });
+
+    } catch (error) {
+        console.error('Error in addNewPanelist:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for getting all panelists
+export const getAllPanelists = async (req, res, next) => {
+    try {
+        const panelists = await prisma.panelist.findMany();
+        res.status(200).json({
+            message: 'Panelists fetched successfully',  
+            panelists
+        });
+    } catch (error) {
+        console.error('Error in getAllPanelists:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for getting all vivas for a specific book
+export const getBookVivas = async (req, res, next) => {
+    try {
+        const { bookId } = req.params;
+
+        if (!bookId) {
+            const error = new Error('Book ID is required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Fetch all vivas for the specified book with related panelists
+        const vivas = await prisma.viva.findMany({
+            where: {
+                bookId
+            },
+            include: {
+                panelists: true
+            },
+            orderBy: {
+                scheduledDate: 'desc'
+            }
+        });
+
+        res.status(200).json({
+            message: 'Book vivas fetched successfully',
+            vivas
+        });
+    } catch (error) {
+        console.error('Error in getBookVivas:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+
+// Controller for updating minutes sent date for a book
+export const updateMinutesSentDate = async (req, res, next) => {
+    try {
+        const { bookId } = req.params;
+        const { minutesSentDate } = req.body;
+
+        if (!bookId) {
+            const error = new Error('Book ID is required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        if (!minutesSentDate) {
+            const error = new Error('Minutes sent date is required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if book exists
+        const existingBook = await prisma.book.findUnique({
+            where: { id: bookId },
+            include: {
+                student: true
+            }
+        });
+
+        if (!existingBook) {
+            const error = new Error('Book not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Update book with minutes sent date
+        const updatedBook = await prisma.book.update({
+            where: { id: bookId },
+            data: {
+                minutesSentDate: new Date(minutesSentDate)
+            },
+            include: {
+                student: true
+            }
+        });
+
+        // Find status definition for minutes sent
+        const minutesSentStatus = await prisma.statusDefinition.findFirst({
+            where: { name: 'minutes sent' }
+        });
+
+        if (minutesSentStatus) {
+            // First, update all current statuses to not current for student
+            await prisma.studentStatus.updateMany({
+                where: {
+                    studentId: existingBook.student.id,
+                    isCurrent: true
+                },
+                data: {
+                    isCurrent: false,
+                    endDate: new Date()
+                }
+            });
+            
+            // Update student status
+            await prisma.studentStatus.create({
+                data: {
+                    student: {connect: {id: existingBook.student.id}},
+                    definition: {connect: {id: minutesSentStatus.id}},
+                    startDate: new Date(),
+                    isCurrent: true
+                }
+            });
+
+            // First, update all current book statuses to not current
+            await prisma.bookStatus.updateMany({
+                where: {
+                    bookId: bookId,
+                    isCurrent: true
+                },
+                data: {
+                    isCurrent: false,
+                    endDate: new Date()
+                }
+            });
+            
+            // Create new book status
+            await prisma.bookStatus.create({
+                data: {
+                    book: {connect: {id: bookId}},
+                    definition: {connect: {id: minutesSentStatus.id}},
+                    startDate: new Date(),
+                    isCurrent: true
+                }
+            });
+        }
+
+        // Log activity
+        await prisma.userActivity.create({
+            data: {
+                userId: req.user.id,
+                action: `Updated minutes sent date to ${new Date(minutesSentDate).toISOString().split('T')[0]} for book: ${existingBook.title || `Book for ${existingBook.student?.firstName || 'Unknown Student'}`}`,
+                entityId: updatedBook.id,
+                entityType: "Student Book"
+            }
+        });
+
+        res.status(200).json({
+            message: 'Minutes sent date updated successfully',
+            book: updatedBook
+        });
+
+    } catch (error) {
+        console.error('Error in updateMinutesSentDate:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for updating compliance report date for a book
+export const updateComplianceReportDate = async (req, res, next) => {
+    try {
+        const { bookId } = req.params;
+        const { complianceReportDate } = req.body;
+
+        if (!bookId) {
+            const error = new Error('Book ID is required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        if (!complianceReportDate) {
+            const error = new Error('Compliance report date is required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if book exists
+        const existingBook = await prisma.book.findUnique({
+            where: { id: bookId },
+            include: {
+                student: true
+            }
+        });
+
+        if (!existingBook) {
+            const error = new Error('Book not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Update book with compliance report date
+        const updatedBook = await prisma.book.update({
+            where: { id: bookId },
+            data: {
+                complianceReportDate: new Date(complianceReportDate)
+            },
+            include: {
+                student: true
+            }
+        });
+
+        // Find status definition for final book & compliance report received
+        const finalBookStatus = await prisma.statusDefinition.findFirst({
+            where: { name: 'final book & compliance report received' }
+        });
+
+        if (finalBookStatus) {
+            // First, update all current statuses to not current for student
+            await prisma.studentStatus.updateMany({
+                where: {
+                    studentId: existingBook.student.id,
+                    isCurrent: true
+                },
+                data: {
+                    isCurrent: false,
+                    endDate: new Date()
+                }
+            });
+            
+            // Update student status
+            await prisma.studentStatus.create({
+                data: {
+                    student: {connect: {id: existingBook.student.id}},
+                    definition: {connect: {id: finalBookStatus.id}},
+                    startDate: new Date(),
+                    isCurrent: true
+                }
+            });
+
+            // First, update all current book statuses to not current
+            await prisma.bookStatus.updateMany({
+                where: {
+                    bookId: bookId,
+                    isCurrent: true
+                },
+                data: {
+                    isCurrent: false,
+                    endDate: new Date()
+                }
+            });
+            
+            // Create new book status
+            await prisma.bookStatus.create({
+                data: {
+                    book: {connect: {id: bookId}},
+                    definition: {connect: {id: finalBookStatus.id}},
+                    startDate: new Date(),
+                    endDate: new Date(),
+                    isCurrent: true
+                }
+            });
+        }
+
+        // Log activity
+        await prisma.userActivity.create({
+            data: {
+                userId: req.user.id,
+                action: `Updated compliance report date to ${new Date(complianceReportDate).toISOString().split('T')[0]} for book: ${existingBook.title || `Book for ${existingBook.student?.firstName || 'Unknown Student'}`}`,
+                entityId: updatedBook.id,
+                entityType: "Student Book"
+            }
+        });
+
+        res.status(200).json({
+            message: 'Compliance report date updated successfully',
+            book: updatedBook
+        });
+
+    } catch (error) {
+        console.error('Error in updateComplianceReportDate:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+
+
+
+

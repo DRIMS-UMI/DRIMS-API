@@ -132,7 +132,6 @@ model student {
   supervisors          supervisor[]     @relation(fields: [supervisorIds], references:[id])
   
   books                book[]         
-  vivas                viva[]       
 
   // Timestamps
   createdAt           DateTime?       @default(now())
@@ -309,6 +308,7 @@ model book {
   researchAdminUpdated        Boolean     @default(false)
   examiners                    examiner[]  @relation(fields: [examinerIds], references: [id])
   examinerIds                 String[]    @db.ObjectId
+ 
   externalMarks              Int?
   internalMarks              Int?
   finalGrade                 Float?       // Average of external and internal marks
@@ -321,6 +321,9 @@ model book {
   createdAt                 DateTime     @default(now())
   updatedAt                 DateTime     @updatedAt
   examinerAssignments       examinerBookAssignment[]
+   vivaHistory               viva[]        // One-to-many relation with Viva
+   minutesSentDate        DateTime?
+   complianceReportDate   DateTime?
 }
 
 model bookStatus {
@@ -434,22 +437,42 @@ model panelist {
   email       String    @unique
   proposalIds String[]  @db.ObjectId
   proposals   proposal[] @relation(fields: [proposalIds], references: [id])
+  
   campus      campus?   @relation(fields: [campusId], references: [id])
   campusId    String?   @db.ObjectId
+  vivaIds       String[] @db.ObjectId
+  vivas       viva[]  @relation(fields: [vivaIds], references: [id])
   grades      proposalDefenseGrade[]
+  institution String?
   createdAt   DateTime?  @default(now())
   updatedAt   DateTime?  @updatedAt
 }
 
+
+
+enum VivaVerdict {
+  PASS
+  PASS_WITH_MINOR_CORRECTIONS
+  PASS_WITH_MAJOR_CORRECTIONS
+  FAIL
+  RESCHEDULE
+}
+
 model viva {
   id           String   @id @default(auto()) @map("_id") @db.ObjectId
-  student      student?  @relation(fields: [studentId], references: [id])
-  studentId    String?  @db.ObjectId
-  scheduledAt  DateTime
-  status       String  // Pending, Passed, Failed
-  panelists    String[]
-  verdict      String?
-  minutesPending Boolean @default(true)
+   book          book        @relation(fields: [bookId], references: [id])
+  bookId        String      @db.ObjectId
+  scheduledDate DateTime
+  status        String      
+    verdict       VivaVerdict?
+  comments      String?
+   attempt       Int         // To track which attempt this is
+   panelistIds String[]  @db.ObjectId
+  panelists   panelist[] @relation(fields: [panelistIds], references: [id])
+  completedAt  DateTime?
+  isCurrent    Boolean @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 }
 
 model notification {
