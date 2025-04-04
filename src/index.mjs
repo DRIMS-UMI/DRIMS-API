@@ -3,6 +3,7 @@ import http from 'http';
 import {env} from './env.mjs';
 import customizeApp from './app.mjs';
 import {setupSocketIO} from './utils/sockets.js';
+import {notificationService} from './services/notificationService.js';
 
 const app = express();
 
@@ -20,6 +21,9 @@ app.start = async () => {
     const port = env.PORT || 5000;
     app.set('port', port);
     customizeApp(app);
+
+    // Initialize notification service
+    await notificationService.initializeScheduledNotifications();
 
     const server = http.createServer(app);
 

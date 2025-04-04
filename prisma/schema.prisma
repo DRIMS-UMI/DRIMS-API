@@ -563,3 +563,36 @@ model facultyMember {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+
+ enum NotificationType {
+    EMAIL
+    SYSTEM
+    REMINDER
+  }
+  
+  enum NotificationStatus {
+    PENDING
+    SENT
+    FAILED
+  }
+  
+  model Notification {
+    id          String            @id @default(auto()) @map("_id") @db.ObjectId
+    type        NotificationType
+    status      NotificationStatus @default(PENDING)
+    title       String
+    message     String
+    recipient   User              @relation(fields: [recipientId], references: [id])
+    recipientId String            @db.ObjectId
+    scheduledFor DateTime
+    sentAt      DateTime?
+    createdAt   DateTime          @default(now())
+    updatedAt   DateTime          @updatedAt
+    metadata    Json?             // For additional data like email templates, etc.
+    retryCount  Int               @default(0)
+    error       String?
+  
+    @@index([status, scheduledFor]) // Index for querying pending notifications
+    @@index([recipientId])
+  }
