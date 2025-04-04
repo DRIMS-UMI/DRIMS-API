@@ -6391,6 +6391,625 @@ export const updateComplianceReportDate = async (req, res, next) => {
     }
 };
 
+// Controller for updating results approval date
+export const updateResultsApprovalDate = async (req, res, next) => {
+    try {
+        const {studentId} = req.params;
+        const { resultsApprovedDate } = req.body;
+
+        if (!studentId || !resultsApprovedDate) {
+            const error = new Error('Student ID and results approval date are required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if student exists
+        const student = await prisma.student.findUnique({
+            where: { id: studentId },
+            include: {
+                statuses: {
+                    where: { isCurrent: true },
+                    include: { definition: true }
+                }
+            }
+        });
+
+        if (!student) {
+            const error = new Error('Student not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Update the student with the results approval date
+        const updatedStudent = await prisma.student.update({
+            where: { id: studentId },
+            data: {
+                resultsApprovedDate: new Date(resultsApprovedDate)
+            }
+        });
+
+        // Check if we need to update student status
+        const currentStatus = student.statuses[0];
+        
+        // Find the "Results Approved" status definition
+        const resultsApprovedStatus = await prisma.statusDefinition.findFirst({
+            where: {
+                name: "results approved",
+            }
+        });
+
+        if (resultsApprovedStatus && (!currentStatus || currentStatus.definition.name !== "results approved")) {
+            // First, update all current statuses to not current
+            await prisma.studentStatus.updateMany({
+                where: {
+                    studentId: studentId,
+                    isCurrent: true
+                },
+                data: {
+                    isCurrent: false,
+                    endDate: new Date()
+                }
+            });
+            
+            // Create new student status
+            await prisma.studentStatus.create({
+                data: {
+                    student: { connect: { id: studentId } },
+                    definition: { connect: { id: resultsApprovedStatus.id } },
+                    startDate: new Date(),
+                    isCurrent: true
+                }
+            });
+        }
+
+        // Log activity
+        await prisma.userActivity.create({
+            data: {
+                userId: req.user.id,
+                action: `Updated results approval date to ${new Date(resultsApprovedDate).toISOString().split('T')[0]} for student: ${student.firstName} ${student.lastName}`,
+                entityId: studentId,
+                entityType: "Student"
+            }
+        });
+
+        res.status(200).json({
+            message: 'Results approval date updated successfully',
+            student: updatedStudent
+        });
+
+    } catch (error) {
+        console.error('Error in updateResultsApprovalDate:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for updating results sent date
+export const updateResultsSentDate = async (req, res, next) => {
+    try {
+        const { studentId } = req.params;
+        const { resultsSentDate } = req.body;
+
+        if (!studentId || !resultsSentDate) {
+            const error = new Error('Student ID and results sent date are required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if student exists
+        const student = await prisma.student.findUnique({
+            where: { id: studentId }
+        });
+
+        if (!student) {
+            const error = new Error('Student not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Update the student with the results sent date
+        const updatedStudent = await prisma.student.update({
+            where: { id: studentId },
+            data: {
+                resultsSentDate: new Date(resultsSentDate)
+            }
+        });
+
+        // Find the "results sent to schools" status definition
+        const resultsSentStatus = await prisma.statusDefinition.findFirst({
+            where: {
+                name: "results sent to schools"
+            }
+        });
+
+        // Get current status
+        const currentStatus = await prisma.studentStatus.findFirst({
+            where: {
+                studentId: studentId,
+                isCurrent: true
+            },
+            include: {
+                definition: true
+            }
+        });
+
+        // Update student status if the status definition exists and it's not already the current status
+        if (resultsSentStatus && (!currentStatus || currentStatus.definition.name !== "results sent")) {
+            // First, update all current statuses to not current
+            await prisma.studentStatus.updateMany({
+                where: {
+                    studentId: studentId,
+                    isCurrent: true
+                },
+                data: {
+                    isCurrent: false,
+                    endDate: new Date()
+                }
+            });
+            
+            // Create new student status
+            await prisma.studentStatus.create({
+                data: {
+                    student: { connect: { id: studentId } },
+                    definition: { connect: { id: resultsSentStatus.id } },
+                    startDate: new Date(),
+                    isCurrent: true
+                }
+            });
+        }
+
+        // Log activity
+        await prisma.userActivity.create({
+            data: {
+                userId: req.user.id,
+                action: `Updated results sent date to ${new Date(resultsSentDate).toISOString().split('T')[0]} for student: ${student.firstName} ${student.lastName}`,
+                entityId: studentId,
+                entityType: "Student"
+            }
+        });
+
+        res.status(200).json({
+            message: 'Results sent date updated successfully',
+            student: updatedStudent
+        });
+
+    } catch (error) {
+        console.error('Error in updateResultsSentDate:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for updating senate approval date
+export const updateSenateApprovalDate = async (req, res, next) => {
+    try {
+        const { studentId } = req.params;
+        const { senateApprovalDate } = req.body;
+
+        if (!studentId || !senateApprovalDate) {
+            const error = new Error('Student ID and senate approval date are required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if student exists
+        const student = await prisma.student.findUnique({
+            where: { id: studentId },
+            include: {
+                statuses: {
+                    where: { isCurrent: true },
+                    include: { definition: true }
+                }
+            }
+        });
+
+        if (!student) {
+            const error = new Error('Student not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Update the student with the senate approval date
+        const updatedStudent = await prisma.student.update({
+            where: { id: studentId },
+            data: {
+                senateApprovalDate: new Date(senateApprovalDate)
+            }
+        });
+
+        // Find the "results approved by senate" status definition
+        const senateApprovedStatus = await prisma.statusDefinition.findFirst({
+            where: {
+                name: "results approved by senate"
+            }
+        });
+
+        const currentStatus = student.statuses[0];
+
+        // Update student status if the status definition exists and it's not already the current status
+        if (senateApprovedStatus && (!currentStatus || currentStatus.definition.name !== "results approved by senate")) {
+            // First, update all current statuses to not current
+            await prisma.studentStatus.updateMany({
+                where: {
+                    studentId: studentId,
+                    isCurrent: true
+                },
+                data: {
+                    isCurrent: false,
+                    endDate: new Date()
+                }
+            });
+            
+            // Create new student status
+            await prisma.studentStatus.create({
+                data: {
+                    student: { connect: { id: studentId } },
+                    definition: { connect: { id: senateApprovedStatus.id } },
+                    startDate: new Date(),
+                    isCurrent: true
+                }
+            });
+        }
+
+        // Log activity
+        await prisma.userActivity.create({
+            data: {
+                userId: req.user.id,
+                action: `Updated senate approval date to ${new Date(senateApprovalDate).toISOString().split('T')[0]} for student: ${student.firstName} ${student.lastName}`,
+                entityId: studentId,
+                entityType: "Student"
+            }
+        });
+
+        res.status(200).json({
+            message: 'Senate approval date updated successfully',
+            student: updatedStudent
+        });
+
+    } catch (error) {
+        console.error('Error in updateSenateApprovalDate:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+/**
+ * Get dashboard statistics
+ * @route GET /api/v1/management/dashboard/stats
+ * @access Private (Admin, Management)
+ */
+export const getDashboardStats = async (req, res, next) => {
+    try {
+        // Get total students count
+        const totalStudents = await prisma.student.count();
+        
+        // Get recently enrolled students (last 30 days)
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        
+        const recentlyEnrolled = await prisma.student.count({
+            where: {
+                createdAt: {
+                    gte: thirtyDaysAgo
+                }
+            }
+        });
+        
+        // Get students by status
+        const statusCounts = await prisma.studentStatus.groupBy({
+            by: ['definitionId'],
+            where: {
+                isCurrent: true
+            },
+            _count: {
+                studentId: true
+            }
+        });
+        
+        // Get status definitions to map counts
+        const statusDefinitions = await prisma.statusDefinition.findMany();
+        
+        // Map status counts to their names
+        const statusMap = {};
+        statusCounts.forEach(status => {
+            const definition = statusDefinitions.find(def => def.id === status.definitionId);
+            if (definition) {
+                statusMap[definition.name.toLowerCase().replace(/\s+/g, '')] = status._count.studentId;
+            }
+        });
+        
+        // Extract specific status counts
+        const workshop = statusMap.workshop || 0;
+        const normalProgress = statusMap.normalprogress || 0;
+        const underExamination = statusMap.underexamination || 0;
+        
+        // Get total ongoing students (excluding graduated and deregistered)
+        const ongoingStudents = await prisma.student.count({
+            where: {
+                statuses: {
+                    some: {
+                        isCurrent: true,
+                        definition: {
+                            name: {
+                                notIn: ['graduated', 'deregistered']
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Log activity
+        // await prisma.userActivity.create({
+        //     data: {
+        //         userId: req.user.id,
+        //         action: 'Retrieved dashboard statistics',
+        //         entityType: "System"
+        //     }
+        // });
+        
+        res.status(200).json({
+            totalStudents: totalStudents.toLocaleString(),
+            recentlyEnrolled: recentlyEnrolled.toString(),
+            workshop: workshop.toString(),
+            normalProgress: normalProgress.toString(),
+            underExamination: underExamination.toString(),
+            ongoingStudents: ongoingStudents.toString()
+        });
+        
+    } catch (error) {
+        console.error('Error in getDashboardStats:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for getting student status statistics for dashboard charts
+export const getStatusStatistics = async (req, res, next) => {
+  try {
+    const { category = 'main' } = req.query;
+    console.log("category", category);
+    let whereCondition = {};
+    let stats = [];
+    
+    // Define different category filters
+    if (category === 'main') {
+      whereCondition = {
+        isCurrent: true,
+        definition: {
+          name: {
+            in: [
+              'normal progress',
+              'fieldwork',
+              'under examination',
+              'scheduled for viva',
+              'results approved',
+              'results sent to schools',
+              'results approved by senate',
+             
+            ]
+          }
+        }
+      };
+      
+      stats = await prisma.studentStatus.groupBy({
+        by: ['definitionId'],
+        _count: true,
+        where: whereCondition
+      });
+    } else if (category === 'proposal') {
+      whereCondition = {
+        isCurrent: true,
+        definition: {
+          name: {
+            in: [
+              'proposal received',
+              'proposal in review',
+              'waiting for proposal defense',
+              'compliance report submitted',
+              'letter to field issued'
+            ]
+          }
+        }
+      };
+      
+      stats = await prisma.proposalStatus.groupBy({
+        by: ['definitionId'],
+        _count: true,
+        where: whereCondition
+      });
+    } else if (category === 'book') {
+      whereCondition = {
+
+        definition: {
+          name: {
+            in: [
+              'book planning',
+              'book writing',
+              'book submitted',
+              'book under review',
+              'book published'
+            ]
+          }
+        }
+      };
+      
+      stats = await prisma.bookStatus.groupBy({
+        by: ['definitionId'],
+        _count: true,
+        where: whereCondition
+      });
+    }
+
+    // Then get the definitions to map names
+    const definitions = await prisma.statusDefinition.findMany({
+      where: {
+        id: {
+          in: stats.map(stat => stat.definitionId)
+        }
+      },
+      select: {
+        id: true,
+        name: true,
+        color: true
+      }
+    });
+  
+    // Create a map of definition IDs to names and colors
+    const definitionMap = definitions.reduce((acc, def) => {
+      acc[def.id] = {
+        name: def.name,
+        color: def.color || getDefaultColor(def.name)
+      };
+      return acc;
+    }, {});
+  
+    // Transform the data into an array with status, students, and fill
+    const statusArray = stats.map(stat => {
+      const definition = definitionMap[stat.definitionId];
+      return {
+        status: definition.name,
+        students: stat._count,
+        fill: definition.color
+      };
+    });
+    
+    res.json(statusArray);
+  } catch (error) {
+    console.error('Error in getStatusStatistics:', error);
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+// Helper function to get default colors if not provided in the database
+const getDefaultColor = (statusName) => {
+  const colorMap = {
+    'normal progress': '#22C55E',
+    'fieldwork': '#3B82F6',
+    'under examination': '#EAB308',
+    'scheduled for viva': '#EC4899',
+    'results approved': '#14B8A6'
+  };
+  
+  return colorMap[statusName.toLowerCase()] || '#6B7280'; // Default gray color
+};
+
+export const getProgressTrends = async (req, res, next) => {
+    try {
+      const { timeRange } = req.query;
+      const daysToLookBack = timeRange === '7d' ? 7 : timeRange === '30d' ? 30 : 90;
+  
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - daysToLookBack);
+  
+      // Get all relevant status changes in the time period
+      const statusChanges = await prisma.studentStatus.findMany({
+        where: {
+          createdAt: {
+            gte: startDate
+          },
+          definition: {
+            name: {
+              in: ['book submitted', 'under examination', 'scheduled for viva']
+            }
+          }
+        },
+        include: {
+          definition: {
+            select: {
+              name: true,
+              color: true
+            }
+          }
+        },
+        orderBy: {
+          createdAt: 'asc'
+        }
+      });
+  
+      // Generate array of dates
+      const dates = [];
+      for (let d = new Date(startDate); d <= new Date(); d.setDate(d.getDate() + 1)) {
+        dates.push(new Date(d));
+      }
+  
+      // Define default colors for each status
+      const defaultColors = {
+        'book submitted': '#23388F',  // dark blue
+        'under examination': '#EAB308',  // yellow
+        'scheduled for viva': '#EC4899'  // pink
+      };
+  
+      // Get the colors from status definitions
+      const statusDefinitions = await prisma.statusDefinition.findMany({
+        where: {
+          name: {
+            in: ['book submitted', 'under examination', 'scheduled for viva']
+          }
+        },
+        select: {
+          name: true,
+          color: true
+        }
+      });
+      
+      // Create a map of status names to their colors
+      const statusColors = {};
+      statusDefinitions.forEach(def => {
+        statusColors[def.name] = def.color || defaultColors[def.name];
+      });
+     
+      
+      // Use these colors consistently across all data points
+      const submissionsColor = statusColors['book submitted'] || defaultColors['book submitted'];
+      const examinationsColor = statusColors['under examination'] || defaultColors['under examination'];
+      const vivasColor = statusColors['scheduled for viva'] || defaultColors['scheduled for viva'];
+      // Transform the data into daily counts
+      const stats = dates.map(date => {
+        const dayStart = new Date(date.setHours(0, 0, 0, 0));
+        const dayEnd = new Date(date.setHours(23, 59, 59, 999));
+        
+        const dayStats = statusChanges.filter(status => 
+          status.createdAt >= dayStart && status.createdAt <= dayEnd
+        );
+  
+        const submissionStats = dayStats.filter(s => s.definition.name === 'book submitted');
+        const examinationStats = dayStats.filter(s => s.definition.name === 'under examination');
+        const vivaStats = dayStats.filter(s => s.definition.name === 'scheduled for viva');
+  
+        return {
+          date: dayStart.toISOString().split('T')[0],
+          submissions: submissionStats.length,
+          submissionsColor: submissionsColor,
+          examinations: examinationStats.length,
+          examinationsColor: examinationsColor,
+          vivas: vivaStats.length,
+          vivasColor: vivasColor
+        };
+      });
+  
+      res.json(stats);
+  
+    } catch (error) {
+      console.error('Error fetching progress trends:', error);
+      next(error);
+    }
+  };
+
+
+
+
 
 
 

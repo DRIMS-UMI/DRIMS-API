@@ -132,6 +132,9 @@ model student {
   supervisors          supervisor[]     @relation(fields: [supervisorIds], references:[id])
   
   books                book[]         
+  resultsApprovedDate  DateTime?
+  resultsSentDate      DateTime?
+  senateApprovalDate   DateTime?
 
   // Timestamps
   createdAt           DateTime?       @default(now())
