@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import prisma from '../../../utils/db.mjs';
 import jwt from 'jsonwebtoken';
+import { notificationService } from '../../../services/notificationService.js';
 
 // Controller for registering a SuperAdmin
 export const registerSuperAdmin = async (req, res, next) => {
@@ -1399,6 +1400,15 @@ export const getAllSupervisors = async (req, res, next) => {
                 school: true,
                 campus: true,
                 department: true,
+                students: {
+                    include: {
+                        statuses: {
+                            include: {
+                                definition: true
+                            }
+                        }
+                    }
+                },
                
             }
         });
@@ -1961,6 +1971,51 @@ export const createStudent = async (req, res, next) => {
                 userId: req.user?.id
             }
         });
+
+        // Find superadmin and Research_Admin users to notify
+        const adminUsers = await prisma.user.findMany({
+            where: {
+                isActive: true,
+                role: {
+                    in: ["SUPERADMIN", "RESEARCH_ADMIN"]
+                }
+            },
+            take: 2
+        }); 
+
+        console.log("adminUsers",adminUsers);
+
+        // enum NotificationRecipientType {  // Renamed to avoid conflicts
+        //     USER
+        //     STUDENT
+        //     EXAMINER
+        //     SUPERVISOR
+        //     PANELIST
+        //     EXTERNAL
+        //   }
+
+        // Schedule notifications for admin users about new student in workshop phase
+        for (const admin of adminUsers) {
+            await notificationService.scheduleNotification({
+                type: "EMAIL",
+                statusType: "PENDING",
+                title: "New Student in Workshop Phase",
+                message: `A new student, ${firstName} ${lastName}, has been added to the system and is currently in the Workshop phase.`,
+                recipientCategory: "USER",
+                recipientId: admin.id,
+                recipientEmail: admin.email,
+                recipientName: admin.name,
+                scheduledFor: new Date(Date.now() + 1000 * 60 * 5), // Schedule for 5 minutes from now
+                metadata: {
+                    studentId: student.id,
+                    statusName: "WORKSHOP",
+                    statusId: workshopStatus.id
+                },
+                studentStatus: {
+                    connect: { id: workshopStatus.id }
+                }
+            });
+        }
 
         res.status(201).json({
             message: 'Student created successfully',
@@ -2608,6 +2663,15 @@ export const getAllProposals = async (req, res, next) => {
                         }
                     }
                 },
+                defenses: {
+                    select: {
+                        id: true,
+                        scheduledDate: true,
+                        verdict: true,
+                        comments: true,
+                        isCurrent:true
+                    }
+                },
                 panelists: {
                     select: {
                         id: true,
@@ -2718,25 +2782,32 @@ export const getProposal = async (req, res, next) => {
 export const getReviewers = async (req, res, next) => {
     try {
         // Get faculty member to retrieve campus ID
-        const facultyMember = await prisma.facultyMember.findUnique({
+        const User = await prisma.user.findUnique({
             where: {
-                userId: req.user.id
+                id: req.user.id
             },
-            select: {
-                campusId: true
-            }
+           
         });
 
-        if (!facultyMember || !facultyMember.campusId) {
-            const error = new Error('Faculty member campus not found');
+        if (!User ) {
+            const error = new Error('User not found');
             error.statusCode = 400;
             throw error;
         }
 
         // Get all reviewers for the faculty member's campus
         const reviewers = await prisma.reviewer.findMany({
-            where: {
-                campusId: facultyMember.campusId
+            include: {
+                proposals: {
+                    include: {
+                        student: true,
+                        statuses: {
+                            include: {
+                                definition: true
+                            }
+                        }
+                    }
+                }
             },
             orderBy: {
                 name: 'asc'
@@ -3207,6 +3278,7 @@ export const addPanelists = async (req, res, next) => {
     }
 };
 
+/** should be delete */
 export const addPanelistMark = async (req, res, next) => {
     try {
         const { proposalId, panelistId } = req.params;
@@ -4429,6 +4501,13 @@ export const createExaminer = async (req, res, next) => {
 export const getAllExaminers = async (req, res, next) => {
     try {
         const examiners = await prisma.examiner.findMany({
+            include: {
+                books: {
+                    include: {
+                        examinerAssignments: true
+                    }
+                }
+            },
             orderBy: {
                 createdAt: 'desc'
             }
@@ -5134,7 +5213,7 @@ export const deleteExaminer = async (req, res, next) => {
     }
 };
 
-
+/*** USER CONTROLLERS */
 
 // Create a new user
 export const createUser = async (req, res, next) => {
@@ -5627,7 +5706,7 @@ export const updateUserPassword = async (req, res, next) => {
 };
 
 
-
+/** should be deleted */
 // Add panelists to a book
 export const addPanelistsToBook = async (req, res, next) => {
     try {
@@ -5771,7 +5850,376 @@ export const addPanelistsToBook = async (req, res, next) => {
 export const accessManagementPortal = (req, res) => {
     res.send('Welcome to the Management Portal');
 }; 
+/** PROPOSAL DEFENSE CONTROLLERS */
+// Controller for scheduling a proposal defense
+export const scheduleProposalDefense = async (req, res, next) => {
+    try {
+        const { proposalId } = req.params;
+        const { scheduledDate, panelistIds } = req.body;
 
+        // Validate inputs
+        if (!proposalId || !scheduledDate || !panelistIds || !Array.isArray(panelistIds) || panelistIds.length === 0) {
+            const error = new Error('Proposal ID, scheduled date, and at least one panelist are required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if proposal exists
+        const existingProposal = await prisma.proposal.findUnique({
+            where: { id: proposalId },
+            include: {
+                student: true,
+                statuses: {
+                    include: {
+                        definition: true
+                    }
+                }
+            }
+        });
+
+        if (!existingProposal) {
+            const error = new Error('Proposal not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Check if panelists exist
+        const panelists = await prisma.panelist.findMany({
+            where: {
+                id: {
+                    in: panelistIds
+                }
+            }
+        });
+
+        if (panelists.length !== panelistIds.length) {
+            const error = new Error('One or more panelists not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Get the current attempt number
+        const currentDefenses = await prisma.proposalDefense.findMany({
+            where: {
+                proposalId: proposalId
+            },
+            orderBy: {
+                attempt: 'desc'
+            },
+            take: 1
+        });
+
+        const attemptNumber = currentDefenses.length > 0 ? currentDefenses[0].attempt + 1 : 1;
+
+        // If there's a current defense, mark it as not current
+        if (currentDefenses.length > 0 && currentDefenses[0].isCurrent) {
+            await prisma.proposalDefense.update({
+                where: { id: currentDefenses[0].id },
+                data: { isCurrent: false }
+            });
+        }
+
+        // Create new proposal defense
+        const proposalDefense = await prisma.proposalDefense.create({
+            data: {
+                proposal: { connect: { id: proposalId } },
+                scheduledDate: new Date(scheduledDate),
+                status: 'SCHEDULED',
+                attempt: attemptNumber,
+                panelists: {
+                    connect: panelistIds.map(id => ({ id }))
+                },
+                isCurrent: true
+            },
+            include: {
+                panelists: true,
+                proposal: {
+                    include: {
+                        student: true
+                    }
+                }
+            }
+        });
+
+        // Update the proposal with the defense ID
+        // await prisma.proposal.update({
+        //     where: { id: proposalId },
+        //     data: {
+        //         proposalDefenseIds: {
+        //             push: proposalDefense.id
+        //         }
+        //     }
+        // });
+
+        // Find the status definition for "waiting for proposal defense"
+        const waitingForDefenseStatus = await prisma.statusDefinition.findFirst({
+            where: {
+                name: "waiting for proposal defense"
+            }
+        });
+
+        if (waitingForDefenseStatus) {
+            // Set all current proposal statuses to not current
+            await prisma.proposalStatus.updateMany({
+                where: { 
+                    proposalId: proposalId,
+                    isCurrent: true 
+                },
+                data: { 
+                    isCurrent: false, 
+                    endDate: new Date() 
+                }
+            });
+
+            // Create new proposal status
+            await prisma.proposalStatus.create({
+                data: {
+                    proposal: { connect: { id: proposalId } },
+                    definition: { connect: { id: waitingForDefenseStatus.id } },
+                    startDate: new Date(),
+                    isActive: true,
+                    isCurrent: true
+                }
+            });
+
+            // Update student status as well
+            // First, set all current student statuses to not current
+            await prisma.studentStatus.updateMany({
+                where: {
+                    studentId: existingProposal.student.id,
+                    isCurrent: true
+                },
+                data: {
+                    isCurrent: false,
+                    endDate: new Date()
+                }
+            });
+
+            // Create new student status with the same definition
+            await prisma.studentStatus.create({
+                data: {
+                    student: { connect: { id: existingProposal.student.id } },
+                    definition: { connect: { id: waitingForDefenseStatus.id } },
+                    startDate: new Date(),
+                    isActive: true,
+                    isCurrent: true,
+                    updatedBy: { connect: { id: req.user.id } }
+                }
+            });
+        }
+
+        // Log activity
+        await prisma.userActivity.create({
+            data: {
+                userId: req.user.id,
+                action: `Scheduled proposal defense for ${existingProposal.student?.firstName || 'Unknown Student'} ${existingProposal.student?.lastName || ''}`,
+                entityId: proposalDefense.id,
+                entityType: "Proposal Defense"
+            }
+        });
+
+        res.status(201).json({
+            message: 'Proposal defense scheduled successfully',
+            proposalDefense: proposalDefense
+        });
+
+    } catch (error) {
+        console.error('Error in scheduleProposalDefense:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for recording proposal defense verdict
+export const recordProposalDefenseVerdict = async (req, res, next) => {
+    try {
+        const { defenseId } = req.params;
+        const { verdict, comments } = req.body;
+
+        // Validate inputs
+        if (!defenseId || !verdict) {
+            const error = new Error('Defense ID and verdict are required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if defense exists
+        const existingDefense = await prisma.proposalDefense.findUnique({
+            where: { id: defenseId },
+            include: { 
+                proposal: {
+                    include: {
+                        student: true
+                    }
+                }
+            }
+        });
+
+        if (!existingDefense) {
+            const error = new Error('Proposal defense not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Determine defense status based on verdict
+        let defenseStatus;
+        switch (verdict) {
+            case 'PASS':
+            case 'PASS_WITH_MINOR_CORRECTIONS':
+            case 'PASS_WITH_MAJOR_CORRECTIONS':
+                defenseStatus = 'COMPLETED';
+                break;
+            case 'FAIL':
+                defenseStatus = 'FAILED';
+                break;
+            case 'RESCHEDULE':
+                defenseStatus = 'RESCHEDULED';
+                break;
+            default:
+                defenseStatus = 'COMPLETED';
+        }
+
+        // Update the defense with verdict and status
+        const updatedDefense = await prisma.proposalDefense.update({
+            where: { id: defenseId },
+            data: {
+                verdict: verdict,
+                comments: comments,
+                status: defenseStatus,
+                completedAt: new Date()
+            },
+            include: {
+                panelists: true,
+                proposal: {
+                    include: {
+                        student: true
+                    }
+                }
+            }
+        });
+
+        // If defense status is completed, update proposal and student status
+        if (defenseStatus === 'COMPLETED' || defenseStatus === 'FAILED') {
+            // Get appropriate status definition based on verdict
+            const statusDefinitionName = defenseStatus === 'COMPLETED' ? 'passed-proposal graded' : 'failed-proposal graded';
+            
+            const statusDefinition = await prisma.statusDefinition.findFirst({
+                where: { name: statusDefinitionName }
+            });
+
+            if (!statusDefinition) {
+                const error = new Error(`Status definition "${statusDefinitionName}" not found`);
+                error.statusCode = 500;
+                throw error;
+            }
+
+            // Update proposal status
+            await prisma.proposalStatus.updateMany({
+                where: {
+                    proposalId: existingDefense.proposal.id,
+                    isCurrent: true
+                },
+                data: {
+                    isCurrent: false,
+                    endDate: new Date()
+                }
+            });
+
+            // Create new proposal status
+            await prisma.proposalStatus.create({
+                data: {
+                    proposal: { connect: { id: existingDefense.proposal.id } },
+                    definition: { connect: { id: statusDefinition.id } },
+                    isCurrent: true,
+                    startDate: new Date()
+                }
+            });
+
+            // Update student status if student exists
+            if (existingDefense.proposal.student) {
+                await prisma.studentStatus.updateMany({
+                    where: {
+                        studentId: existingDefense.proposal.student.id,
+                        isCurrent: true
+                    },
+                    data: {
+                        isCurrent: false,
+                        endDate: new Date()
+                    }
+                });
+
+                await prisma.studentStatus.create({
+                    data: {
+                        student: { connect: { id: existingDefense.proposal.student.id } },
+                        definition: { connect: { id: statusDefinition.id } },
+                        isCurrent: true,
+                        startDate: new Date(),
+                        isActive: true,
+                        updatedBy: { connect: { id: req.user.id } }
+                    }
+                });
+            }
+        }
+
+        // Log activity
+        await prisma.userActivity.create({
+            data: {
+                userId: req.user.id,
+                action: `Recorded proposal defense verdict (${verdict}) for ${existingDefense.proposal.student?.firstName || 'Unknown Student'} ${existingDefense.proposal.student?.lastName || ''}`,
+                entityId: updatedDefense.id,
+                entityType: "Proposal Defense"
+            }
+        });
+
+        res.status(200).json({
+            message: 'Proposal defense verdict recorded successfully',
+            proposalDefense: updatedDefense
+        });
+
+    } catch (error) {
+        console.error('Error in recordProposalDefenseVerdict:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller to get all proposal defenses
+export const getProposalDefenses = async (req, res, next) => {
+    try {
+        const proposalDefenses = await prisma.proposalDefense.findMany({
+            include: {
+                proposal: {
+                    include: {
+                        student: true
+                    }
+                },
+                panelists: true
+            },
+            orderBy: {
+                scheduledDate: 'desc'
+            }
+        });
+
+        res.status(200).json({
+            message: 'Proposal defenses retrieved successfully',
+            proposalDefenses: proposalDefenses
+        });
+
+    } catch (error) {
+        console.error('Error in getProposalDefenses:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+
+/*** VIVA CONTROLLERS */
 // Controller for recording viva verdict
 export const recordVivaVerdict = async (req, res, next) => {
     try {
@@ -6679,6 +7127,8 @@ export const updateSenateApprovalDate = async (req, res, next) => {
     }
 };
 
+/*** DASHBOARD CONTROLLERS */
+
 /**
  * Get dashboard statistics
  * @route GET /api/v1/management/dashboard/stats
@@ -7006,6 +7456,270 @@ export const getProgressTrends = async (req, res, next) => {
       next(error);
     }
   };
+
+
+/*** NOTIFICATION CONTROLLERS */
+
+// Controller to get notifications
+export const getNotifications = async (req, res, next) => {
+  try {
+    // Get all notifications with student status information
+    const notifications = await prisma.notification.findMany({
+      include: {
+        studentStatus: {
+          include: {
+            definition: true,
+            student: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+              
+              }
+            }
+          }
+        }
+      },
+      orderBy: {
+        scheduledFor: 'desc'
+      }
+    });
+    
+    console.log("notifications", notifications);
+    
+    res.status(200).json({
+      notifications
+    });
+  } catch (error) {
+    console.error('Error fetching notifications:', error);
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+// Controller to get status report for all students
+export const getAllStudentsStatusReport = async (req, res, next) => {
+  try {
+    // Find all students with their current status
+    const students = await prisma.student.findMany({
+      include: {
+        studentStatuses: {
+          include: {
+            definition: true,
+            notifications: true
+          },
+          orderBy: {
+            startDate: 'desc'
+          }
+        }
+      }
+    });
+
+    const today = new Date();
+    const statusReports = [];
+
+    for (const student of students) {
+      // Get current status
+      const currentStatus = student.studentStatuses.find(status => status.isCurrent);
+      
+      if (!currentStatus) {
+        continue; // Skip students without a current status
+      }
+
+      // Calculate expected end date based on definition duration
+      const startDate = new Date(currentStatus.startDate);
+      const expectedDuration = currentStatus.definition.expectedDurationDays;
+      const expectedEndDate = new Date(startDate);
+      expectedEndDate.setDate(expectedEndDate.getDate() + expectedDuration);
+      
+      // Calculate if status is delayed
+      const isDelayed = today > expectedEndDate;
+      
+      // Calculate days in status
+      const daysInStatus = Math.floor((today - startDate) / (1000 * 60 * 60 * 24));
+      
+      // Calculate days remaining or days overdue
+      let daysRemaining = 0;
+      let daysOverdue = 0;
+      
+      if (isDelayed) {
+        daysOverdue = Math.floor((today - expectedEndDate) / (1000 * 60 * 60 * 24));
+      } else {
+        daysRemaining = Math.floor((expectedEndDate - today) / (1000 * 60 * 60 * 24));
+      }
+
+      // Get notifications related to this status
+      const statusNotifications = currentStatus.notifications || [];
+
+      // Prepare the status report for this student
+      statusReports.push({
+        student: {
+          id: student.id,
+          name: `${student.firstName} ${student.lastName}`,
+          email: student.email
+        },
+        currentStatus: {
+          id: currentStatus.id,
+          name: currentStatus.definition.name,
+          description: currentStatus.definition.description,
+          startDate: currentStatus.startDate,
+          expectedDurationDays: expectedDuration,
+          expectedEndDate: expectedEndDate,
+          daysInStatus,
+          isDelayed,
+          daysRemaining: isDelayed ? 0 : daysRemaining,
+          daysOverdue: isDelayed ? daysOverdue : 0
+        },
+        notifications: statusNotifications.map(notification => ({
+          id: notification.id,
+          type: notification.type,
+          title: notification.title,
+          message: notification.message,
+          scheduledFor: notification.scheduledFor,
+          sentAt: notification.sentAt,
+          statusType: notification.statusType
+        }))
+      });
+    }
+
+    res.status(200).json({
+      statusReports
+    });
+  } catch (error) {
+    console.error('Error generating all students status report:', error);
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+// Controller to get status report for a single student
+export const getStudentStatusReport = async (req, res, next) => {
+  try {
+    const { studentId } = req.params;
+
+    // Find the student with their current status
+    const student = await prisma.student.findUnique({
+      where: { id: studentId },
+      include: {
+        studentStatuses: {
+          include: {
+            definition: true,
+            notifications: true
+          },
+          orderBy: {
+            startDate: 'desc'
+          }
+        }
+      }
+    });
+
+    if (!student) {
+      const error = new Error('Student not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // Get current status (should be the first one as we ordered by startDate desc)
+    const currentStatus = student.studentStatuses.find(status => status.isCurrent);
+    
+    if (!currentStatus) {
+      const error = new Error('No current status found for student');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // Calculate expected end date based on definition duration
+    const startDate = new Date(currentStatus.startDate);
+    const expectedDuration = currentStatus.definition.expectedDurationDays;
+    const expectedEndDate = new Date(startDate);
+    expectedEndDate.setDate(expectedEndDate.getDate() + expectedDuration);
+    
+    // Calculate if status is delayed
+    const today = new Date();
+    const isDelayed = today > expectedEndDate;
+    
+    // Calculate days in status
+    const daysInStatus = Math.floor((today - startDate) / (1000 * 60 * 60 * 24));
+    
+    // Calculate days remaining or days overdue
+    let daysRemaining = 0;
+    let daysOverdue = 0;
+    
+    if (isDelayed) {
+      daysOverdue = Math.floor((today - expectedEndDate) / (1000 * 60 * 60 * 24));
+    } else {
+      daysRemaining = Math.floor((expectedEndDate - today) / (1000 * 60 * 60 * 24));
+    }
+
+    // Get notifications related to this status
+    const statusNotifications = await prisma.notification.findMany({
+      where: {
+        studentStatusId: currentStatus.id
+      },
+      orderBy: {
+        scheduledFor: 'desc'
+      }
+    });
+
+    // Prepare the status report
+    const statusReport = {
+      student: {
+        id: student.id,
+        name: `${student.firstName} ${student.lastName}`,
+        email: student.email
+      },
+      currentStatus: {
+        id: currentStatus.id,
+        name: currentStatus.definition.name,
+        description: currentStatus.definition.description,
+        startDate: currentStatus.startDate,
+        expectedDurationDays: expectedDuration,
+        expectedEndDate: expectedEndDate,
+        daysInStatus,
+        isDelayed,
+        daysRemaining: isDelayed ? 0 : daysRemaining,
+        daysOverdue: isDelayed ? daysOverdue : 0
+      },
+      notifications: statusNotifications.map(notification => ({
+        id: notification.id,
+        type: notification.type,
+        title: notification.title,
+        message: notification.message,
+        scheduledFor: notification.scheduledFor,
+        sentAt: notification.sentAt,
+        statusType: notification.statusType
+      })),
+      statusHistory: student.studentStatuses
+        .filter(status => !status.isCurrent)
+        .map(status => ({
+          id: status.id,
+          name: status.definition.name,
+          startDate: status.startDate,
+          endDate: status.endDate,
+          expectedDurationDays: status.definition.expectedDurationDays,
+          actualDurationDays: status.endDate 
+            ? Math.floor((new Date(status.endDate) - new Date(status.startDate)) / (1000 * 60 * 60 * 24))
+            : null
+        }))
+    };
+
+    res.status(200).json({
+      statusReport
+    });
+  } catch (error) {
+    console.error('Error generating student status report:', error);
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+
 
 
 

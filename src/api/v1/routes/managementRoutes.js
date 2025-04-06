@@ -1,7 +1,7 @@
 import express from 'express';
 import authenticateToken from '../middleware/authentication.js';
 import authorizeRoles from '../middleware/roleAuthorization.js';
-import { registerSuperAdmin, accessManagementPortal, loginSuperAdmin, loginResearchCentreAdmin, getLoggedInUserDetails, addSchool, addSchoolMembers, getAllSchools, getSchool, updateSchool, deleteSchool, createCampus, getAllCampuses, getCampus, updateCampus, deleteCampus, addDepartment, getAllDepartments, getDepartment, updateDepartment, deleteDepartment, updateSchoolMembers, createFacultyMember, getAllFacultyMembers, getFacultyMember, updateFacultyMember, deleteFacultyMember, createSupervisor, createStudent, updateStudent, deleteStudent, getStudent, getAllStudents, changeStudentPassword, createStatusDefinition, getAllStatusDefinitions, getStatusDefinition, updateStatusDefinition, deleteStatusDefinition, changeFacultyPassword, getAllSupervisors, getSupervisor, updateSupervisor, deleteSupervisor, assignStudentsToSupervisor, getAssignedStudents, getStudentStatuses, getAllProposals, getProposal, getStudentProposals, submitStudentBook, getStudentBooks, getAllBooks, getBook, createExaminer, getAllExaminers, getExaminer, updateExaminer, deleteExaminer, assignExaminersToBook, updateExternalExaminerMark, getAllUsers, createUser, updateUser, deleteUser, updateUserPassword, deactivateUser, reactivateUser, getUser, addPanelistsToBook, scheduleViva, recordVivaVerdict, addNewPanelist, getAllPanelists, getBookVivas, updateMinutesSentDate, updateComplianceReportDate, updateSenateApprovalDate, updateResultsSentDate, updateResultsApprovalDate, getDashboardStats, getStatusStatistics, getProgressTrends } from '../controllers/managementController.js';
+import { registerSuperAdmin, accessManagementPortal, loginSuperAdmin, loginResearchCentreAdmin, getLoggedInUserDetails, addSchool, addSchoolMembers, getAllSchools, getSchool, updateSchool, deleteSchool, createCampus, getAllCampuses, getCampus, updateCampus, deleteCampus, addDepartment, getAllDepartments, getDepartment, updateDepartment, deleteDepartment, updateSchoolMembers, createFacultyMember, getAllFacultyMembers, getFacultyMember, updateFacultyMember, deleteFacultyMember, createSupervisor, createStudent, updateStudent, deleteStudent, getStudent, getAllStudents, changeStudentPassword, createStatusDefinition, getAllStatusDefinitions, getStatusDefinition, updateStatusDefinition, deleteStatusDefinition, changeFacultyPassword, getAllSupervisors, getSupervisor, updateSupervisor, deleteSupervisor, assignStudentsToSupervisor, getAssignedStudents, getStudentStatuses, getAllProposals, getProposal, getStudentProposals, submitStudentBook, getStudentBooks, getAllBooks, getBook, createExaminer, getAllExaminers, getExaminer, updateExaminer, deleteExaminer, assignExaminersToBook, updateExternalExaminerMark, getAllUsers, createUser, updateUser, deleteUser, updateUserPassword, deactivateUser, reactivateUser, getUser, addPanelistsToBook, scheduleViva, recordVivaVerdict, addNewPanelist, getAllPanelists, getBookVivas, updateMinutesSentDate, updateComplianceReportDate, updateSenateApprovalDate, updateResultsSentDate, updateResultsApprovalDate, getDashboardStats, getStatusStatistics, getProgressTrends, getNotifications, getAllStudentsStatusReport, getStudentStatusReport, getReviewers, scheduleProposalDefense, recordProposalDefenseVerdict, getProposalDefenses } from '../controllers/managementController.js';
 
 
 const router = express.Router();
@@ -142,4 +142,18 @@ router.put('/students/:studentId/senate-approval', authenticateToken, authorizeR
 router.get('/dashboard/stats', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getDashboardStats);
 router.get('/dashboard/status-statistics', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getStatusStatistics);
 router.get('/dashboard/progress-trends', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getProgressTrends);
+
+// Notification routes
+router.get('/notifications', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getNotifications);
+router.get('/students/status-report', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getAllStudentsStatusReport);
+router.get('/students/:studentId/status-report', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getStudentStatusReport);
+
+// Faculty statistics routes
+router.get('/reviewers', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getReviewers);
+
+// Proposal defense routes
+router.post('/proposals/:proposalId/defenses', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), scheduleProposalDefense);
+router.put('/defenses/:defenseId', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), recordProposalDefenseVerdict);
+router.get('/defenses', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getProposalDefenses);    
+
 export default router;  

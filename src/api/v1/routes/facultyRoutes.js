@@ -15,7 +15,7 @@ const upload = multer({
 });
 
 // Import faculty controllers
-import { loginFaculty, getFacultyProfile, updateFacultyPassword, getStudent, getAllStudents, getStudentStatuses, submitProposal, getProposal, gradeProposal, getStudentProposals, addReviewers, getReviewers, addPanelists, getPanelists, getSchoolProposals, deleteReviewer, deletePanelist, addReviewerMark, addPanelistMark, addDefenseDate, addComplianceReportDate, generateFieldLetter, updateFieldLetterDate, getAllBooks, getBook, getStudentBooks, createExaminer, getAllExaminers, getExaminer, updateExaminer, deleteExaminer, assignExaminersToBook, updateInternalExaminerMark } from '../controllers/facultyController.js';
+import { loginFaculty, getFacultyProfile, updateFacultyPassword, getStudent, getAllStudents, getStudentStatuses, submitProposal, getProposal, gradeProposal, getStudentProposals, addReviewers, getReviewers, addPanelists, getPanelists, getSchoolProposals, deleteReviewer, deletePanelist, addReviewerMark, addPanelistMark, addDefenseDate, addComplianceReportDate, updateFieldLetterDate, getAllBooks, getBook, getStudentBooks, createExaminer, getAllExaminers, getExaminer, updateExaminer, deleteExaminer, assignExaminersToBook, updateInternalExaminerMark } from '../controllers/facultyController.js';
 
 // Faculty authentication routes
 router.post('/login', loginFaculty);
@@ -57,7 +57,7 @@ router.post('/reviewer-marks/:proposalId/:reviewerId', authenticateToken, author
 router.post('/panelist-marks/:proposalId/:panelistId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), addPanelistMark);
 
 // Generate and send field letter
-router.post('/generate-field-letter/:proposalId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), upload.single('docxFile'), generateFieldLetter);
+// router.post('/generate-field-letter/:proposalId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), upload.single('docxFile'), generateFieldLetter);
 
 // Update field letter date
 router.put('/update-field-letter-date/:proposalId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), updateFieldLetterDate);

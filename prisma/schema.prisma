@@ -13,6 +13,29 @@ datasource db {
     url = env("DATABASE_URL")
 }
 
+// Define enums at the top of the schema
+enum NotificationType {
+  EMAIL
+  SYSTEM
+  REMINDER
+}
+
+enum NotificationStatusType {  // Renamed to avoid conflicts
+  PENDING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+enum NotificationRecipientType {  // Renamed to avoid conflicts
+  USER
+  STUDENT
+  EXAMINER
+  SUPERVISOR
+  PANELIST
+  EXTERNAL
+}
+
 model user {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   name      String
@@ -56,6 +79,9 @@ model user {
   // Add campus relation
   campus    campus?   @relation(fields: [campusId], references: [id])
   campusId  String?   @db.ObjectId
+
+  // Add this relation
+  notifications notification[] @relation("UserNotifications")
 }
 
 enum Role {
@@ -127,7 +153,7 @@ model student {
   // Arrays
   statuses             studentStatus[] 
   proposals            proposal[]     
-  notifications        notification[]   
+  notifications        notification[]    @relation("StudentNotifications")
   supervisorIds        String[]       @db.ObjectId
   supervisors          supervisor[]     @relation(fields: [supervisorIds], references:[id])
   
@@ -177,6 +203,9 @@ model studentStatus {
   updatedAt         DateTime?        @updatedAt
   updatedBy         user?            @relation(fields: [updatedById], references: [id])
   updatedById       String?          @db.ObjectId
+  
+  // Add this relation
+  notifications     notification[]   @relation("StatusNotifications")
 }
 
 model notificationLog {
@@ -187,12 +216,6 @@ model notificationLog {
   sentAt        DateTime        @default(now())
   recipients    String[]        // List of email addresses notified
   message       String
-}
-
-enum NotificationType {
-  WARNING    // Approaching deadline
-  CRITICAL   // Past deadline
-  INFO       // General information
 }
 
 model proposal {
@@ -231,6 +254,7 @@ averageDefenseMark Float?
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
   submissionDate DateTime      @default(now())
+  defenses    proposalDefense[] // One-to-many relation with proposalDefense
 }
 
 model letterDocument {
@@ -370,6 +394,9 @@ model examiner {
   department      department? @relation(fields: [departmentId], references: [id])
   departmentId    String?   @db.ObjectId
   bookAssignments examinerBookAssignment[]
+
+  // Add this relation
+  notifications notification[] @relation("ExaminerNotifications")
 }
 
 model examinerBookAssignment {
@@ -449,9 +476,9 @@ model panelist {
   institution String?
   createdAt   DateTime?  @default(now())
   updatedAt   DateTime?  @updatedAt
+  proposalDefenseIds String[] @db.ObjectId
+  proposalDefenses proposalDefense[] @relation(fields: [proposalDefenseIds], references: [id])
 }
-
-
 
 enum VivaVerdict {
   PASS
@@ -478,14 +505,66 @@ model viva {
   updatedAt     DateTime    @updatedAt
 }
 
+enum ProposalDefenseVerdict {
+  PASS
+  PASS_WITH_MINOR_CORRECTIONS
+  PASS_WITH_MAJOR_CORRECTIONS
+  FAIL
+  RESCHEDULE
+}
+
+model proposalDefense {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  proposal     proposal @relation(fields: [proposalId], references: [id])
+  proposalId   String   @db.ObjectId
+  scheduledDate DateTime
+  status       String
+  verdict      ProposalDefenseVerdict?
+  comments     String?
+  attempt      Int      // To track which attempt this is
+  panelistIds  String[] @db.ObjectId
+  panelists    panelist[] @relation(fields: [panelistIds], references: [id])
+  completedAt  DateTime?
+  isCurrent    Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
 model notification {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  recipient String   // Student or Admin Email
-  message   String
-  createdAt DateTime @default(now())
-  sent      Boolean @default(false)
-  student     student?  @relation(fields: [studentId], references: [id])
-  studentId   String?   @db.ObjectId
+  id               String                  @id @default(auto()) @map("_id") @db.ObjectId
+  type             NotificationType
+  statusType       NotificationStatusType  @default(PENDING)
+  title            String
+  message          String
+  recipientCategory NotificationRecipientType
+  recipientEmail   String
+  recipientName    String
+  scheduledFor     DateTime
+  sentAt           DateTime?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  metadata         Json?
+  retryCount       Int                    @default(0)
+  error            String?
+
+  user             user?                  @relation("UserNotifications", fields: [userId], references: [id])
+  userId           String?                @db.ObjectId
+
+  student          student?               @relation("StudentNotifications", fields: [studentId], references: [id])
+  studentId        String?                @db.ObjectId
+
+  examiner         examiner?              @relation("ExaminerNotifications", fields: [examinerId], references: [id])
+  examinerId       String?                @db.ObjectId
+
+  studentStatus    studentStatus?         @relation("StatusNotifications", fields: [studentStatusId], references: [id])
+  studentStatusId  String?                @db.ObjectId
+
+  @@index([statusType, scheduledFor])
+  @@index([recipientCategory])
+  @@index([userId])
+  @@index([studentId])
+  @@index([examinerId])
+  @@index([studentStatusId])
 }
 
 model school {
@@ -563,36 +642,3 @@ model facultyMember {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
-
-
- enum NotificationType {
-    EMAIL
-    SYSTEM
-    REMINDER
-  }
-  
-  enum NotificationStatus {
-    PENDING
-    SENT
-    FAILED
-  }
-  
-  model Notification {
-    id          String            @id @default(auto()) @map("_id") @db.ObjectId
-    type        NotificationType
-    status      NotificationStatus @default(PENDING)
-    title       String
-    message     String
-    recipient   User              @relation(fields: [recipientId], references: [id])
-    recipientId String            @db.ObjectId
-    scheduledFor DateTime
-    sentAt      DateTime?
-    createdAt   DateTime          @default(now())
-    updatedAt   DateTime          @updatedAt
-    metadata    Json?             // For additional data like email templates, etc.
-    retryCount  Int               @default(0)
-    error       String?
-  
-    @@index([status, scheduledFor]) // Index for querying pending notifications
-    @@index([recipientId])
-  }
