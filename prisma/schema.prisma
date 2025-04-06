@@ -220,12 +220,13 @@ model notificationLog {
 
 model proposal {
   id          String            @id @default(auto()) @map("_id") @db.ObjectId
+  proposalCode   String      @unique
   title       String
   description String?
   researchArea String?
-  fileData    Bytes
-  fileName    String
-  fileType    String
+  //fileData Bytes?
+  //fileName    String?
+  //fileType    String?
   isCurrent   Boolean          @default(false)
   student     student?          @relation(fields: [studentId], references: [id])
   studentId   String?           @db.ObjectId
@@ -301,11 +302,19 @@ model proposalStatus {
   updatedAt         DateTime         @updatedAt
 }
 
+enum reviewerVerdict {
+  PASS
+  PASS_WITH_MINOR_CORRECTIONS
+  PASS_WITH_MAJOR_CORRECTIONS
+  FAIL
+ 
+}
+
 model proposalReviewGrade {
   id          String    @id @default(auto()) @map("_id") @db.ObjectId
   proposal    proposal  @relation(fields: [proposalId], references: [id])
   proposalId  String    @db.ObjectId
-  grade       Float
+  verdict      reviewerVerdict?
   feedback    String?
   gradedBy    reviewer  @relation(fields: [gradedById], references: [id])
   gradedById  String    @db.ObjectId
@@ -449,6 +458,8 @@ model fieldWork {
   endDate        DateTime?
   letterReceived Boolean  @default(false)
 }
+
+
 
 model reviewer {
   id        String             @id @default(auto()) @map("_id") @db.ObjectId

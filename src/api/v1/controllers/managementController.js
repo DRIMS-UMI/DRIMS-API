@@ -2571,7 +2571,11 @@ export const getStudentProposals = async (req, res, next) => {
                     }
                 },
                 reviewGrades: true,
-                defenseGrades: true,
+                defenses: {
+                    include: {
+                        panelists: true,
+                    }
+                },
                 reviewers: {
                     select: {
                         id: true,
@@ -2626,7 +2630,7 @@ export const getAllProposals = async (req, res, next) => {
                 reviewGrades: {
                     select: {
                         id: true,
-                        grade: true,
+                        verdict: true,
                         feedback: true,
                         createdAt: true,
                         gradedBy: {
@@ -2911,23 +2915,14 @@ export const addReviewerMark = async (req, res, next) => {
             }
         });
 
-        const totalGrades = updatedProposal.reviewGrades.reduce((sum, grade) => sum + grade.grade, 0);
-        const averageGrade = totalGrades / updatedProposal.reviewGrades.length;
-
-        // Update the proposal's average review mark
-        await prisma.proposal.update({
-            where: { id: proposalId },
-            data: {
-                averageReviewMark: averageGrade
-            }
-        });
+      
 
         // Check if current status is already "Proposal Review Finished"
         const currentStatus = updatedProposal.statuses.find(status => status.isCurrent);
         const isAlreadyFinished = currentStatus?.definition?.name === 'proposal review finished';
 
         // Only update status if not already finished and all conditions are met
-        if (!isAlreadyFinished && updatedProposal.reviewGrades.length === updatedProposal.reviewers.length && averageGrade >= 60) {
+        if (!isAlreadyFinished && updatedProposal.reviewGrades.length === updatedProposal.reviewers.length ) {
             // Update proposal status
             await prisma.proposalStatus.updateMany({
                 where: {
@@ -3107,6 +3102,7 @@ export const deleteReviewer = async (req, res, next) => {
 };
 
 
+/** to be deleted */
 // Get panelists for a campus
 export const getPanelists = async (req, res, next) => {
     try {
@@ -3149,6 +3145,7 @@ export const getPanelists = async (req, res, next) => {
     }
 };
 
+/** to be deleted */
 // Add panelists to proposal
 export const addPanelists = async (req, res, next) => {
     try {
@@ -3561,6 +3558,7 @@ export const deletePanelist = async (req, res, next) => {
     }
 };
 
+/** to be deleted */
 // Add defense date to proposal
 export const addDefenseDate = async (req, res, next) => {
     try {
@@ -3803,6 +3801,7 @@ export const addComplianceReportDate = async (req, res, next) => {
     }
 };
 
+/** to be deleted */
 // Generate and send field letter controller
 export const generateFieldLetter = async (req, res, next) => {
     try {
@@ -4137,7 +4136,7 @@ export const updateFieldLetterDate = async (req, res, next) => {
     }
 };
 
-
+/** BOOK MANAGEMENT CONTROLLERS */
 // Controller for submitting student book
 export const submitStudentBook = async (req, res, next) => {
     try {
@@ -4298,6 +4297,7 @@ export const getStudentBooks = async (req, res, next) => {
                         }
                     }
                 },
+                vivaHistory: true,
                 submittedBy: {
                     select: {
                         id: true,
@@ -4531,9 +4531,6 @@ export const assignExaminersToBook = async (req, res, next) => {
         const { bookId } = req.params;
         const { examinerIds } = req.body;
 
-        console.log(bookId);
-        console.log(examinerIds);
-
         if (!bookId || !examinerIds || !Array.isArray(examinerIds) || examinerIds.length === 0) {
             const error = new Error('Book ID and at least one examiner ID are required');
             error.statusCode = 400;
@@ -4545,8 +4542,16 @@ export const assignExaminersToBook = async (req, res, next) => {
             where: {
                 id: bookId
             },
-            include: {
-                student: true
+           include: {
+                student: true,
+                statuses: {
+                    where: {
+                        isCurrent: true
+                    },
+                    include: {
+                        definition: true
+                    }
+                }
             }
         });
 
@@ -4735,11 +4740,23 @@ export const getExaminer = async (req, res, next) => {
             where: {
                 id: examinerId
             },
-            include: {
-                campus: true,
-                school: true,
-                department: true,
-                books: true
+          include: {
+                examinerBookAssignments: {
+                    include: {
+                        book: {
+                            include: {
+                                student: {
+                                    select: {
+                                        id: true,
+                                        firstName: true,
+                                        lastName: true,
+                                        email: true
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         });
 
