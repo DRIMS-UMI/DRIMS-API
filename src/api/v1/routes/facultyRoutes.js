@@ -44,7 +44,7 @@ router.delete('/reviewers/:proposalId/:reviewerId', authenticateToken, authorize
 // Panelist management routes - remove the first two
 router.post('/panelists/:proposalId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), addPanelists);
 router.get('/panelists', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), getPanelists);
-router.post('/panelists', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), addNewPanelist);
+router.post('/panelists', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), addNewPanelist);
 router.delete('/panelists/:proposalId/:panelistId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), deletePanelist);
 
 // Get all proposals in a school

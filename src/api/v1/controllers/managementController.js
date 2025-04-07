@@ -1516,6 +1516,8 @@ export const createSupervisor = async (req, res, next) => {
         // Set role based on faculty type
         let role = 'SUPERVISOR';
 
+        
+
         // Create user first
         const user = await prisma.user.create({
             data: {
