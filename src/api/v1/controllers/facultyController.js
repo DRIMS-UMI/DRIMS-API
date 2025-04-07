@@ -658,6 +658,7 @@ export const getSchoolProposals = async (req, res, next) => {
                         email: true
                     }
                 },
+                defenses: true,
                
                 statuses: {
                     include: {
