@@ -15,7 +15,7 @@ const upload = multer({
 });
 
 // Import faculty controllers
-import { loginFaculty, getFacultyProfile, updateFacultyPassword, getStudent, getAllStudents, getStudentStatuses, submitProposal, getProposal, gradeProposal, getStudentProposals, addReviewers, getReviewers, addPanelists, getPanelists, getSchoolProposals, deleteReviewer, deletePanelist, addReviewerMark, addPanelistMark, addDefenseDate, addComplianceReportDate, updateFieldLetterDate, getAllBooks, getBook, getStudentBooks, createExaminer, getAllExaminers, getExaminer, updateExaminer, deleteExaminer, assignExaminersToBook, updateInternalExaminerMark, getProposalDefenses, recordProposalDefenseVerdict, scheduleProposalDefense, getProgressTrends, getStatusStatistics, getDashboardStats, getNotifications, getAllStudentsStatusReport, getStudentStatusReport, addNewPanelist, getAllSupervisors } from '../controllers/facultyController.js';
+import { loginFaculty, getFacultyProfile, updateFacultyPassword, getStudent, getAllStudents, getStudentStatuses, submitProposal, getProposal, gradeProposal, getStudentProposals, addReviewers, getReviewers, addPanelists, getPanelists, getSchoolProposals, deleteReviewer, deletePanelist, addReviewerMark, addPanelistMark, addDefenseDate, addComplianceReportDate, updateFieldLetterDate, getAllBooks, getBook, getStudentBooks, createExaminer, getAllExaminers, getExaminer, updateExaminer, deleteExaminer, assignExaminersToBook, updateInternalExaminerMark, getProposalDefenses, recordProposalDefenseVerdict, scheduleProposalDefense, getProgressTrends, getStatusStatistics, getDashboardStats, getNotifications, getAllStudentsStatusReport, getStudentStatusReport, addNewPanelist, getAllSupervisors, requestPasswordReset, resetPassword, updateFacultyProfile } from '../controllers/facultyController.js';
 
 // Faculty authentication routes
 router.post('/login', loginFaculty);
@@ -23,7 +23,7 @@ router.post('/login', loginFaculty);
 // Protected faculty routes
 router.get('/profile', authenticateToken, getFacultyProfile);
 router.put('/password', authenticateToken, updateFacultyPassword);
-
+router.put('/profile', authenticateToken, updateFacultyProfile);
 // Student management routes
 router.get('/students/:studentId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), getStudent);
 router.get('/students', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), getAllStudents);
@@ -96,5 +96,9 @@ router.get('/students/:studentId/status-report', authenticateToken, authorizeRol
 
 // Supervisor routes
 router.get('/supervisors', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), getAllSupervisors);
+
+// Password reset routes
+router.post('/request-password-reset', requestPasswordReset);
+router.post('/reset-password', resetPassword);
 
 export default router;

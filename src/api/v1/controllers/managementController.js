@@ -29,7 +29,8 @@ export const registerSuperAdmin = async (req, res, next) => {
                 phone: req.body.phone,
                 designation: req.body.designation,
                 password: hashedPassword,
-                role: 'SUPERADMIN'
+                role: 'SUPERADMIN',
+                isActive: true // Set active by default
             }
         });
 
@@ -61,6 +62,13 @@ export const loginSuperAdmin = async (req, res, next) => {
             throw error;
         }
 
+        // Check if user is active
+        if (!superAdmin.isActive) {
+            const error = new Error('Your account has been deactivated. Please contact the administrator.');
+            error.statusCode = 403;
+            throw error;
+        }
+
         // Compare passwords
         const isValidPassword = await bcrypt.compare(password, superAdmin.password);
 
@@ -73,10 +81,13 @@ export const loginSuperAdmin = async (req, res, next) => {
         // Create JWT token
         const userData = {
             id: superAdmin.id,
+            title: superAdmin.title,
             email: superAdmin.email,
             name: superAdmin.name,
             role: superAdmin.role,
-            designation: superAdmin.designation
+            phone: superAdmin.phone,
+            designation: superAdmin.designation,
+            loggedInAt: new Date(),
         };
 
         const token = jwt.sign(
@@ -118,6 +129,13 @@ export const loginResearchCentreAdmin = async (req, res, next) => {
             throw error;
         }
 
+        // Check if user is active
+        if (!researchAdmin.isActive) {
+            const error = new Error('Your account has been deactivated. Please contact the administrator.');
+            error.statusCode = 403;
+            throw error;
+        }
+
         // Compare passwords
         const isValidPassword = await bcrypt.compare(password, researchAdmin.password);
 
@@ -127,14 +145,17 @@ export const loginResearchCentreAdmin = async (req, res, next) => {
             throw error;
         }
 
-            // Create session or token here if needed
+        // Create session or token here if needed
         // For now just sending back basic user info
         const userData = {
             id: researchAdmin.id,
+            title: researchAdmin.title,
             email: researchAdmin.email,
             name: researchAdmin.name,
             role: researchAdmin.role,
-            designation: researchAdmin.designation
+            phone: researchAdmin.phone,
+            designation: researchAdmin.designation,
+            loggedInAt: new Date(),
         };
 
         const token = jwt.sign(
@@ -175,6 +196,154 @@ export const getLoggedInUserDetails = async (req, res, next) => {
         next(error);
     }
 };
+
+// Controller for updating logged in user details
+export const updateLoggedInUser = async (req, res, next) => {
+    try {
+        const userId = req.user.id;
+        const { title, name, phone, designation } = req.body;
+
+        // Check if email is already taken by another user
+        // if (email) {
+        //     const existingUser = await prisma.user.findFirst({
+        //         where: {
+        //             email,
+        //             id: {
+        //                 not: userId
+        //             }
+        //         }
+        //     });
+
+        //     if (existingUser) {
+        //         const error = new Error('Email is already in use by another account');
+        //         error.statusCode = 400;
+        //         throw error;
+        //     }
+        // }
+
+        // Update user details
+        const updatedUser = await prisma.user.update({
+            where: { id: userId },
+            data: {
+                title,
+                name,
+            
+                phone,
+                designation
+            }
+        });
+
+        // Create user data object to return (excluding sensitive info)
+        const userData = {
+            id: updatedUser.id,
+            title: updatedUser.title,
+            email: updatedUser.email,
+            name: updatedUser.name,
+            role: updatedUser.role,
+            designation: updatedUser.designation,
+            phone: updatedUser.phone
+        };
+
+        res.status(200).json({
+            message: 'User details updated successfully',
+            user: userData
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for updating logged in user details
+export const updateUserProfile = async (req, res, next) => {
+    try {
+        const userId = req.user.id;
+        const { title, name, phone, designation } = req.body;
+
+        // Update user profile
+        const updatedUser = await prisma.user.update({
+            where: { id: userId },
+            data: {
+                title,
+                name,
+                phone,
+                designation
+            }
+        });
+
+        // Create user data object to return (excluding sensitive info)
+        const userData = {
+            id: updatedUser.id,
+            title: updatedUser.title,
+            email: updatedUser.email,
+            name: updatedUser.name,
+            role: updatedUser.role,
+            designation: updatedUser.designation,
+            phone: updatedUser.phone
+        };
+
+        res.status(200).json({
+            message: 'Profile updated successfully',
+            user: userData
+        });
+    } catch (error) {
+        console.error('Error updating user profile:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+
+
+// Controller for changing user password
+export const changePassword = async (req, res, next) => {
+    try {
+        const userId = req.user.id;
+        const { currentPassword, newPassword } = req.body;
+
+        // Find the user
+        const user = await prisma.user.findUnique({
+            where: { id: userId }
+        });
+
+        if (!user) {
+            const error = new Error('User not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Verify current password
+        const isValidPassword = await bcrypt.compare(currentPassword, user.password);
+        if (!isValidPassword) {
+            const error = new Error('Current password is incorrect');
+            error.statusCode = 403;
+            throw error;
+        }
+
+        // Hash the new password
+        const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+        // Update the password
+        await prisma.user.update({
+            where: { id: userId },
+            data: { password: hashedPassword }
+        });
+
+        res.status(200).json({
+            message: 'Password changed successfully'
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
 
 // Controller for creating a new campus - working
 export const createCampus = async (req, res, next) => {
@@ -7735,6 +7904,513 @@ export const getStudentStatusReport = async (req, res, next) => {
     next(error);
   }
 };
+
+// Controller for requesting a password reset
+export const requestPasswordReset = async (req, res, next) => {
+    try {
+        const { email } = req.body;
+
+        
+        // Check if user exists
+        const user = await prisma.user.findUnique({
+            where: { email }
+        });
+        
+        if (!user) {
+            const error = new Error('No account found with that email address');
+            error.statusCode = 404;
+            throw error;
+        }
+        
+        // Generate a reset token
+        const resetToken = crypto.randomBytes(32).toString('hex');
+        const resetTokenExpiry = new Date(Date.now() + 3600000); // Token valid for 1 hour
+        
+        // Save the reset token to the faculty record
+        await prisma.user.update({
+            where: { id: user.id },
+            data: {
+                resetToken,
+                resetTokenExpiry
+            }
+        });
+        
+        // Create nodemailer transporter
+        const transporter = nodemailer.createTransport({
+            // host: process.env.EMAIL_HOST,
+            host: 'smtp.gmail.com',
+            // port: process.env.EMAIL_PORT,
+            port: 587,
+            // secure: process.env.EMAIL_SECURE === 'true',
+            secure: true,
+            auth: {
+                user: process.env.NODE_MAILER_USERCRED,
+                pass: process.env.NODE_MAILER_PASSCRED
+            }
+        });
+        
+        // Frontend URL for password reset
+        const frontendUrl = process.env.FACULTY_CLIENT_URL || 'https://umimanagement.netlify.app';
+        // const frontendUrl = process.env.FACULTY_CLIENT_URL || 'http://localhost:5173';
+        const resetLink = `${frontendUrl}/reset-password?token=${resetToken}`;
+        
+        // Email template
+        const emailTemplate = `
+            <html>
+                <head>
+                    <style>
+                        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                        .header { background-color: #4a6da7; color: white; padding: 10px; text-align: center; }
+                        .content { padding: 20px; border: 1px solid #ddd; }
+                        .button { display: inline-block; background-color: #4a6da7; color: white; padding: 10px 20px; 
+                                text-decoration: none; border-radius: 5px; margin: 20px 0; }
+                        .footer { font-size: 12px; text-align: center; margin-top: 20px; color: #777; }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="header">
+                            <h2>Password Reset Request</h2>
+                        </div>
+                        <div class="content">
+                            <p>Hello ${user.name},</p>
+                            <p>We received a request to reset your password for your UMI Faculty account.</p>
+                            <p>Please click the button below to reset your password. This link will expire in 1 hour.</p>
+                            <p><a href="${resetLink}" class="button">Reset Password</a></p>
+                            <p>If you did not request a password reset, please ignore this email or contact support if you have concerns.</p>
+                            <p>If the button above doesn't work, copy and paste this link into your browser:</p>
+                            <p>${resetLink}</p>
+                        </div>
+                        <div class="footer">
+                            <p>This is an automated message, please do not reply to this email.</p>
+                            <p>&copy; ${new Date().getFullYear()} UMI Research Management System</p>
+                        </div>
+                    </div>
+                </body>
+            </html>
+        `;
+        
+        // Send email
+        await transporter.sendMail({
+            from: `"UMI Research Management" <${process.env.NODE_MAILER_USERCRED}>`,
+            to: user.email,
+            subject: 'Password Reset Request',
+            html: emailTemplate
+        });
+        
+        res.status(200).json({
+            message: 'Password reset link has been sent to your email'
+        });
+    } catch (error) {
+        console.error('Password reset request error:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for resetting password with token
+export const resetPassword = async (req, res, next) => {
+    try {
+        const { token, newPassword } = req.body;
+        
+        // Find faculty with valid reset token
+        const user = await prisma.user.findFirst({
+            where: {
+                resetToken: token,
+                resetTokenExpiry: {
+                    gt: new Date()
+                }
+            }
+        });
+        
+        if (!user) {
+            const error = new Error('Invalid or expired reset token');
+            error.statusCode = 400;
+            throw error;
+        }
+        
+        // Hash the new password
+        const hashedPassword = await bcrypt.hash(newPassword, 12);
+        
+        // Update password and clear reset token
+        await prisma.user.update({
+            where: { id: user.id },
+            data: {
+                password: hashedPassword,
+                resetToken: null,
+                resetTokenExpiry: null
+            }
+        });
+        
+        // Create nodemailer transporter
+        const transporter = nodemailer.createTransport({
+            // host: process.env.EMAIL_HOST,
+            host: 'smtp.gmail.com',
+            // port: process.env.EMAIL_PORT,
+            port: 587,
+            // secure: process.env.EMAIL_SECURE === 'true',
+            secure: false,
+            auth: {
+                user: process.env.NODE_MAILER_USERCRED,
+                pass: process.env.NODE_MAILER_PASSCRED
+            }
+        });
+        
+        // Email template for successful password reset
+        const confirmationTemplate = `
+            <html>
+                <head>
+                    <style>
+                        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                        .header { background-color: #4a6da7; color: white; padding: 10px; text-align: center; }
+                        .content { padding: 20px; border: 1px solid #ddd; }
+                        .footer { font-size: 12px; text-align: center; margin-top: 20px; color: #777; }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="header">
+                            <h2>Password Reset Successful</h2>
+                        </div>
+                        <div class="content">
+                            <p>Hello ${user.name},</p>
+                            <p>Your password has been successfully reset.</p>
+                            <p>If you did not make this change, please contact our support team immediately.</p>
+                        </div>
+                        <div class="footer">
+                            <p>This is an automated message, please do not reply to this email.</p>
+                            <p>&copy; ${new Date().getFullYear()} UMI Research Management System</p>
+                        </div>
+                    </div>
+                </body>
+            </html>
+        `;
+        
+        // Send confirmation email
+        await transporter.sendMail({
+            from: `"UMI Research Management" <${process.env.NODE_MAILER_USERCRED}>`,
+            to: user.email,
+            subject: 'Password Reset Successful',
+            html: confirmationTemplate
+        });
+        
+        res.status(200).json({
+            message: 'Password has been reset successfully'
+        });
+    } catch (error) {
+        console.error('Password reset error:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+
+
+
+
+
+/** GRADUATION MANAGEMENT */
+/**
+ * Get all students with senate-approved results who are eligible for graduation
+ * @route GET /api/v1/management/students/senate-approved
+ * @access Private - Admin only
+ */
+// export const getSenateApprovedStudents = async (req, res, next) => {
+//     try {
+//         // Get all students with their current status being "results approved by senate"
+//         const students = await prisma.student.findMany({
+//             include: {
+//               studentStatuses: {
+//                 include: {
+//                   definition: true,
+//                   notifications: true
+//                 },
+//                 orderBy: {
+//                   startDate: 'desc'
+//                 }
+//               }
+//             }
+//           });
+//         // const students = await prisma.student.findMany({
+//         //     where: {
+//         //         statuses: {
+//         //             some: {
+//         //                 isCurrent: true,
+//         //                 definition: {
+//         //                     name: 'results approved by senate'
+//         //                 }
+//         //             }
+//         //         }
+//         //     },
+//         //     include: {
+//         //         statuses: {
+//         //             where: {
+//         //                 isCurrent: true
+//         //             },
+//         //             include: {
+//         //                 definition: true
+//         //             }
+//         //         },
+//         //         supervisor: {
+//         //             select: {
+//         //                 name: true
+//         //             }
+//         //         },
+//         //         program: {
+//         //             select: {
+//         //                 name: true
+//         //             }
+//         //         },
+//         //         thesis: {
+//         //             select: {
+//         //                 title: true
+//         //             }
+//         //         }
+//         //     },
+//         //     orderBy: {
+//         //         lastName: 'asc'
+//         //     }
+//         // });
+
+//         // Format the response data
+//         const formattedStudents = students.map(student => ({
+//             id: student?.id,
+//             studentNumber: student?.studentNumber,
+//             name: `${student?.firstName} ${student?.lastName}`,
+//             program: student?.program?.name || 'N/A',
+//             supervisor: student?.supervisor?.name || 'N/A',
+//             thesisTitle: student?.thesis?.title || 'N/A',
+//             currentStatus: student?.statuses[0]?.definition?.name || 'N/A',
+//             isInGraduationList: student?.statuses[0]?.definition?.name === 'graduated'
+//         }));
+
+//         res.status(200).json({
+//             success: true,
+//             count: formattedStudents.length,
+//             students: formattedStudents // Changed from data to students to match frontend expectations
+//         });
+//     } catch (error) {
+//         console.error('Error fetching senate approved students:', error);
+//         if (!error.statusCode) {
+//             error.statusCode = 500;
+//         }
+//         next(error);
+//     }
+// };
+
+/**
+ * Add a student to the graduation list
+ * @route POST /api/v1/management/graduation
+ * @access Private - Admin only
+ */
+// export const addStudentToGraduation = async (req, res, next) => {
+//     try {
+//         const { studentId, academicYear } = req.body;
+
+//         if (!studentId || !academicYear) {
+//             const error = new Error('Student ID and academic year are required');
+//             error.statusCode = 400;
+//             throw error;
+//         }
+
+//         // Update the student status to GRADUATED and set the academic year
+//         const updatedStudent = await prisma.student.update({
+//             where: {
+//                 id: studentId
+//             },
+//             data: {
+//                 status: 'GRADUATED',
+//                 academicYear: academicYear
+//             }
+//         });
+
+//         res.status(200).json({
+//             success: true,
+//             message: 'Student added to graduation list successfully',
+//             data: updatedStudent
+//         });
+//     } catch (error) {
+//         if (!error.statusCode) {
+//             error.statusCode = 500;
+//         }
+//         next(error);
+//     }
+// };
+
+
+
+
+export const getGraduationStatistics = async (req, res) => {
+    try {
+      const currentYear = new Date().getFullYear();
+      const currentAcademicYear = `${currentYear}/${currentYear + 1}`;
+  
+      // Get total graduates
+      const totalGraduates = await prisma.student.count({
+        where: {
+          statuses: {
+            some: {
+              definition: {
+                name: 'graduated'
+              }
+            }
+          }
+        }
+      });
+  
+      // Get current year graduates
+      const currentYearGraduates = await prisma.student.count({
+        where: {
+            statuses: {
+                some: {
+                definition: {
+                    name: 'graduated'
+                }
+                }
+            },
+          gradAcademicYear: currentAcademicYear
+        }
+      });
+  
+      // Get pending graduation (senate approved)
+      const pendingGraduation = await prisma.student.count({
+        where: {
+          statuses: {
+            some: {
+              definition: {
+                name: 'results approved by senate'
+              }
+            }
+          }
+        }
+      });
+  
+      // Get yearly trends
+      const yearlyTrends = await prisma.student.groupBy({
+        by: ['gradAcademicYear', 'programLevel'],
+        where: {
+          statuses: {
+            some: {
+              definition: {
+                name: 'graduated'
+              }
+            }
+          },
+          gradAcademicYear: {
+            not: null
+          }
+        },
+        _count: {
+          id: true
+        },
+        orderBy: {
+          gradAcademicYear: 'asc'
+        },
+        take: 6 // Last 6 academic years
+      });
+  
+      // Transform data for graph
+      const trends = yearlyTrends.reduce((acc, curr) => {
+        const year = curr.gradAcademicYear;
+        if (!acc[year]) {
+          acc[year] = { 
+            academicYear: year, 
+            graduates: 0, 
+            phd: 0, 
+            masters: 0 
+          };
+        }
+        acc[year].graduates += curr._count.id;
+        if (curr.programLevel.includes('PHD')) {
+          acc[year].phd += curr._count.id;
+        } else {
+          acc[year].masters += curr._count.id;
+        }
+        return acc;
+      }, {});
+  
+      res.json({
+        totalGraduates,
+        currentYearGraduates,
+        pendingGraduation,
+        yearlyTrends: Object.values(trends)
+      });
+    } catch (error) {
+      console.error('Error fetching graduation statistics:', error);
+      res.status(500).json({ message: 'Error fetching graduation statistics' });
+    }
+  };
+  
+  export const addStudentToGraduation = async (req, res) => {
+    const { studentId, academicYear } = req.body; // academicYear format: "2023/2024"
+  
+    try {
+      // Start a transaction
+      const result = await prisma.$transaction(async (prisma) => {
+        // Find the graduated status definition
+        const graduatedStatusDef = await prisma.statusDefinition.findFirst({
+          where: { name: 'graduated' }
+        });
+        
+        if (!graduatedStatusDef) {
+          throw new Error('Graduated status definition not found');
+        }
+        
+        // Update all current statuses to not current
+        await prisma.studentStatus.updateMany({
+          where: { 
+            studentId,
+            isCurrent: true 
+          },
+          data: { isCurrent: false }
+        });
+        
+        // Create new student status
+        await prisma.studentStatus.create({
+          data: {
+            student: {connect: {studentId}},
+            definition: { connect: { id: graduatedStatusDef.id } },
+            startDate: new Date(),
+            isCurrent: true,
+            updatedById: req.user.id // Assuming req.user contains the logged-in user
+          }
+        });
+        
+        // Update student
+        const updatedStudent = await prisma.student.update({
+          where: { id: studentId },
+          data: {
+            currentStatus: 'graduated',
+            gradAcademicYear: academicYear,
+            graduatedAt: new Date()
+          }
+        });
+  
+        // Create graduation record
+        await prisma.graduation.create({
+          data: {
+            studentId,
+            academicYear: academicYear,
+            programLevel: updatedStudent.programLevel,
+            graduationDate: new Date(),
+          }
+        });
+  
+        return updatedStudent;
+      });
+  
+      res.json(result);
+    } catch (error) {
+      console.error('Error adding student to graduation:', error);
+      res.status(500).json({ message: 'Error adding student to graduation' });
+    }
+  };
 
 
 

@@ -1,6 +1,9 @@
 import prisma from '../../../utils/db.mjs';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import nodemailer from 'nodemailer';
+import crypto from 'crypto';
+
 
 import fs from 'fs/promises';
 import path from 'path';
@@ -26,6 +29,13 @@ export const loginFaculty = async (req, res, next) => {
             throw error;
         }
 
+         // Check if user is active
+         if (!user.isActive) {
+            const error = new Error('Your account has been deactivated. Please contact the administrator.');
+            error.statusCode = 403;
+            throw error;
+        }
+
         // Check if user has correct role
         if (user.role !== 'SCHOOL_ADMIN' && user.role !== 'FACULTY') {
             const error = new Error('Unauthorized access - must be School Admin or Faculty');
@@ -45,10 +55,13 @@ export const loginFaculty = async (req, res, next) => {
         const token = jwt.sign(
             {
                 id: user.id,
+                title: user.title,
                 email: user.email,
                 name: user.name,
                 role: user.role,
-                designation: user.designation
+                designation: user.designation,
+                loggedInAt: new Date(),
+                phone: user.phone
             },
             process.env.AUTH_SECRET,
             { expiresIn: rememberMe ? '30d' : '24h' }
@@ -95,7 +108,10 @@ export const getFacultyProfile = async (req, res, next) => {
                 name: faculty.name,
                 email: faculty.email,
                 role: faculty.role,
+                title: faculty.title,
+                phone: faculty.phone,
                 designation: faculty.designation,
+                loggedInAt: faculty.loggedInAt,
                 department: faculty.department,
                 createdAt: faculty.createdAt,
                 updatedAt: faculty.updatedAt
@@ -113,22 +129,22 @@ export const getFacultyProfile = async (req, res, next) => {
 // Update faculty password controller
 export const updateFacultyPassword = async (req, res, next) => {
     try {
-        const facultyId = req.user.userId;
+        const facultyId = req.user.id;
         const { currentPassword, newPassword } = req.body;
 
         // Find faculty member
-        const faculty = await prisma.faculty.findUnique({
+        const user = await prisma.user.findUnique({
             where: { id: facultyId }
         });
 
-        if (!faculty) {
+        if (!user) {
             const error = new Error('Faculty member not found');
             error.statusCode = 404;
             throw error;
         }
 
         // Verify current password
-        const isValidPassword = await bcrypt.compare(currentPassword, faculty.password);
+        const isValidPassword = await bcrypt.compare(currentPassword, user.password);
         if (!isValidPassword) {
             const error = new Error('Current password is incorrect');
             error.statusCode = 401;
@@ -139,7 +155,7 @@ export const updateFacultyPassword = async (req, res, next) => {
         const hashedPassword = await bcrypt.hash(newPassword, 12);
 
         // Update password
-        await prisma.faculty.update({
+        await prisma.user.update({
             where: { id: facultyId },
             data: { password: hashedPassword }
         });
@@ -155,6 +171,51 @@ export const updateFacultyPassword = async (req, res, next) => {
         next(error);
     }
 };
+
+// Controller for updating logged in user details
+export const updateFacultyProfile = async (req, res, next) => {
+    try {
+        const userId = req.user.id;
+        const { title, name, phone, designation } = req.body;
+
+        // Update user profile
+        const updatedUser = await prisma.user.update({
+            where: { id: userId },
+            data: {
+                title,
+                name,
+                phone,
+                designation
+            }
+        });
+
+        // Create user data object to return (excluding sensitive info)
+        const userData = {
+            id: updatedUser.id,
+            title: updatedUser.title,
+            email: updatedUser.email,
+            name: updatedUser.name,
+            role: updatedUser.role,
+            designation: updatedUser.designation,
+            phone: updatedUser.phone
+        };
+
+        res.status(200).json({
+            message: 'Profile updated successfully',
+            user: userData
+        });
+    } catch (error) {
+        console.error('Error updating user profile:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+
+
+
 
 
 /** STUDENT MANAGEMENT CONTROLLERS */
@@ -4529,6 +4590,222 @@ export const getAllSupervisors = async (req, res, next) => {
         next(error);
     }
 };
+
+// Controller for requesting a password reset
+export const requestPasswordReset = async (req, res, next) => {
+    try {
+        const { email } = req.body;
+
+        //check if faculty exists
+        const faculty = await prisma.faculty.findUnique({
+            where: { email }
+        });
+
+        if (!faculty) {
+            const error = new Error('No account found with that email address');
+            error.statusCode = 404;
+            throw error;
+        }
+        // Check if user exists
+        const user = await prisma.user.findUnique({
+            where: { email }
+        });
+        
+        if (!user) {
+            const error = new Error('No account found with that email address');
+            error.statusCode = 404;
+            throw error;
+        }
+        
+        // Generate a reset token
+        const resetToken = crypto.randomBytes(32).toString('hex');
+        const resetTokenExpiry = new Date(Date.now() + 3600000); // Token valid for 1 hour
+        
+        // Save the reset token to the faculty record
+        await prisma.user.update({
+            where: { id: user.id },
+            data: {
+                resetToken,
+                resetTokenExpiry
+            }
+        });
+        
+        // Create nodemailer transporter
+        const transporter = nodemailer.createTransport({
+            // host: process.env.EMAIL_HOST,
+            host: 'smtp.gmail.com',
+            // port: process.env.EMAIL_PORT,
+            port: 587,
+            // secure: process.env.EMAIL_SECURE === 'true',
+            secure: true,
+            auth: {
+                user: process.env.NODE_MAILER_USERCRED,
+                pass: process.env.NODE_MAILER_PASSCRED
+            }
+        });
+        
+        // Frontend URL for password reset
+        const frontendUrl = process.env.FACULTY_CLIENT_URL || 'https://umifaculty.netlify.app';
+        // const frontendUrl = process.env.FACULTY_CLIENT_URL || 'http://localhost:5173';
+        const resetLink = `${frontendUrl}/reset-password?token=${resetToken}`;
+        
+        // Email template
+        const emailTemplate = `
+            <html>
+                <head>
+                    <style>
+                        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                        .header { background-color: #4a6da7; color: white; padding: 10px; text-align: center; }
+                        .content { padding: 20px; border: 1px solid #ddd; }
+                        .button { display: inline-block; background-color: #4a6da7; color: white; padding: 10px 20px; 
+                                text-decoration: none; border-radius: 5px; margin: 20px 0; }
+                        .footer { font-size: 12px; text-align: center; margin-top: 20px; color: #777; }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="header">
+                            <h2>Password Reset Request</h2>
+                        </div>
+                        <div class="content">
+                            <p>Hello ${user.name},</p>
+                            <p>We received a request to reset your password for your UMI Faculty account.</p>
+                            <p>Please click the button below to reset your password. This link will expire in 1 hour.</p>
+                            <p><a href="${resetLink}" class="button">Reset Password</a></p>
+                            <p>If you did not request a password reset, please ignore this email or contact support if you have concerns.</p>
+                            <p>If the button above doesn't work, copy and paste this link into your browser:</p>
+                            <p>${resetLink}</p>
+                        </div>
+                        <div class="footer">
+                            <p>This is an automated message, please do not reply to this email.</p>
+                            <p>&copy; ${new Date().getFullYear()} UMI Research Management System</p>
+                        </div>
+                    </div>
+                </body>
+            </html>
+        `;
+        
+        // Send email
+        await transporter.sendMail({
+            from: `"UMI Research Management" <${process.env.NODE_MAILER_USERCRED}>`,
+            to: user.email,
+            subject: 'Password Reset Request',
+            html: emailTemplate
+        });
+        
+        res.status(200).json({
+            message: 'Password reset link has been sent to your email'
+        });
+    } catch (error) {
+        console.error('Password reset request error:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for resetting password with token
+export const resetPassword = async (req, res, next) => {
+    try {
+        const { token, newPassword } = req.body;
+        
+        // Find faculty with valid reset token
+        const user = await prisma.user.findFirst({
+            where: {
+                resetToken: token,
+                resetTokenExpiry: {
+                    gt: new Date()
+                }
+            }
+        });
+        
+        if (!user) {
+            const error = new Error('Invalid or expired reset token');
+            error.statusCode = 400;
+            throw error;
+        }
+        
+        // Hash the new password
+        const hashedPassword = await bcrypt.hash(newPassword, 12);
+        
+        // Update password and clear reset token
+        await prisma.user.update({
+            where: { id: user.id },
+            data: {
+                password: hashedPassword,
+                resetToken: null,
+                resetTokenExpiry: null
+            }
+        });
+        
+        // Create nodemailer transporter
+        const transporter = nodemailer.createTransport({
+            // host: process.env.EMAIL_HOST,
+            host: 'smtp.gmail.com',
+            // port: process.env.EMAIL_PORT,
+            port: 587,
+            // secure: process.env.EMAIL_SECURE === 'true',
+            secure: false,
+            auth: {
+                user: process.env.NODE_MAILER_USERCRED,
+                pass: process.env.NODE_MAILER_PASSCRED
+            }
+        });
+        
+        // Email template for successful password reset
+        const confirmationTemplate = `
+            <html>
+                <head>
+                    <style>
+                        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                        .header { background-color: #4a6da7; color: white; padding: 10px; text-align: center; }
+                        .content { padding: 20px; border: 1px solid #ddd; }
+                        .footer { font-size: 12px; text-align: center; margin-top: 20px; color: #777; }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="header">
+                            <h2>Password Reset Successful</h2>
+                        </div>
+                        <div class="content">
+                            <p>Hello ${user.name},</p>
+                            <p>Your password has been successfully reset.</p>
+                            <p>If you did not make this change, please contact our support team immediately.</p>
+                        </div>
+                        <div class="footer">
+                            <p>This is an automated message, please do not reply to this email.</p>
+                            <p>&copy; ${new Date().getFullYear()} UMI Research Management System</p>
+                        </div>
+                    </div>
+                </body>
+            </html>
+        `;
+        
+        // Send confirmation email
+        await transporter.sendMail({
+            from: `"UMI Research Management" <${process.env.NODE_MAILER_USERCRED}>`,
+            to: user.email,
+            subject: 'Password Reset Successful',
+            html: confirmationTemplate
+        });
+        
+        res.status(200).json({
+            message: 'Password has been reset successfully'
+        });
+    } catch (error) {
+        console.error('Password reset error:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+
   
 
 
