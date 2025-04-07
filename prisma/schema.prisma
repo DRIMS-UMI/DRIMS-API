@@ -664,7 +664,7 @@ model graduation {
   student        student  @relation(fields: [studentId], references: [id])
   studentId      String   @db.ObjectId @unique
   academicYear   String   // Changed from Int to String to store "2023/2024" format
-  program        String
+  programLevel        String
   graduationDate DateTime
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

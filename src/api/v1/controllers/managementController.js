@@ -8368,17 +8368,17 @@ export const getGraduationStatistics = async (req, res) => {
             studentId,
             isCurrent: true 
           },
-          data: { isCurrent: false }
+          data: { isCurrent: false, endDate: new Date() }
         });
         
         // Create new student status
         await prisma.studentStatus.create({
           data: {
-            student: {connect: {studentId}},
+            student: {connect: {id: studentId}},
             definition: { connect: { id: graduatedStatusDef.id } },
             startDate: new Date(),
             isCurrent: true,
-            updatedById: req.user.id // Assuming req.user contains the logged-in user
+            updatedBy: {connect: {id: req.user.id}} // Assuming req.user contains the logged-in user
           }
         });
         
