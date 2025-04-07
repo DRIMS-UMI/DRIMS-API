@@ -1048,6 +1048,8 @@ export const getReviewers = async (req, res, next) => {
             }
         });
 
+        console.log(reviewers)
+
         res.status(200).json({
             message: 'Reviewers retrieved successfully',
             reviewers: reviewers
@@ -1343,6 +1345,8 @@ export const getPanelists = async (req, res, next) => {
             }
         });
 
+        
+
         if (!facultyMember || !facultyMember.campusId) {
             const error = new Error('Faculty member campus not found');
             error.statusCode = 400;
@@ -1351,13 +1355,13 @@ export const getPanelists = async (req, res, next) => {
 
         // Get all panelists for the faculty member's campus
         const panelists = await prisma.panelist.findMany({
-            where: {
-                campusId: facultyMember.campusId
-            },
+           
             orderBy: {
                 name: 'asc'
             }
         });
+
+        
 
         res.status(200).json({
             message: 'Panelists retrieved successfully',
