@@ -1753,6 +1753,143 @@ export const deleteSupervisor = async (req, res, next) => {
         next(error);
     }
 };
+// Controller for assigning Supervisors to Students
+// Controller for assigning supervisors to students
+export const assignSupervisorsToStudent = async (req, res, next) => {
+    try {
+        const { studentId } = req.params;
+        const { supervisorIds } = req.body;
+
+        // Check if student exists
+        const student = await prisma.student.findUnique({
+            where: { id: studentId },
+            include: {
+                supervisors: true
+            }
+        });
+
+        if (!student) {
+            const error = new Error('Student not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Check if all supervisors exist
+        const supervisors = await prisma.supervisor.findMany({
+            where: {
+                id: {
+                    in: supervisorIds
+                }
+            },
+            include: {
+                user: true
+            }
+        });
+
+        if (supervisors.length !== supervisorIds.length) {
+            const error = new Error('One or more supervisors not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Update student with new supervisors
+        const updatedStudent = await prisma.student.update({
+            where: { id: studentId },
+            data: {
+                supervisors: {
+                    connect: supervisorIds.map(id => ({ id }))
+                }
+            },
+            include: {
+                supervisors: {
+                    include: {
+                        user: true
+                    }
+                }
+            }
+        });
+
+        // Send notification to each supervisor
+        // for (const supervisor of supervisors) {
+        //     await notificationService.createNotification({
+        //         userId: supervisor.user.id,
+        //         title: 'New Student Assignment',
+        //         message: `You have been assigned as a supervisor to student ${student.firstName} ${student.lastName}`,
+        //         type: 'ASSIGNMENT'
+        //     });
+        // }
+
+        // Track this activity
+        await prisma.userActivity.create({
+            data: {
+                user: { connect: { id: req.user?.id } },
+                action: 'ASSIGN_SUPERVISORS',
+                entityType: 'Student',
+                entityId: studentId,
+                details: JSON.stringify({
+                    studentId,
+                    supervisorIds,
+                    description: `Assigned ${supervisorIds.length} supervisor(s) to student ${student.firstName} ${student.lastName}`
+                })
+            }
+        });
+
+        // Check if student is in workshop status and change to normal progress if needed
+        const currentStatus = await prisma.studentStatus.findFirst({
+            where: {
+                studentId: studentId,
+                isCurrent: true
+            },
+            include: {
+                definition: true
+            }
+        });
+
+        if (currentStatus?.definition?.name === "workshop") {
+            // Set current workshop status to inactive
+            await prisma.studentStatus.update({
+                where: { id: currentStatus.id },
+                data: { isCurrent: false,    endDate: new Date(), }
+            });
+
+            // Find the "NORMAL_PROGRESS" status definition
+            const normalProgressDef = await prisma.statusDefinition.findFirst({
+                where: { name: "normal progress" }
+            });
+
+            if (normalProgressDef) {
+                // Create new normal progress status
+                await prisma.studentStatus.create({
+                    data: {
+                        student: { connect: { id: studentId } },
+                        definition: { connect: { id: normalProgressDef.id } },
+                        startDate: new Date(),
+                        isCurrent: true,
+                        conditions: "Automatically changed from WORKSHOP after supervisor assignment"
+                    }
+                });
+            }
+        }
+
+        res.status(200).json({
+            message: 'Supervisors assigned to student successfully',
+            student: {
+                id: updatedStudent.id,
+                name: `${updatedStudent.firstName} ${updatedStudent.lastName}`,
+                supervisors: updatedStudent.supervisors.map(supervisor => ({
+                    id: supervisor.id,
+                    name: supervisor.user.name,
+                    email: supervisor.user.email
+                }))
+            }
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
 
 // Controller for assigning students to supervisor
 export const assignStudentsToSupervisor = async (req, res, next) => {
@@ -1894,6 +2031,167 @@ export const assignStudentsToSupervisor = async (req, res, next) => {
     }
 };
 
+// Controller for changing a student's supervisor
+export const changeStudentSupervisor = async (req, res, next) => {
+    try {
+        const { studentId } = req.params;
+        const { oldSupervisorId, newSupervisorId, reason } = req.body;
+
+        // Check if student exists
+        const student = await prisma.student.findUnique({
+            where: { id: studentId },
+            include: {
+                supervisors: true,
+                user:true
+            }
+        });
+
+        if (!student) {
+            const error = new Error('Student not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Check if old supervisor is actually assigned to the student
+        const isOldSupervisorAssigned = student.supervisors.some(
+            supervisor => supervisor.id === oldSupervisorId
+        );
+
+        if (!isOldSupervisorAssigned) {
+            const error = new Error('The specified old supervisor is not assigned to this student');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if new supervisor exists
+        const newSupervisor = await prisma.supervisor.findUnique({
+            where: { id: newSupervisorId },
+            include: {
+                user: true
+            }
+        });
+
+        if (!newSupervisor) {
+            const error = new Error('New supervisor not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Get old supervisor details for the activity log
+        const oldSupervisor = await prisma.supervisor.findUnique({
+            where: { id: oldSupervisorId },
+            include: {
+                user: true
+            }
+        });
+
+        // Update student's supervisors (remove old, add new)
+        const updatedStudent = await prisma.student.update({
+            where: { id: studentId },
+            data: {
+                supervisors: {
+                    disconnect: { id: oldSupervisorId },
+                    connect: { id: newSupervisorId }
+                }
+            },
+            include: {
+                supervisors: {
+                    include: {
+                        user: true
+                    }
+                },
+                campus: true,
+                school: true,
+                department: true
+            }
+        });
+
+        // Track this activity
+        await prisma.userActivity.create({
+            data: {
+                user: { connect: { id: req.user?.id } },
+                action: 'CHANGE_SUPERVISOR',
+                entityType: 'Student',
+                entityId: studentId,
+                details: JSON.stringify({
+                    studentId,
+                    oldSupervisorId,
+                    oldSupervisorName: oldSupervisor?.user?.name,
+                    newSupervisorId,
+                    newSupervisorName: newSupervisor.user.name,
+                    reason,
+                    description: `Changed supervisor for student ${student.name} from ${oldSupervisor?.user?.name} to ${newSupervisor.user.name}`
+                })
+            }
+        });
+
+        // <p>This change was made for the following reason: ${reason}</p>
+        // Send email notification to the new supervisor through notification service
+        await notificationService.scheduleNotification({
+            type: "EMAIL",
+            statusType: "PENDING",
+            title: "New Student Supervision Assignment",
+            message: `You have been assigned as a supervisor for student ${student.firstName} ${student.lastName} .`,
+            recipientCategory: "USER",
+            recipientId: newSupervisor.user.id,
+            // recipientEmail: newSupervisor.user.email,
+            recipientEmail: "stephaniekirathe@gmail.com",
+            recipientName: newSupervisor.user.name,
+            scheduledFor: new Date(Date.now() + 60000), // Schedule for delivery 1 minute from now
+            // scheduledFor: new Date(new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' })).getTime() + 5 * 60000), // Schedule for delivery in Uganda timezone, 5 minutes from now
+            metadata: {
+                studentId: student.id,
+                supervisorId: newSupervisor.id,
+                // supervisorType: isPrimary ? 'primary' : 'secondary',
+                additionalContent: `<p>Please log in to the UMI Supervisor Platform to view more details about this student</p>
+                <p>Thank you,</p>
+                <p>UMI Research Management Team </p>
+                `
+            }
+        });
+
+        // Send email notification to the student through notification service
+        await notificationService.scheduleNotification({
+            type: "EMAIL",
+            statusType: "PENDING",
+            title: "Supervisor Change Notification",
+            message: `Your supervisor has been changed from ${oldSupervisor?.user?.title} ${oldSupervisor?.user?.name} to ${newSupervisor.user.title} ${newSupervisor.user.name}. `,
+            recipientCategory: "USER",
+            recipientId: student?.user?.id,
+            // recipientEmail: student?.user?.email,
+            recipientEmail: "stephaniekirathe@gmail.com",
+            
+            recipientName: student?.user?.name,
+            scheduledFor: new Date(Date.now() + 60000), // Schedule for delivery 1 minute from now
+            // scheduledFor: new Date(new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' })).getTime() + 60000), // Schedule for delivery in Uganda timezone, 1 minute from now
+            metadata: {
+                oldSupervisorId: oldSupervisorId,
+                newSupervisorId: newSupervisorId,
+                // supervisorType: isPrimary ? 'primary' : 'secondary',
+                reason: reason,
+                additionalContent: `
+              
+                <p>If you have any questions about this change, please contact thr research administration office.</p>
+                <p>Thank you,</p>
+                <p>UMI Research Management Team </p>
+                `
+            }
+        });
+
+        res.status(200).json({
+            message: 'Supervisor changed successfully',
+            student: updatedStudent
+        });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+
 
 // Get students assigned to supervisor
 export const getAssignedStudents = async (req, res, next) => {
@@ -1964,6 +2262,7 @@ export const createStudent = async (req, res, next) => {
             title,
             firstName,
             lastName,
+            registrationNumber,
             course,
             email,
             phoneNumber,
@@ -2023,6 +2322,7 @@ export const createStudent = async (req, res, next) => {
                 title,
                 firstName,
                 lastName,
+                registrationNumber,
                 email,
                 course,
                 phoneNumber,
@@ -4341,15 +4641,15 @@ export const submitStudentBook = async (req, res, next) => {
             throw error;
         }
 
-        // Find book submitted status definition
+        // Find dissertation submitted status definition
         const bookSubmittedStatus = await prisma.statusDefinition.findFirst({
             where: {
-                name: "book submitted"
+                name: "dissertation submitted"
             }
         });
 
         if (!bookSubmittedStatus) {
-            const error = new Error('Book submitted status definition not found');
+            const error = new Error('dissertation submitted status definition not found');
             error.statusCode = 404;
             throw error;
         }
@@ -4426,7 +4726,7 @@ export const submitStudentBook = async (req, res, next) => {
         });
 
         res.status(201).json({
-            message: 'Book submitted successfully',
+            message: 'dissertation submitted successfully',
             book
         });
 
@@ -6951,9 +7251,9 @@ export const updateComplianceReportDate = async (req, res, next) => {
             }
         });
 
-        // Find status definition for final book & compliance report received
+        // Find status definition for final dissertation & compliance report received
         const finalBookStatus = await prisma.statusDefinition.findFirst({
-            where: { name: 'final book & compliance report received' }
+            where: { name: 'final dissertation & compliance report received' }
         });
 
         if (finalBookStatus) {
@@ -7472,7 +7772,7 @@ export const getStatusStatistics = async (req, res, next) => {
             in: [
               'book planning',
               'book writing',
-              'book submitted',
+              'dissertation submitted',
               'book under review',
               'book published'
             ]
@@ -7559,7 +7859,7 @@ export const getProgressTrends = async (req, res, next) => {
           },
           definition: {
             name: {
-              in: ['book submitted', 'under examination', 'scheduled for viva']
+              in: ['dissertation submitted', 'under examination', 'scheduled for viva']
             }
           }
         },
@@ -7584,7 +7884,7 @@ export const getProgressTrends = async (req, res, next) => {
   
       // Define default colors for each status
       const defaultColors = {
-        'book submitted': '#23388F',  // dark blue
+        'dissertation submitted': '#23388F',  // dark blue
         'under examination': '#EAB308',  // yellow
         'scheduled for viva': '#EC4899'  // pink
       };
@@ -7593,7 +7893,7 @@ export const getProgressTrends = async (req, res, next) => {
       const statusDefinitions = await prisma.statusDefinition.findMany({
         where: {
           name: {
-            in: ['book submitted', 'under examination', 'scheduled for viva']
+            in: ['dissertation submitted', 'under examination', 'scheduled for viva']
           }
         },
         select: {
@@ -7610,7 +7910,7 @@ export const getProgressTrends = async (req, res, next) => {
      
       
       // Use these colors consistently across all data points
-      const submissionsColor = statusColors['book submitted'] || defaultColors['book submitted'];
+      const submissionsColor = statusColors['dissertation submitted'] || defaultColors['dissertation submitted'];
       const examinationsColor = statusColors['under examination'] || defaultColors['under examination'];
       const vivasColor = statusColors['scheduled for viva'] || defaultColors['scheduled for viva'];
       // Transform the data into daily counts
@@ -7622,7 +7922,7 @@ export const getProgressTrends = async (req, res, next) => {
           status.createdAt >= dayStart && status.createdAt <= dayEnd
         );
   
-        const submissionStats = dayStats.filter(s => s.definition.name === 'book submitted');
+        const submissionStats = dayStats.filter(s => s.definition.name === 'dissertation submitted');
         const examinationStats = dayStats.filter(s => s.definition.name === 'under examination');
         const vivaStats = dayStats.filter(s => s.definition.name === 'scheduled for viva');
   

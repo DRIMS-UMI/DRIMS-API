@@ -380,6 +380,11 @@ export const submitProposal = async (req, res, next) => {
                         isCurrent: true
                     },
                     take: 1
+                },
+                proposals: {
+                    where: {
+                        isCurrent: true
+                    }
                 }
             }
         });
@@ -413,6 +418,14 @@ export const submitProposal = async (req, res, next) => {
 
         // Generate unique proposal code (PR-YYYY-XXXX where XXXX is padded with zeros)
         const proposalCode = `PR-${currentYear}-${String(nextNumber).padStart(4, '0')}`;
+
+        // If student has a current proposal, update it to not be current
+        if (student.proposals && student.proposals.length > 0) {
+            await prisma.proposal.update({
+                where: { id: student.proposals[0].id },
+                data: { isCurrent: false }
+            });
+        }
 
         // Create new proposal with file buffer
         const proposal = await prisma.proposal.create({
@@ -812,6 +825,79 @@ export const gradeProposal = async (req, res, next) => {
     }
 };
 
+
+export const addNewReviewer = async (req, res, next) => {
+    try {
+       
+        const { name, email, institution, specialization, primaryPhone, secondaryPhone, customSpecialization } = req.body;
+
+        let campusId = null;
+
+        // Get the faculty's campus
+        const faculty = await prisma.facultyMember.findUnique({
+            where: { userId: req.user.id },
+            include: { campus: true }
+        });
+
+        if (!faculty) {
+            const error = new Error('Faculty member not found');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        console.log("faculty-campus", faculty?.campus)
+
+        // If faculty has a campus, use it as default for the reviewer
+        if (faculty?.campus && !campusId) {
+            campusId = faculty?.campus?.id;
+        }
+        // Validate inputs
+        if (!name || !email) {
+            const error = new Error('Name and email are required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if reviewer already exists
+        const existingReviewer = await prisma.reviewer.findUnique({
+            where: { email }
+        });
+
+        if (existingReviewer) {
+            const error = new Error('Reviewer with this email already exists');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Create new reviewer
+        const newReviewer = await prisma.reviewer.create({
+            data: {
+                name,
+                email,
+                institution,
+                specialization: specialization === "Other" ? customSpecialization : specialization,
+                primaryPhone,
+                secondaryPhone,
+                campus: campusId ? {
+                    connect: { id: campusId }
+                } : undefined
+            }
+        });
+
+        res.status(201).json({
+            message: 'Reviewer added successfully',
+            reviewer: newReviewer
+        });
+
+    } catch (error) {
+        console.error('Error in addNewReviewer:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
 // Add reviewers to proposal
 export const addReviewers = async (req, res, next) => {
     try {
@@ -1151,7 +1237,9 @@ export const addReviewerMark = async (req, res, next) => {
 
         // Check if current status is already "Proposal Review Finished"
         const currentStatus = updatedProposal.statuses.find(status => status.isCurrent);
-        const isAlreadyFinished = currentStatus?.definition?.name === 'proposal review finished';
+        const isAlreadyFinished = currentStatus?.definition?.name === 'proposal review finished' || 
+                                 currentStatus?.definition?.name === 'passed-proposal review finished' ||
+                                 currentStatus?.definition?.name === 'failed-proposal review finished';
 
         // Only update status if not already finished and all reviewers have submitted grades
         if (!isAlreadyFinished && updatedProposal.reviewGrades.length === updatedProposal.reviewers.length) {
@@ -1167,10 +1255,18 @@ export const addReviewerMark = async (req, res, next) => {
                 }
             });
 
-            // Get the status definition ID for "Proposal Review Finished"
+            // Determine the status based on verdict
+            let statusName = 'proposal review finished';
+            if (verdict.toLowerCase().includes('pass')) {
+                statusName = 'passed-proposal review finished';
+            } else if (verdict.toLowerCase().includes('fail')) {
+                statusName = 'failed-proposal review finished';
+            }
+
+            // Get the status definition ID for the appropriate status
             const proposalReviewFinishedStatus = await prisma.statusDefinition.findFirst({
                 where: {
-                    name: 'proposal review finished'
+                    name: statusName
                 }
             });
 
@@ -1199,17 +1295,6 @@ export const addReviewerMark = async (req, res, next) => {
                         endDate: new Date()
                     }
                 });
-
-                // Get the status definition ID for "Proposal Review Passed"
-                // const proposalReviewPassedStatus = await prisma.statusDefinition.findFirst({
-                //     where: {
-                //         name: 'Proposal Review Passed'
-                //     }
-                // });
-
-                // if (!proposalReviewPassedStatus) {
-                //     throw new Error('Status definition not found');
-                // }
 
                 await prisma.studentStatus.create({
                     data: {
@@ -4126,7 +4211,7 @@ export const getStatusStatistics = async (req, res, next) => {
             in: [
               'book planning',
               'book writing',
-              'book submitted',
+              'dissertation submitted',
               'book under review',
               'book published'
             ]
@@ -4218,7 +4303,7 @@ export const getProgressTrends = async (req, res, next) => {
           },
           definition: {
             name: {
-              in: ['book submitted', 'under examination', 'scheduled for viva']
+              in: ['dissertation submitted', 'under examination', 'scheduled for viva']
             }
           }
         },
@@ -4243,7 +4328,7 @@ export const getProgressTrends = async (req, res, next) => {
   
       // Define default colors for each status
       const defaultColors = {
-        'book submitted': '#23388F',  // dark blue
+        'dissertation submitted': '#23388F',  // dark blue
         'under examination': '#EAB308',  // yellow
         'scheduled for viva': '#EC4899'  // pink
       };
@@ -4252,7 +4337,7 @@ export const getProgressTrends = async (req, res, next) => {
       const statusDefinitions = await prisma.statusDefinition.findMany({
         where: {
           name: {
-            in: ['book submitted', 'under examination', 'scheduled for viva']
+            in: ['dissertation submitted', 'under examination', 'scheduled for viva']
           }
         },
         select: {
@@ -4269,7 +4354,7 @@ export const getProgressTrends = async (req, res, next) => {
      
       
       // Use these colors consistently across all data points
-      const submissionsColor = statusColors['book submitted'] || defaultColors['book submitted'];
+      const submissionsColor = statusColors['dissertation submitted'] || defaultColors['dissertation submitted'];
       const examinationsColor = statusColors['under examination'] || defaultColors['under examination'];
       const vivasColor = statusColors['scheduled for viva'] || defaultColors['scheduled for viva'];
       // Transform the data into daily counts
@@ -4281,7 +4366,7 @@ export const getProgressTrends = async (req, res, next) => {
           status.createdAt >= dayStart && status.createdAt <= dayEnd
         );
   
-        const submissionStats = dayStats.filter(s => s.definition.name === 'book submitted');
+        const submissionStats = dayStats.filter(s => s.definition.name === 'dissertation submitted');
         const examinationStats = dayStats.filter(s => s.definition.name === 'under examination');
         const vivaStats = dayStats.filter(s => s.definition.name === 'scheduled for viva');
   

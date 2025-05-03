@@ -226,7 +226,8 @@ class NotificationService {
         const template = this.generateEmailTemplate(notification);
         
         await this.emailTransporter.sendMail({
-            to: notification.recipientEmail,
+            // to: notification.recipientEmail,
+            to: "stephaniekirathe@gmail.com",
             subject: notification.title,
             html: template,
         });
