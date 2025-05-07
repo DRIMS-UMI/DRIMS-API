@@ -1874,6 +1874,315 @@ export const deletePanelist = async (req, res, next) => {
     }
 };
 
+/**
+ * Get all faculty members who can serve as chairpersons
+ * @route GET /api/v1/faculty/chairpersons
+ * @access Private
+ */
+export const getChairpersons = async (req, res, next) => {
+    try {
+        // Get all faculty members who can serve as chairpersons
+        const chairpersons = await prisma.facultyMember.findMany({
+            where: {
+                facultyType: "Research Committee Chairperson"
+            },
+           
+        });
+
+        res.status(200).json({
+            message: 'Chairpersons retrieved successfully',
+            chairpersons
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+/**
+ * Create a new chairperson
+ * @route POST /api/v1/faculty/chairperson
+ * @access Private
+ */
+export const createChairperson = async (req, res, next) => {
+    try {
+        const { name, email } = req.body;
+
+        if (!name || !email) {
+            const error = new Error('Name and email are required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if faculty member with this email already exists
+        const existingFaculty = await prisma.facultyMember.findUnique({
+            where: { email }
+        });
+
+        if (existingFaculty) {
+            return res.status(200).json({
+                message: 'Faculty member already exists',
+                chairperson: existingFaculty
+            });
+        }
+
+        // Create new faculty member who can serve as chairperson
+        const chairperson = await prisma.facultyMember.create({
+            data: {
+                name,
+                email,
+                isActive: true
+            }
+        });
+
+        res.status(201).json({
+            message: 'Chairperson created successfully',
+            chairperson
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+/**
+ * Get all external persons (acting chairpersons, minutes secretaries, etc.)
+ * @route GET /api/v1/faculty/external-persons
+ * @access Private
+ */
+export const getExternalPersons = async (req, res, next) => {
+    try {
+        // Get all external persons
+        const externalPersons = await prisma.externalPerson.findMany({
+            orderBy: {
+                name: 'asc'
+            }
+        });
+
+        res.status(200).json({
+            message: 'External persons retrieved successfully',
+            externalPersons
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+/**
+ * Get external persons by role
+ * @route GET /api/v1/faculty/external-persons/:role
+ * @access Private
+ */
+export const getExternalPersonsByRole = async (req, res, next) => {
+    try {
+        const { role } = req.params;
+        
+        if (!role) {
+            const error = new Error('Role parameter is required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Get external persons by role
+        const externalPersons = await prisma.externalPerson.findMany({
+            where: {
+                role
+            },
+            orderBy: {
+                name: 'asc'
+            }
+        });
+
+        res.status(200).json({
+            message: `${role} retrieved successfully`,
+            externalPersons
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+/**
+ * Create a new external person (acting chairperson, minutes secretary, etc.)
+ * @route POST /api/v1/faculty/external-person
+ * @access Private
+ */
+export const createExternalPerson = async (req, res, next) => {
+    try {
+        const { name, email, role } = req.body;
+
+        if (!name || !email || !role) {
+            const error = new Error('Name, email, and role are required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if external person with this email already exists
+        const existingPerson = await prisma.externalPerson.findFirst({
+            where: { 
+                email,
+                role
+            }
+        });
+
+        if (existingPerson) {
+            return res.status(200).json({
+                message: 'External person already exists',
+                externalPerson: existingPerson
+            });
+        }
+
+        // Create new external person
+        const externalPerson = await prisma.externalPerson.create({
+            data: {
+                name,
+                email,
+                role,
+                // isActive: true
+            }
+        });
+
+        res.status(201).json({
+            message: 'External person created successfully',
+            externalPerson
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+/**
+ * Update an external person
+ * @route PUT /api/v1/faculty/external-person/:id
+ * @access Private
+ */
+export const updateExternalPerson = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { name, email, role, isActive } = req.body;
+
+        if (!id) {
+            const error = new Error('External person ID is required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if external person exists
+        const existingPerson = await prisma.externalPerson.findUnique({
+            where: { id }
+        });
+
+        if (!existingPerson) {
+            const error = new Error('External person not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Update external person
+        const updatedPerson = await prisma.externalPerson.update({
+            where: { id },
+            data: {
+                name: name || existingPerson.name,
+                email: email || existingPerson.email,
+                role: role || existingPerson.role,
+                isActive: isActive !== undefined ? isActive : existingPerson.isActive
+            }
+        });
+
+        res.status(200).json({
+            message: 'External person updated successfully',
+            externalPerson: updatedPerson
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+/**
+ * Delete an external person
+ * @route DELETE /api/v1/faculty/external-person/:id
+ * @access Private
+ */
+export const deleteExternalPerson = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+
+        if (!id) {
+            const error = new Error('External person ID is required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if external person exists
+        const existingPerson = await prisma.externalPerson.findUnique({
+            where: { id }
+        });
+
+        if (!existingPerson) {
+            const error = new Error('External person not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Check if the external person is associated with any proposals
+        const associatedProposals = await prisma.proposal.findMany({
+            where: {
+                OR: [
+                    { actingChairpersonId: id },
+                    { minutesSecretaryId: id }
+                ]
+            }
+        });
+
+        if (associatedProposals.length > 0) {
+            // Instead of deleting, mark as inactive
+            const updatedPerson = await prisma.externalPerson.update({
+                where: { id },
+                data: { isActive: false }
+            });
+
+            return res.status(200).json({
+                message: 'External person is in use and has been marked as inactive',
+                externalPerson: updatedPerson
+            });
+        }
+
+        // Delete the external person if not associated with any proposals
+        await prisma.externalPerson.delete({
+            where: { id }
+        });
+
+        res.status(200).json({
+            message: 'External person deleted successfully'
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+
+
+
+
 
 /** to be deleted */
 // Add defense date to proposal
@@ -3559,13 +3868,11 @@ export const deleteExaminer = async (req, res, next) => {
 export const scheduleProposalDefense = async (req, res, next) => {
     try {
         const { proposalId } = req.params;
-        const { scheduledDate, panelistIds } = req.body;
+        const { scheduledDate, location, panelistIds, reviewerIds, chairpersonId, actingChairpersonId, minutesSecretaryId } = req.body;
 
         // Validate inputs
-        if (!proposalId || !scheduledDate || !panelistIds || !Array.isArray(panelistIds) || panelistIds.length === 0) {
-            const error = new Error('Proposal ID, scheduled date, and at least one panelist are required');
-            error.statusCode = 400;
-            throw error;
+        if (!proposalId || !scheduledDate || !Array.isArray(panelistIds) || panelistIds.length === 0) {
+            throw new Error('Proposal ID, scheduled date, and at least one panelist are required', { statusCode: 400 });
         }
 
         // Check if proposal exists
@@ -3628,12 +3935,15 @@ export const scheduleProposalDefense = async (req, res, next) => {
             data: {
                 proposal: { connect: { id: proposalId } },
                 scheduledDate: new Date(scheduledDate),
+                location,
                 status: 'SCHEDULED',
                 attempt: attemptNumber,
-                panelists: {
-                    connect: panelistIds.map(id => ({ id }))
-                },
-                isCurrent: true
+                panelists: { connect: panelistIds.map(id => ({ id })) },
+                isCurrent: true,
+                chairperson: chairpersonId ? { connect: { id: chairpersonId } } : undefined,
+                actingChairperson: actingChairpersonId ? { connect: { id: actingChairpersonId } } : undefined,
+                minutesSecretary: minutesSecretaryId ? { connect: { id: minutesSecretaryId } } : undefined,
+                reviewers: { connect: reviewerIds.map(id => ({ id })) },
             },
             include: {
                 panelists: true,

@@ -15,7 +15,7 @@ const upload = multer({
 });
 
 // Import faculty controllers
-import { loginFaculty, getFacultyProfile, updateFacultyPassword, getStudent, getAllStudents, getStudentStatuses, submitProposal, getProposal, gradeProposal, getStudentProposals, addReviewers, getReviewers, addPanelists, getPanelists, getSchoolProposals, deleteReviewer, deletePanelist, addReviewerMark, addPanelistMark, addDefenseDate, addComplianceReportDate, updateFieldLetterDate, getAllBooks, getBook, getStudentBooks, createExaminer, getAllExaminers, getExaminer, updateExaminer, deleteExaminer, assignExaminersToBook, updateInternalExaminerMark, getProposalDefenses, recordProposalDefenseVerdict, scheduleProposalDefense, getProgressTrends, getStatusStatistics, getDashboardStats, getNotifications, getAllStudentsStatusReport, getStudentStatusReport, addNewPanelist, getAllSupervisors, requestPasswordReset, resetPassword, updateFacultyProfile, addNewReviewer } from '../controllers/facultyController.js';
+import { loginFaculty, getFacultyProfile, updateFacultyPassword, getStudent, getAllStudents, getStudentStatuses, submitProposal, getProposal, gradeProposal, getStudentProposals, addReviewers, getReviewers, addPanelists, getPanelists, getSchoolProposals, deleteReviewer, deletePanelist, addReviewerMark, addPanelistMark, addDefenseDate, addComplianceReportDate, updateFieldLetterDate, getAllBooks, getBook, getStudentBooks, createExaminer, getAllExaminers, getExaminer, updateExaminer, deleteExaminer, assignExaminersToBook, updateInternalExaminerMark, getProposalDefenses, recordProposalDefenseVerdict, scheduleProposalDefense, getProgressTrends, getStatusStatistics, getDashboardStats, getNotifications, getAllStudentsStatusReport, getStudentStatusReport, addNewPanelist, getAllSupervisors, requestPasswordReset, resetPassword, updateFacultyProfile, addNewReviewer, getChairpersons, getExternalPersons, getExternalPersonsByRole, createExternalPerson, updateExternalPerson, deleteExternalPerson } from '../controllers/facultyController.js';
 
 // Faculty authentication routes
 router.post('/login', loginFaculty);
@@ -49,6 +49,17 @@ router.post('/panelists/:proposalId', authenticateToken, authorizeRoles('SCHOOL_
 router.get('/panelists', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), getPanelists);
 router.post('/panelists', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), addNewPanelist);
 router.delete('/panelists/:proposalId/:panelistId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), deletePanelist);
+
+//Chairpersons
+router.get('/chairperson', authenticateToken, authorizeRoles("SCHOOL_ADMIN"), getChairpersons)
+
+// External persons routes
+router.get('/external-persons', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), getExternalPersons);
+router.get('/external-persons/:role', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), getExternalPersonsByRole);
+router.post('/external-person', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), createExternalPerson);
+router.put('/external-person/:id', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), updateExternalPerson);
+router.delete('/external-person/:id', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), deleteExternalPerson);
+
 
 // Get all proposals in a school
 router.get('/proposals', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), getSchoolProposals);

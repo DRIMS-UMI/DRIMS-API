@@ -1170,6 +1170,8 @@ export const createFacultyMember = async (req, res, next) => {
             role = 'SCHOOL_PA';
         } else if (facultyType === 'school admin') {
             role = 'SCHOOL_ADMIN';
+        } else if(facultyType === "Research Committee Chairperson"){
+            role = "Research_Committee_Chairperson"
         } else {
             role = 'FACULTY';
         }

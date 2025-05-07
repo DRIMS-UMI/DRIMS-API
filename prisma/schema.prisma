@@ -90,6 +90,7 @@ enum Role {
   SUPERADMIN        // Manages all users, IT administration, system management
   RESEARCH_ADMIN    // Same as SuperAdmin but without form editing access
   SCHOOL_ADMIN      // Manages students from the proposal submission stage onwards
+  Research_Committee_Chairperson
   DEAN             // School Dean with school admin privileges
   SCHOOL_PA        // Personal Assistant with school admin privileges
   STUDENT          // Views details, accepts dates, and sees notifications
@@ -480,6 +481,8 @@ model reviewer {
   campus    campus?            @relation(fields: [campusId], references: [id])
   campusId  String?            @db.ObjectId
   grades    proposalReviewGrade[]
+    proposalDefenseIds String[] @db.ObjectId
+  proposalDefenses proposalDefense[] @relation(fields: [proposalDefenseIds], references: [id])
 }
 
 model panelist {
@@ -539,12 +542,21 @@ model proposalDefense {
   proposal     proposal @relation(fields: [proposalId], references: [id])
   proposalId   String   @db.ObjectId
   scheduledDate DateTime
+  location  String?
   status       String
   verdict      ProposalDefenseVerdict?
   comments     String?
   attempt      Int      // To track which attempt this is
+  chairperson  facultyMember? @relation(fields: [chairpersonId], references: [id])
+  chairpersonId String?   @db.ObjectId
+  actingChairperson  ExternalPerson? @relation("ActingChairperson", fields: [actingChairpersonId], references: [id])
+  actingChairpersonId   String?        @db.ObjectId
+   minutesSecretary      ExternalPerson? @relation("MinutesSecretary", fields: [minutesSecretaryId], references: [id])
+    minutesSecretaryId    String?        @db.ObjectId
   panelistIds  String[] @db.ObjectId
   panelists    panelist[] @relation(fields: [panelistIds], references: [id])
+   reviewerIds  String[] @db.ObjectId
+  reviewers    reviewer[] @relation(fields: [reviewerIds], references: [id])
   completedAt  DateTime?
   isCurrent    Boolean  @default(true)
   createdAt    DateTime @default(now())
@@ -662,6 +674,16 @@ model facultyMember {
   userId      String?  @unique @db.ObjectId
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+   chairedDefenses     proposalDefense[]
+}
+
+model ExternalPerson {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String
+  email     String
+  role      String   // e.g. "Acting Chairperson", "Minutes Secretary"
+actingChairedDefenses proposalDefense[] @relation("ActingChairperson")
+  minutesSecretaryDefenses proposalDefense[] @relation("MinutesSecretary")
 }
 
 model graduation {
