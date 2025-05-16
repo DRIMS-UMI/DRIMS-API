@@ -84,6 +84,7 @@ model user {
 
   // Add this relation
   notifications notification[] @relation("UserNotifications")
+   generatedDefenseReports proposalDefenseReport[] 
 }
 
 enum Role {
@@ -254,9 +255,11 @@ averageReviewMark Float?
 averageDefenseMark Float?
   reviewGrades      proposalReviewGrade[]
   defenseGrades proposalDefenseGrade[]
+  defenseReports proposalDefenseReport[]
 
  fieldLetters letterDocument[]
  fieldLetterDate DateTime?
+ ethicsCommitteeDate DateTime?
 
   statuses    proposalStatus[] // Track proposal status history
   createdAt   DateTime         @default(now())
@@ -561,6 +564,35 @@ model proposalDefense {
   isCurrent    Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+model proposalDefenseReport {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  type        String   // "defense_report", "field_letter", etc.
+  title       String
+  generatedAt DateTime @default(now())
+  downloadUrl String?
+  status      String   // "completed", "pending", etc.
+
+  // Specific defense report details
+  studentName String
+  regNo       String
+  topic       String
+  supervisors String
+  verdict     String
+  reportDate  String
+  department  String?
+
+  // Store the document file directly in MongoDB
+   fileData    Bytes     // Store file as binary data
+  fileName    String?
+  fileType    String?  // MIME type (e.g., "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+  
+
+  proposal    proposal @relation(fields: [proposalId], references: [id])
+  proposalId  String   @db.ObjectId
+  generatedBy user     @relation(fields: [generatedById], references: [id])
+  generatedById String @db.ObjectId
 }
 
 model notification {

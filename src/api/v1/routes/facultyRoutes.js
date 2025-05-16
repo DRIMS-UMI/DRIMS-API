@@ -2,20 +2,89 @@ import express from 'express';
 import multer from 'multer';
 import authenticateToken from '../middleware/authentication.js';
 import authorizeRoles from '../middleware/roleAuthorization.js';
+import { GridFsStorage } from "multer-gridfs-storage";
+import mongoose from "mongoose";
 
-const router = express.Router();
+const mongoURI = process.env.DATABASE_URL;
 
-// Configure multer for file upload
-const storage = multer.memoryStorage(); // Store file in memory
+// Create a connection to MongoDB
+const conn = mongoose.createConnection(mongoURI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+});
+
+// Initialize GridFS
+let gfs;
+conn.once('open', () => {
+  gfs = new mongoose.mongo.GridFSBucket(conn.db, {
+    bucketName: 'uploads',
+  });
+});
+
+// Configure GridFS storage
+const storage = new GridFsStorage({
+  url: mongoURI,
+  options: { useNewUrlParser: true, useUnifiedTopology: true },
+  file: (req, file) => {
+    return new Promise((resolve, reject) => {
+      try {
+        const fileId = new mongoose.Types.ObjectId();
+        const filename = `${Date.now()}-${file.originalname}`;
+        const fileInfo = {
+          _id: fileId,
+          filename: filename,
+          bucketName: 'uploads',
+          metadata: {
+            proposalId: req.params.proposalId,
+            uploadedBy: req.user?.id || 'unknown',
+            contentType: file.mimetype,
+            originalname: file.originalname
+          }
+        };
+        resolve(fileInfo);
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+});
+
+// Configure multer for memory storage
+const memoryStorage = multer.memoryStorage();
 const upload = multer({ 
-  storage: storage,
+  storage: memoryStorage,
+  fileFilter: (req, file, cb) => {
+    // Accept only .docx files
+    if (file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only .docx files are allowed!'), false);
+    }
+  },
   limits: {
     fileSize: 10 * 1024 * 1024 // 10MB limit
   }
 });
 
+// Error handling middleware for multer
+export const handleMulterError = (error, req, res, next) => {
+  if (error instanceof multer.MulterError) {
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        message: 'File size too large. Maximum size is 10MB'
+      });
+    }
+    return res.status(400).json({
+      message: error.message
+    });
+  }
+  next(error);
+};
+
+const router = express.Router();
+
 // Import faculty controllers
-import { loginFaculty, getFacultyProfile, updateFacultyPassword, getStudent, getAllStudents, getStudentStatuses, submitProposal, getProposal, gradeProposal, getStudentProposals, addReviewers, getReviewers, addPanelists, getPanelists, getSchoolProposals, deleteReviewer, deletePanelist, addReviewerMark, addPanelistMark, addDefenseDate, addComplianceReportDate, updateFieldLetterDate, getAllBooks, getBook, getStudentBooks, createExaminer, getAllExaminers, getExaminer, updateExaminer, deleteExaminer, assignExaminersToBook, updateInternalExaminerMark, getProposalDefenses, recordProposalDefenseVerdict, scheduleProposalDefense, getProgressTrends, getStatusStatistics, getDashboardStats, getNotifications, getAllStudentsStatusReport, getStudentStatusReport, addNewPanelist, getAllSupervisors, requestPasswordReset, resetPassword, updateFacultyProfile, addNewReviewer, getChairpersons, getExternalPersons, getExternalPersonsByRole, createExternalPerson, updateExternalPerson, deleteExternalPerson } from '../controllers/facultyController.js';
+import { loginFaculty, getFacultyProfile, updateFacultyPassword, getStudent, getAllStudents, getStudentStatuses, submitProposal, getProposal, gradeProposal, getStudentProposals, addReviewers, getReviewers, addPanelists, getPanelists, getSchoolProposals, deleteReviewer, deletePanelist, addReviewerMark, addPanelistMark, addDefenseDate, addComplianceReportDate, updateFieldLetterDate, getAllBooks, getBook, getStudentBooks, createExaminer, getAllExaminers, getExaminer, updateExaminer, deleteExaminer, assignExaminersToBook, updateInternalExaminerMark, getProposalDefenses, recordProposalDefenseVerdict, scheduleProposalDefense, getProgressTrends, getStatusStatistics, getDashboardStats, getNotifications, getAllStudentsStatusReport, getStudentStatusReport, addNewPanelist, getAllSupervisors, requestPasswordReset, resetPassword, updateFacultyProfile, addNewReviewer, getChairpersons, getExternalPersons, getExternalPersonsByRole, createExternalPerson, updateExternalPerson, deleteExternalPerson, updateEthicsCommitteeDate, generateDefenseReport, getProposalDefenseReports, downloadDefenseReport } from '../controllers/facultyController.js';
 
 // Faculty authentication routes
 router.post('/login', loginFaculty);
@@ -77,6 +146,9 @@ router.post('/panelist-marks/:proposalId/:panelistId', authenticateToken, author
 // Update field letter date
 router.put('/update-field-letter-date/:proposalId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), updateFieldLetterDate);
 
+// Update ethics committee date
+router.put('/update-ethics-committee-date/:proposalId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), updateEthicsCommitteeDate);
+
 // Book management routes
 router.get('/books', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), getAllBooks);
 router.get('/books/:bookId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), getBook);
@@ -98,6 +170,30 @@ router.post('/proposals/:proposalId/defenses', authenticateToken, authorizeRoles
 router.put('/defenses/:defenseId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), recordProposalDefenseVerdict);
 router.get('/defenses', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), getProposalDefenses);    
 
+// Defense Report routes with error handling
+router.post(
+  '/generate-defense-report/:proposalId', 
+  authenticateToken, 
+  authorizeRoles('SCHOOL_ADMIN'), 
+  upload.single('reportFile'),
+  handleMulterError,
+  generateDefenseReport
+);
+
+router.get(
+  '/defense-reports/:reportId/download',
+  authenticateToken,
+  authorizeRoles('SCHOOL_ADMIN'),
+  downloadDefenseReport
+);
+
+router.get(
+  '/proposal/:proposalId/defense-reports',
+  authenticateToken,
+  authorizeRoles('SCHOOL_ADMIN'),
+  getProposalDefenseReports
+);
+
 // Dashboard routes
 router.get('/dashboard/stats', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), getDashboardStats);
 router.get('/dashboard/status-statistics', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), getStatusStatistics);
@@ -115,4 +211,5 @@ router.get('/supervisors', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), ge
 router.post('/request-password-reset', requestPasswordReset);
 router.post('/reset-password', resetPassword);
 
+export { gfs }; // Export gfs for use in controllers
 export default router;

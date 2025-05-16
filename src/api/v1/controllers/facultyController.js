@@ -9,6 +9,8 @@ import path from "path";
 import os from "os";
 // import PDFNet from '@pdftron/pdfnet-node';
 import { notificationService } from "../../../services/notificationService.js";
+import mongoose from "mongoose";
+import { conn, gfs } from "../../../utils/db.mjs";
 
 // Faculty login controller
 export const loginFaculty = async (req, res, next) => {
@@ -2577,6 +2579,305 @@ export const updateFieldLetterDate = async (req, res, next) => {
       error.statusCode = 500;
     }
     next(error);
+  }
+};
+
+/**
+ * Update Ethics Committee Date for a proposal
+ * @param {*} req 
+ * @param {*} res 
+ * @param {*} next 
+ */
+
+export const updateEthicsCommitteeDate = async (req, res, next) => {
+  try {
+        const { proposalId } = req.params;
+    const { ethicsCommitteeDate } = req.body;
+    
+    if (!ethicsCommitteeDate) {
+      const error = new Error("ETHICS COMMITTEE DATE IS REQUIRED");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // Validate date format
+    const dateObj = new Date(ethicsCommitteeDate);
+    if (isNaN(dateObj.getTime())) {
+      const error = new Error("Invalid date format");
+      error.statusCode = 400;
+      throw error;
+    }
+    // Check if proposal exists
+        const proposal = await prisma.proposal.findUnique({
+            where: { id: proposalId },
+            include: {
+                student: true,
+      },
+        });
+
+        if (!proposal) {
+      const error = new Error("Proposal not found");
+            error.statusCode = 404;
+            throw error;
+        }
+
+    // Get letter to field status definition
+    const ethicsCommitteeStatus = await prisma.statusDefinition.findFirst({
+      where: { name: "letter to ethics committee issued" },
+    });
+
+    if (!ethicsCommitteeStatus) {
+      throw new Error("Ethics Committee Status not found");
+        }
+
+           // Update student status
+        await prisma.studentStatus.updateMany({
+            where: {
+                studentId: proposal.student.id,
+        isCurrent: true,
+            },
+            data: {
+                isCurrent: false,
+        endDate: new Date(),
+      },
+        });
+
+         // Create letter to ethics committee status
+        await prisma.studentStatus.create({
+            data: {
+                student: { connect: { id: proposal.student.id } },
+                definition: { connect: { id: ethicsCommitteeStatus.id } },
+        isCurrent: true,
+        startDate: new Date(),
+       
+        updatedBy: { connect: { id: req.user.id } },
+      },
+    });
+
+     // Update proposal statuses
+    await prisma.proposalStatus.updateMany({
+      where: {
+        proposalId: proposalId,
+        isCurrent: true,
+      },
+            data: {
+        isCurrent: false,
+        endDate: new Date(),
+      },
+    });
+
+        // Create the status for Ethics Committee
+     await prisma.proposalStatus.create({
+      data: {
+                proposal: { connect: { id: proposalId } },
+        definition: { connect: { id: ethicsCommitteeStatus.id } },
+        isCurrent: true,
+        startDate: new Date(),
+        
+      },
+    });
+
+    // Update the Ethics Committee date
+        const updatedProposal = await prisma.proposal.update({
+            where: { id: proposalId },
+            data: {
+                ethicsCommitteeDate: new Date(ethicsCommitteeDate),
+              },
+        });
+    res.status(200).json({
+      message: "ETHICS COMMITTEE DATE ISSUED",
+      proposal: updatedProposal,
+          });
+  } catch (error) {
+   console.error("Error in updateEthicsCommitteeDate:", error);
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+}
+
+/**
+ * Generate and record a defense report
+ * @route POST /api/v1/faculty/generate-defense-report/:proposalId
+ * @access Private (School Admin)
+ */
+export const generateDefenseReport = async (req, res) => {
+  try {
+    // Validate input fields
+    const { proposalId } = req.params;
+    const { title, studentName, regNo, topic, supervisors, verdict, reportDate, department } = req.body;
+    const reportFile = req.file;
+
+    if (!proposalId || !title || !studentName || !regNo || !topic || !verdict || !reportDate || !reportFile) {
+      return res.status(400).json({
+        message: 'Missing required fields'
+      });
+    }
+
+    // Check if proposal exists
+    const proposal = await prisma.proposal.findUnique({
+      where: { id: proposalId }
+    });
+
+    if (!proposal) {
+      return res.status(404).json({
+        message: 'Proposal not found'
+      });
+    }
+
+    // Sanitize student name for filename
+    const sanitizedName = studentName
+      .replace(/[^a-zA-Z0-9\s]/g, '') // Remove special characters
+      .replace(/\s+/g, '_') // Replace spaces with underscores
+      .toLowerCase(); // Convert to lowercase
+
+    // Generate filename using sanitized student name
+    const filename = `Proposal_Defense_Report_${sanitizedName}.docx`;
+
+    // Create defense report record with file data
+    const defenseReport = await prisma.proposalDefenseReport.create({
+      data: {
+        type: "defense_report",
+        title,
+        status: "completed",
+        studentName,
+        regNo,
+        topic,
+        supervisors: supervisors || "",
+        verdict,
+        reportDate,
+        department: department || "COLLEGE OF HUMANITIES AND SOCIAL SCIENCES",
+        fileData: reportFile.buffer, // Store the file data as BLOB
+        fileName: filename, // Use the sanitized filename
+        fileType: reportFile.mimetype,
+        proposal: { connect: { id: proposalId } },
+        generatedBy: { connect: { id: req.user.id } }
+      }
+    });
+
+    // Log activity
+    await prisma.userActivity.create({
+      data: {
+        userId: req.user.id,
+        action: `Generated defense report for ${studentName} (${regNo})`,
+        entityType: "DefenseReport",
+        entityId: defenseReport.id,
+        details: `Report type: Defense Report, Verdict: ${verdict}`
+      }
+    });
+
+    res.status(201).json({
+      message: "Defense report generated and saved successfully",
+      defenseReport: {
+        id: defenseReport.id,
+        title: defenseReport.title,
+        downloadUrl: defenseReport.downloadUrl,
+        generatedAt: defenseReport.generatedAt,
+        status: defenseReport.status,
+        studentName: defenseReport.studentName,
+        regNo: defenseReport.regNo,
+        topic: defenseReport.topic,
+        verdict: defenseReport.verdict,
+        fileName: defenseReport.fileName // Include filename in response
+      }
+    });
+
+  } catch (error) {
+    console.error('Error generating defense report:', error);
+    res.status(500).json({
+      message: 'Error generating defense report',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get defense reports for a proposal
+ * @route GET /api/v1/faculty/proposal/:proposalId/defense-reports
+ * @access Private (School Admin)
+ */
+export const getProposalDefenseReports = async (req, res) => {
+  try {
+    const { proposalId } = req.params;
+
+    // Check if proposal exists
+    const proposal = await prisma.proposal.findUnique({
+      where: { id: proposalId },
+    });
+
+    if (!proposal) {
+      const error = new Error("Proposal not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // Get defense reports for the proposal
+    const defenseReports = await prisma.proposalDefenseReport.findMany({
+      where: { proposalId },
+      orderBy: { generatedAt: "desc" },
+      include: {
+        generatedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    res.status(200).json({
+      message: "Proposal defense reports retrieved successfully",
+      defenseReports,
+    });
+  } catch (error) {
+    console.error("Error in getProposalDefenseReports:", error);
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+/**
+ * Download a defense report
+ * @route GET /api/v1/faculty/defense-reports/:reportId/download
+ * @access Private (School Admin)
+ */
+export const downloadDefenseReport = async (req, res) => {
+  try {
+    const { reportId } = req.params;
+
+    // Get the defense report with file data
+    const report = await prisma.proposalDefenseReport.findUnique({
+      where: { id: reportId },
+      select: {
+        fileData: true,
+        fileName: true,
+        fileType: true
+      }
+    });
+
+    if (!report || !report.fileData) {
+      return res.status(404).json({
+        message: 'Defense report not found or file data is missing'
+      });
+    }
+
+    // Set response headers
+    res.setHeader('Content-Type', report.fileType || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="${report.fileName}"`);
+    
+    // Send the file data
+    res.send(Buffer.from(report.fileData));
+
+  } catch (error) {
+    console.error('Error downloading defense report:', error);
+    res.status(500).json({
+      message: 'Error downloading defense report',
+      error: error.message
+    });
   }
 };
 
