@@ -1,8 +1,25 @@
 import express from 'express';
+import multer from 'multer';
 import authenticateToken from '../middleware/authentication.js';
 import authorizeRoles from '../middleware/roleAuthorization.js';
-import { registerSuperAdmin, accessManagementPortal, loginSuperAdmin, loginResearchCentreAdmin, getLoggedInUserDetails, addSchool, addSchoolMembers, getAllSchools, getSchool, updateSchool, deleteSchool, createCampus, getAllCampuses, getCampus, updateCampus, deleteCampus, addDepartment, getAllDepartments, getDepartment, updateDepartment, deleteDepartment, updateSchoolMembers, createFacultyMember, getAllFacultyMembers, getFacultyMember, updateFacultyMember, deleteFacultyMember, createSupervisor, createStudent, updateStudent, deleteStudent, getStudent, getAllStudents, changeStudentPassword, createStatusDefinition, getAllStatusDefinitions, getStatusDefinition, updateStatusDefinition, deleteStatusDefinition, changeFacultyPassword, getAllSupervisors, getSupervisor, updateSupervisor, deleteSupervisor, assignStudentsToSupervisor, getAssignedStudents, getStudentStatuses, getAllProposals, getProposal, getStudentProposals, submitStudentBook, getStudentBooks, getAllBooks, getBook, createExaminer, getAllExaminers, getExaminer, updateExaminer, deleteExaminer, assignExaminersToBook, updateExternalExaminerMark, getAllUsers, createUser, updateUser, deleteUser, updateUserPassword, deactivateUser, reactivateUser, getUser, addPanelistsToBook, scheduleViva, recordVivaVerdict, addNewPanelist, getAllPanelists, getBookVivas, updateMinutesSentDate, updateComplianceReportDate, updateSenateApprovalDate, updateResultsSentDate, updateResultsApprovalDate, getDashboardStats, getStatusStatistics, getProgressTrends, getNotifications, getAllStudentsStatusReport, getStudentStatusReport, getReviewers, scheduleProposalDefense, recordProposalDefenseVerdict, getProposalDefenses, requestPasswordReset, resetPassword, updateUserProfile, changePassword, getGraduationStatistics, addStudentToGraduation, assignSupervisorsToStudent, changeStudentSupervisor } from '../controllers/managementController.js';
+import { registerSuperAdmin, accessManagementPortal, loginSuperAdmin, loginResearchCentreAdmin, getLoggedInUserDetails, addSchool, addSchoolMembers, getAllSchools, getSchool, updateSchool, deleteSchool, createCampus, getAllCampuses, getCampus, updateCampus, deleteCampus, addDepartment, getAllDepartments, getDepartment, updateDepartment, deleteDepartment, updateSchoolMembers, createFacultyMember, getAllFacultyMembers, getFacultyMember, updateFacultyMember, deleteFacultyMember, createSupervisor, createStudent, updateStudent, deleteStudent, getStudent, getAllStudents, changeStudentPassword, createStatusDefinition, getAllStatusDefinitions, getStatusDefinition, updateStatusDefinition, deleteStatusDefinition, changeFacultyPassword, getAllSupervisors, getSupervisor, updateSupervisor, deleteSupervisor, assignStudentsToSupervisor, getAssignedStudents, getStudentStatuses, getAllProposals, getProposal, getStudentProposals, submitStudentBook, getStudentBooks, getAllBooks, getBook, createExaminer, getAllExaminers, getExaminer, updateExaminer, deleteExaminer, assignExaminersToBook, updateExternalExaminerMark, getAllUsers, createUser, updateUser, deleteUser, updateUserPassword, deactivateUser, reactivateUser, getUser, addPanelistsToBook, scheduleViva, recordVivaVerdict, addNewPanelist, getAllPanelists, getBookVivas, updateMinutesSentDate, updateComplianceReportDate, updateSenateApprovalDate, updateResultsSentDate, updateResultsApprovalDate, getDashboardStats, getStatusStatistics, getProgressTrends, getNotifications, getAllStudentsStatusReport, getStudentStatusReport, getReviewers, scheduleProposalDefense, recordProposalDefenseVerdict, getProposalDefenses, requestPasswordReset, resetPassword, updateUserProfile, changePassword, getGraduationStatistics, addStudentToGraduation, assignSupervisorsToStudent, changeStudentSupervisor, updateFieldLetterDate, updateEthicsCommitteeDate, getChairpersons, getExternalPersons, getExternalPersonsByRole, createExternalPerson, updateExternalPerson, deleteExternalPerson, generateDefenseReport, downloadDefenseReport, getProposalDefenseReports } from '../controllers/managementController.js';
 
+
+const memoryStorage = multer.memoryStorage();
+const upload = multer({ 
+  storage: memoryStorage,
+  fileFilter: (req, file, cb) => {
+    // Accept only .docx files
+    if (file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only .docx files are allowed!'), false);
+    }
+  },
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB limit
+  }
+});
 
 const router = express.Router();
 
@@ -135,7 +152,13 @@ router.get('/books/:bookId/viva', authenticateToken, authorizeRoles('SUPERADMIN'
 
 // Compliance report management routes
 router.put('/books/:bookId/minutes-sent', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), updateMinutesSentDate);
-router.put('/books/:bookId/compliance-report', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), updateComplianceReportDate);     
+router.put('/books/:bookId/compliance-report', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), updateComplianceReportDate); 
+
+// Update field letter date
+router.put('/update-field-letter-date/:proposalId', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), updateFieldLetterDate);
+
+// Update ethics committee date
+router.put('/update-ethics-committee-date/:proposalId', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), updateEthicsCommitteeDate);
 
 // Student profile progress management routes
 router.put('/students/:studentId/results-approved', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), updateResultsApprovalDate);
@@ -155,10 +178,44 @@ router.get('/students/:studentId/status-report', authenticateToken, authorizeRol
 // Faculty statistics routes
 router.get('/reviewers', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getReviewers);
 
+//Chairpersons
+router.get('/chairperson', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getChairpersons)
+
+// External persons routes
+router.get('/external-persons', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getExternalPersons);
+router.get('/external-persons/:role', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getExternalPersonsByRole);
+router.post('/external-person', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), createExternalPerson);
+router.put('/external-person/:id', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), updateExternalPerson);
+router.delete('/external-person/:id', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), deleteExternalPerson);
+
 // Proposal defense routes
 router.post('/proposals/:proposalId/defenses', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), scheduleProposalDefense);
 router.put('/defenses/:defenseId', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), recordProposalDefenseVerdict);
 router.get('/defenses', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getProposalDefenses);  
+
+// Defense Report routes with error handling
+router.post(
+    '/generate-defense-report/:proposalId', 
+    authenticateToken, 
+    authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), 
+    upload.single('reportFile'),
+ 
+    generateDefenseReport
+  );
+  
+  router.get(
+    '/defense-reports/:reportId/download',
+    authenticateToken,
+    authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'),
+    downloadDefenseReport
+  );
+  
+  router.get(
+    '/proposal/:proposalId/defense-reports',
+    authenticateToken,
+    authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'),
+    getProposalDefenseReports
+  );
 
 // Password reset routes
 router.post('/request-password-reset', requestPasswordReset);
