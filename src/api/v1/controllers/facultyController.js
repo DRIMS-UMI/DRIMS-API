@@ -5876,3 +5876,726 @@ export const resetPassword = async (req, res, next) => {
     next(error);
   }
 };
+
+
+// Controller for getting all faculty members
+export const getAllFacultyMembers = async (req, res, next) => {
+  try {
+
+      const schoolFacultyMember = await prisma.facultyMember.findUnique({
+        where: {
+          userId: req.user.id
+        },
+        include: {
+          school: true,
+          campus: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+              designation: true
+            }
+          }
+        }
+      });
+      const [supervisors] = await Promise.all([
+        prisma.supervisor.findMany({
+          where: {
+            schoolId: schoolFacultyMember?.schoolId
+          },
+          include: {
+            school: true,
+            campus: true,
+            department: true
+          }
+        })
+      ]);
+
+      res.status(200).json({facultyMembers: [
+          ...supervisors
+      ]}
+        );
+  } catch (error) {
+      if (!error.statusCode) {
+          error.statusCode = 500;
+      }
+      next(error);
+  }
+};
+
+
+// Controller for getting all campuses - working
+export const getAllCampuses = async (req, res, next) => {
+  try {
+      const campuses = await prisma.campus.findMany({
+          include: {
+              schools: true
+          }
+      });
+
+      res.status(200).json({
+          message: 'Campuses fetched successfully',
+          campuses
+      });
+
+  } catch (error) {
+      if (!error.statusCode) {
+          error.statusCode = 500;
+      }
+      next(error);
+  }
+};
+
+// Controller for getting all departments of a school
+export const getAllDepartments = async (req, res, next) => {
+  try {
+      const { schoolId } = req.params;
+
+      // Check if school exists
+      const school = await prisma.school.findUnique({
+          where: { id: schoolId }
+      });
+
+      if (!school) {
+          const error = new Error('School not found');
+          error.statusCode = 404;
+          throw error;
+      }
+
+      const departments = await prisma.department.findMany({
+          where: { schoolId },
+          include: {
+              school: true
+          }
+      });
+
+      res.status(200).json({
+          message: 'Departments fetched successfully',
+          departments
+      });
+
+  } catch (error) {
+      if (!error.statusCode) {
+          error.statusCode = 500;
+      }
+      next(error);
+  }
+};
+
+// Controller for getting all schools
+export const getAllSchools = async (req, res, next) => {
+  try {
+
+      console.log('getAllSchools');
+      const schools = await prisma.school.findMany({
+          include: {
+              campus: true,
+              departments: true,
+              members: true
+          }
+      });
+
+      res.status(200).json({
+          message: 'Schools fetched successfully',
+          schools
+      });
+  } catch (error) {
+      if (!error.statusCode) {
+          error.statusCode = 500;
+      }
+      next(error);
+  }
+};
+
+// Controller for creating a supervisor
+export const createSupervisor = async (req, res, next) => {
+  try {
+      const {
+          name,
+          title,
+          workEmail,
+          personalEmail,
+          primaryPhone,
+          secondaryPhone,
+          designation,
+          schoolId,
+          campusId,
+          departmentId,
+          facultyType,
+          employeeId,
+          password
+      } = req.body;
+
+      // Hash password
+      const hashedPassword = await bcrypt.hash(password, 12);
+
+      // Set role based on faculty type
+      let role = 'SUPERVISOR';
+
+      
+
+      // Create user first
+      const user = await prisma.user.create({
+          data: {
+              name,
+              title,
+              email: workEmail,
+              designation,
+              password: hashedPassword,
+              role,
+              phone: primaryPhone
+          }
+      });
+
+      // Create supervisor and link user
+      const supervisor = await prisma.supervisor.create({
+          data: {
+              title,
+              name,
+              workEmail,
+              personalEmail,
+              primaryPhone,
+              secondaryPhone,
+              designation,
+              school: { connect: { id: schoolId } },
+              campus: { connect: { id: campusId } },
+              department: { connect: { id: departmentId } },
+              facultyType,
+              role,
+              employeeId,
+              user: { connect: { id: user.id } }
+          }
+      });
+
+      res.status(201).json({
+          message: 'Supervisor created successfully',
+          supervisor
+      });
+  } catch (error) {
+      if (!error.statusCode) {
+          error.statusCode = 500;
+      }
+      next(error);
+  }
+};
+
+// Controller for getting a single supervisor
+export const getSupervisor = async (req, res, next) => {
+  try {
+      const { supervisorId } = req.params;
+
+      const supervisor = await prisma.supervisor.findUnique({
+          where: { id: supervisorId },
+          include: {
+              school: true,
+              campus: true,
+              department: true,
+              
+          }
+      });
+
+      if (!supervisor) {
+          const error = new Error('Supervisor not found');
+          error.statusCode = 404;
+          throw error;
+      }
+
+      res.status(200).json({
+          supervisor
+      });
+  } catch (error) {
+      if (!error.statusCode) {
+          error.statusCode = 500;
+      }
+      next(error);
+  }
+};
+
+// Get students assigned to supervisor
+export const getAssignedStudents = async (req, res, next) => {
+  try {
+      const { supervisorId } = req.params;
+
+      // Check if supervisor exists
+      const supervisor = await prisma.supervisor.findUnique({
+          where: { id: supervisorId },
+          include: {
+              user: true
+          }
+      });
+
+      if (!supervisor) {
+          const error = new Error('Supervisor not found');
+          error.statusCode = 404;
+          throw error;
+      }
+
+      // Get all students assigned to this supervisor
+      const assignedStudents = await prisma.student.findMany({
+          where: {
+              supervisors: {
+                  some: {
+                      id: supervisorId
+                  }
+              }
+          },
+          include: {
+              campus: true,
+              statuses: {
+                  
+                  include: {
+                      definition: true
+                  }
+              },
+              school: true,
+              department: true
+          }
+      });
+
+      res.status(200).json({
+          message: 'Students retrieved successfully',
+          supervisor: {
+              id: supervisor.id,
+              name: supervisor.user.name,
+              email: supervisor.user.email
+          },
+          students: assignedStudents
+      });
+
+  } catch (error) {
+      if (!error.statusCode) {
+          error.statusCode = 500;
+      }
+      next(error);
+  }
+};
+
+// Controller for updating a supervisor
+export const updateSupervisor = async (req, res, next) => {
+  try {
+      const { supervisorId } = req.params;
+      const { schoolId, campusId, departmentId, userId, ...updateData } = req.body;
+
+      // Get existing supervisor data before update
+      const existingSupervisor = await prisma.supervisor.findUnique({
+          where: { id: supervisorId },
+          include: {
+              user: true
+          }
+      });
+
+      if (!existingSupervisor) {
+          const error = new Error('Supervisor not found');
+          error.statusCode = 404;
+          throw error;
+      }
+
+      // Check if email is being changed and if it already exists
+      if (updateData.workEmail !== existingSupervisor.workEmail) {
+          const emailExists = await prisma.user.findUnique({
+              where: { email: updateData.workEmail }
+          });
+
+          if (emailExists) {
+              const error = new Error('Work email already exists');
+              error.statusCode = 400;
+              throw error;
+          }
+
+          // Update the user's email
+          await prisma.user.update({
+              where: { id: existingSupervisor.user.id },
+              data: { email: updateData.workEmail }
+          });
+      }
+
+      // Track changes
+      const changes = [];
+      Object.keys(updateData).forEach(key => {
+          if (updateData[key] !== existingSupervisor[key]) {
+              changes.push({
+                  field: key,
+                  oldValue: existingSupervisor[key],
+                  newValue: updateData[key]
+              });
+          }
+      });
+
+      const updatedSupervisor = await prisma.supervisor.update({
+          where: { id: supervisorId },
+          data: {
+              ...updateData,
+              school: schoolId ? { connect: { id: schoolId } } : undefined,
+              campus: campusId ? { connect: { id: campusId } } : undefined,
+              department: departmentId ? { connect: { id: departmentId } } : undefined
+          },
+          include: {
+              school: true,
+              campus: true,
+              department: true,
+              user: true
+          }
+      });
+
+      res.status(200).json({
+          message: 'Supervisor updated successfully',
+          supervisor: updatedSupervisor,
+          changes
+      });
+  } catch (error) {
+      if (!error.statusCode) {
+          error.statusCode = 500;
+      }
+      next(error);
+  }
+};
+
+// Controller for assigning students to supervisor
+export const assignStudentsToSupervisor = async (req, res, next) => {
+  try {
+      const { supervisorId } = req.params;
+      const { studentIds } = req.body;
+
+      // Check if supervisor exists
+      const supervisor = await prisma.supervisor.findUnique({
+          where: { id: supervisorId },
+          include: {
+              user: true
+          }
+      });
+
+      if (!supervisor) {
+          const error = new Error('Supervisor not found');
+          error.statusCode = 404;
+          throw error;
+      }
+
+      // Check if all students exist and if they already have supervisors
+      const students = await prisma.student.findMany({
+          where: {
+              id: {
+                  in: studentIds
+              }
+          },
+          include: {
+              supervisors: true
+          }
+      });
+
+      if (students.length !== studentIds.length) {
+          const error = new Error('One or more students not found');
+          error.statusCode = 404;
+          throw error;
+      }
+
+      // Check if any student already has a supervisor
+      const studentsWithSupervisors = students.filter(student => student.supervisors.length > 0);
+      if (studentsWithSupervisors.length > 0) {
+          const error = new Error('One or more students already have supervisors assigned');
+          error.statusCode = 400;
+          error.details = studentsWithSupervisors.map(student => student.id);
+          throw error;
+      }
+
+      // Get normal progress status definition
+      const normalProgressStatus = await prisma.statusDefinition.findFirst({
+          where: {
+              name: 'normal progress'
+          }
+      });
+
+      if (!normalProgressStatus) {
+          const error = new Error('Normal Progress status definition not found');
+          error.statusCode = 404;
+          throw error;
+      }
+
+      // Update all students to be assigned to this supervisor and update their status
+      const updatePromises = studentIds.map(async studentId => {
+          // First update all existing statuses to not current
+          await prisma.studentStatus.updateMany({
+              where: { 
+                  studentId: studentId,
+                  isCurrent: true
+              },
+              data: { isCurrent: false, endDate: new Date() }
+          });
+
+          // Create new normal progress status
+          await prisma.studentStatus.create({
+              data: {
+                  student: { connect: { id: studentId } },
+                  definition: { connect: { id: normalProgressStatus.id } },
+                  isCurrent: true,
+                  startDate: new Date(),
+                  conditions: "Normal Progress",
+                  isActive: true
+              }
+          });
+
+          // Assign supervisor
+          return prisma.student.update({
+              where: { id: studentId },
+              data: { supervisors: { connect: { id: supervisorId } } }
+          });
+      });
+
+      await Promise.all(updatePromises);
+
+      // Get updated students with their details
+      const updatedStudents = await prisma.student.findMany({
+          where: {
+              id: {
+                  in: studentIds
+              }
+          },
+          include: {
+              campus: true,
+              statuses: {
+                  where: {
+                      isCurrent: true
+                  },
+                  include: {
+                      definition: true
+                  }
+              }
+          }
+      });
+
+      // Track this activity
+      await prisma.userActivity.create({
+          data: {
+              user: { connect: { id: req.user?.id } },
+              action: 'ASSIGN_STUDENTS',
+              entityType: 'Supervisor',
+              entityId: supervisorId,
+              details: JSON.stringify({
+                  supervisorId,
+                  studentIds,
+                  description: `Assigned ${studentIds.length} student(s) to supervisor ${supervisor.user.name}`,
+              })
+          }
+      });
+
+      res.status(200).json({
+          message: 'Students assigned successfully',
+          students: updatedStudents
+      });
+
+  } catch (error) {
+      if (!error.statusCode) {
+          error.statusCode = 500;
+      }
+      next(error);
+  }
+};
+
+
+// Controller for deleting a supervisor
+export const deleteSupervisor = async (req, res, next) => {
+  try {
+      const { supervisorId } = req.params;
+
+      const supervisor = await prisma.supervisor.findUnique({
+          where: { id: supervisorId },
+          include: {
+              user: true,
+              students: true
+          }
+      });
+
+      if (!supervisor) {
+          const error = new Error('Supervisor not found');
+          error.statusCode = 404;
+          throw error;
+      }
+
+      // Check if supervisor has any students
+      if (supervisor.students.length > 0) {
+          const error = new Error('Cannot delete supervisor with assigned students');
+          error.statusCode = 400;
+          throw error;
+      }
+
+      // Delete associated user
+      await prisma.user.delete({
+          where: { id: supervisor.user.id }
+      });
+
+      // Delete supervisor
+      await prisma.supervisor.delete({
+          where: { id: supervisorId }
+      });
+
+      res.status(200).json({
+          message: 'Supervisor deleted successfully'
+      });
+  } catch (error) {
+      if (!error.statusCode) {
+          error.statusCode = 500;
+      }
+      next(error);
+  }
+};
+
+// Controller for changing a student's supervisor
+export const changeStudentSupervisor = async (req, res, next) => {
+  try {
+      const { studentId } = req.params;
+      const { oldSupervisorId, newSupervisorId, reason } = req.body;
+
+      // Check if student exists
+      const student = await prisma.student.findUnique({
+          where: { id: studentId },
+          include: {
+              supervisors: true,
+              user:true
+          }
+      });
+
+      if (!student) {
+          const error = new Error('Student not found');
+          error.statusCode = 404;
+          throw error;
+      }
+
+      // Check if old supervisor is actually assigned to the student
+      const isOldSupervisorAssigned = student.supervisors.some(
+          supervisor => supervisor.id === oldSupervisorId
+      );
+
+      if (!isOldSupervisorAssigned) {
+          const error = new Error('The specified old supervisor is not assigned to this student');
+          error.statusCode = 400;
+          throw error;
+      }
+
+      // Check if new supervisor exists
+      const newSupervisor = await prisma.supervisor.findUnique({
+          where: { id: newSupervisorId },
+          include: {
+              user: true
+          }
+      });
+
+      if (!newSupervisor) {
+          const error = new Error('New supervisor not found');
+          error.statusCode = 404;
+          throw error;
+      }
+
+      // Get old supervisor details for the activity log
+      const oldSupervisor = await prisma.supervisor.findUnique({
+          where: { id: oldSupervisorId },
+          include: {
+              user: true
+          }
+      });
+
+      // Update student's supervisors (remove old, add new)
+      const updatedStudent = await prisma.student.update({
+          where: { id: studentId },
+          data: {
+              supervisors: {
+                  disconnect: { id: oldSupervisorId },
+                  connect: { id: newSupervisorId }
+              }
+          },
+          include: {
+              supervisors: {
+                  include: {
+                      user: true
+                  }
+              },
+              campus: true,
+              school: true,
+              department: true
+          }
+      });
+
+      // Track this activity
+      await prisma.userActivity.create({
+          data: {
+              user: { connect: { id: req.user?.id } },
+              action: 'CHANGE_SUPERVISOR',
+              entityType: 'Student',
+              entityId: studentId,
+              details: JSON.stringify({
+                  studentId,
+                  oldSupervisorId,
+                  oldSupervisorName: oldSupervisor?.user?.name,
+                  newSupervisorId,
+                  newSupervisorName: newSupervisor.user.name,
+                  reason,
+                  description: `Changed supervisor for student ${student.name} from ${oldSupervisor?.user?.name} to ${newSupervisor.user.name}`
+              })
+          }
+      });
+
+      // <p>This change was made for the following reason: ${reason}</p>
+      // Send email notification to the new supervisor through notification service
+      await notificationService.scheduleNotification({
+          type: "EMAIL",
+          statusType: "PENDING",
+          title: "New Student Supervision Assignment",
+          message: `You have been assigned as a supervisor for student ${student.firstName} ${student.lastName} .`,
+          recipientCategory: "USER",
+          recipientId: newSupervisor.user.id,
+          // recipientEmail: newSupervisor.user.email,
+          recipientEmail: "stephaniekirathe@gmail.com",
+          recipientName: newSupervisor.user.name,
+          scheduledFor: new Date(Date.now() + 60000), // Schedule for delivery 1 minute from now
+          // scheduledFor: new Date(new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' })).getTime() + 5 * 60000), // Schedule for delivery in Uganda timezone, 5 minutes from now
+          metadata: {
+              studentId: student.id,
+              supervisorId: newSupervisor.id,
+              // supervisorType: isPrimary ? 'primary' : 'secondary',
+              additionalContent: `<p>Please log in to the UMI Supervisor Platform to view more details about this student</p>
+              <p>Thank you,</p>
+              <p>UMI Research Management Team </p>
+              `
+          }
+      });
+
+      // Send email notification to the student through notification service
+      await notificationService.scheduleNotification({
+          type: "EMAIL",
+          statusType: "PENDING",
+          title: "Supervisor Change Notification",
+          message: `Your supervisor has been changed from ${oldSupervisor?.user?.title} ${oldSupervisor?.user?.name} to ${newSupervisor.user.title} ${newSupervisor.user.name}. `,
+          recipientCategory: "USER",
+          recipientId: student?.user?.id,
+          // recipientEmail: student?.user?.email,
+          recipientEmail: "stephaniekirathe@gmail.com",
+          
+          recipientName: student?.user?.name,
+          scheduledFor: new Date(Date.now() + 60000), // Schedule for delivery 1 minute from now
+          // scheduledFor: new Date(new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' })).getTime() + 60000), // Schedule for delivery in Uganda timezone, 1 minute from now
+          metadata: {
+              oldSupervisorId: oldSupervisorId,
+              newSupervisorId: newSupervisorId,
+              // supervisorType: isPrimary ? 'primary' : 'secondary',
+              reason: reason,
+              additionalContent: `
+            
+              <p>If you have any questions about this change, please contact thr research administration office.</p>
+              <p>Thank you,</p>
+              <p>UMI Research Management Team </p>
+              `
+          }
+      });
+
+      res.status(200).json({
+          message: 'Supervisor changed successfully',
+          student: updatedStudent
+      });
+
+  } catch (error) {
+      if (!error.statusCode) {
+          error.statusCode = 500;
+      }
+      next(error);
+  }
+};

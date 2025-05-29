@@ -84,7 +84,7 @@ export const handleMulterError = (error, req, res, next) => {
 const router = express.Router();
 
 // Import faculty controllers
-import { loginFaculty, getFacultyProfile, updateFacultyPassword, getStudent, getAllStudents, getStudentStatuses, submitProposal, getProposal, gradeProposal, getStudentProposals, addReviewers, getReviewers, addPanelists, getPanelists, getSchoolProposals, deleteReviewer, deletePanelist, addReviewerMark, addPanelistMark, addDefenseDate, addComplianceReportDate, updateFieldLetterDate, getAllBooks, getBook, getStudentBooks, createExaminer, getAllExaminers, getExaminer, updateExaminer, deleteExaminer, assignExaminersToBook, updateInternalExaminerMark, getProposalDefenses, recordProposalDefenseVerdict, scheduleProposalDefense, getProgressTrends, getStatusStatistics, getDashboardStats, getNotifications, getAllStudentsStatusReport, getStudentStatusReport, addNewPanelist, getAllSupervisors, requestPasswordReset, resetPassword, updateFacultyProfile, addNewReviewer, getChairpersons, getExternalPersons, getExternalPersonsByRole, createExternalPerson, updateExternalPerson, deleteExternalPerson, updateEthicsCommitteeDate, generateDefenseReport, getProposalDefenseReports, downloadDefenseReport } from '../controllers/facultyController.js';
+import { loginFaculty, getFacultyProfile, updateFacultyPassword, getStudent, getAllStudents, getStudentStatuses, submitProposal, getProposal, gradeProposal, getStudentProposals, addReviewers, getReviewers, addPanelists, getPanelists, getSchoolProposals, deleteReviewer, deletePanelist, addReviewerMark, addPanelistMark, addDefenseDate, addComplianceReportDate, updateFieldLetterDate, getAllBooks, getBook, getStudentBooks, createExaminer, getAllExaminers, getExaminer, updateExaminer, deleteExaminer, assignExaminersToBook, updateInternalExaminerMark, getProposalDefenses, recordProposalDefenseVerdict, scheduleProposalDefense, getProgressTrends, getStatusStatistics, getDashboardStats, getNotifications, getAllStudentsStatusReport, getStudentStatusReport, addNewPanelist, getAllSupervisors, requestPasswordReset, resetPassword, updateFacultyProfile, addNewReviewer, getChairpersons, getExternalPersons, getExternalPersonsByRole, createExternalPerson, updateExternalPerson, deleteExternalPerson, updateEthicsCommitteeDate, generateDefenseReport, getProposalDefenseReports, downloadDefenseReport, getAllFacultyMembers, getAllCampuses, getAllDepartments, getAllSchools, createSupervisor, getAssignedStudents, deleteSupervisor, updateSupervisor, getSupervisor, assignStudentsToSupervisor, changeStudentSupervisor } from '../controllers/facultyController.js';
 
 // Faculty authentication routes
 router.post('/login', loginFaculty);
@@ -211,5 +211,30 @@ router.get('/supervisors', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), ge
 router.post('/request-password-reset', requestPasswordReset);
 router.post('/reset-password', resetPassword);
 
+// Faculty management routes
+router.get('/faculty', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), getAllFacultyMembers);
+
+// Campus management routes
+router.get('/campuses', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), getAllCampuses);
+
+// School management routes
+router.get('/schools/:schoolId/departments', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), getAllDepartments);
+router.get('/schools', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), getAllSchools);
+
+// Supervisor management routes
+router.post('/supervisor', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), createSupervisor);
+
+router.get('/supervisor/:supervisorId', authenticateToken,authorizeRoles('SCHOOL_ADMIN'), getSupervisor);
+
+router.get('/supervisor/:supervisorId/students', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), getAssignedStudents);
+
+router.put('/supervisor/:supervisorId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), updateSupervisor);
+
+router.delete('/supervisor/:supervisorId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), deleteSupervisor);
+
+router.post('/supervisor/:supervisorId/assign-students', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), assignStudentsToSupervisor);
+
+// Change supervisor route
+router.put('/students/:studentId/change-supervisor', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), changeStudentSupervisor);
 export { gfs }; // Export gfs for use in controllers
 export default router;
