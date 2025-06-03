@@ -340,6 +340,7 @@ model book {
   id                           String      @id @default(auto()) @map("_id") @db.ObjectId
   bookCode                     String      @unique
   title                       String
+  actualTopic                 String?
   description                 String?
   student                      student?    @relation(fields: [studentId], references: [id])
   studentId                    String?     @db.ObjectId
