@@ -14,19 +14,19 @@ import { conn, gfs } from "../../../utils/db.mjs";
 
 // Faculty login controller
 export const loginFaculty = async (req, res, next) => {
-    try {
-        const { email, password, rememberMe } = req.body;
+  try {
+    const { email, password, rememberMe } = req.body;
 
-        // Find faculty member by email
-        const user = await prisma.user.findUnique({
-            where: { email },
-        });
+    // Find faculty member by email
+    const user = await prisma.user.findUnique({
+      where: { email },
+    });
 
-        if (!user) {
+    if (!user) {
       const error = new Error("Faculty member not found");
-            error.statusCode = 404;
-            throw error;
-        }
+      error.statusCode = 404;
+      throw error;
+    }
 
     // Check if user is active
     if (!user.isActive) {
@@ -37,142 +37,142 @@ export const loginFaculty = async (req, res, next) => {
       throw error;
     }
 
-        // Check if user has correct role
+    // Check if user has correct role
     if (user.role !== "SCHOOL_ADMIN" && user.role !== "FACULTY") {
       const error = new Error(
         "Unauthorized access - must be School Admin or Faculty"
       );
-            error.statusCode = 403;
-            throw error;
-        }
+      error.statusCode = 403;
+      throw error;
+    }
 
-        // Check password
-        const isValidPassword = await bcrypt.compare(password, user.password);
-        if (!isValidPassword) {
+    // Check password
+    const isValidPassword = await bcrypt.compare(password, user.password);
+    if (!isValidPassword) {
       const error = new Error("Invalid password");
-            error.statusCode = 401;
-            throw error;
-        }
+      error.statusCode = 401;
+      throw error;
+    }
 
-        // Generate JWT token
-        const token = jwt.sign(
-            {
-                id: user.id,
+    // Generate JWT token
+    const token = jwt.sign(
+      {
+        id: user.id,
         title: user.title,
-                email: user.email,
-                name: user.name,
-                role: user.role,
+        email: user.email,
+        name: user.name,
+        role: user.role,
         designation: user.designation,
         loggedInAt: new Date(),
         phone: user.phone,
-            },
-            process.env.AUTH_SECRET,
+      },
+      process.env.AUTH_SECRET,
       { expiresIn: rememberMe ? "30d" : "24h" }
-        );
+    );
 
-        // Return user data and token
-        res.status(200).json({
-            token,
-            faculty: {
-                id: user.id,
-                name: user.name,
-                email: user.email,
-                role: user.role,
-                department: user.department,
-                createdAt: user.createdAt,
+    // Return user data and token
+    res.status(200).json({
+      token,
+      faculty: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        department: user.department,
+        createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       },
-        });
-    } catch (error) {
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
     }
+    next(error);
+  }
 };
 
 // Get faculty profile controller
 export const getFacultyProfile = async (req, res, next) => {
-    try {
-        const facultyId = req.user.id;
+  try {
+    const facultyId = req.user.id;
 
-        const faculty = req.user;
+    const faculty = req.user;
 
-        if (!faculty) {
+    if (!faculty) {
       const error = new Error("Faculty member not found");
-            error.statusCode = 404;
-            throw error;
-        }
+      error.statusCode = 404;
+      throw error;
+    }
 
-        res.status(200).json({
-            faculty: {
-                id: faculty.id,
-                name: faculty.name,
-                email: faculty.email,
-                role: faculty.role,
+    res.status(200).json({
+      faculty: {
+        id: faculty.id,
+        name: faculty.name,
+        email: faculty.email,
+        role: faculty.role,
         title: faculty.title,
         phone: faculty.phone,
-                designation: faculty.designation,
+        designation: faculty.designation,
         loggedInAt: faculty.loggedInAt,
-                department: faculty.department,
-                createdAt: faculty.createdAt,
+        department: faculty.department,
+        createdAt: faculty.createdAt,
         updatedAt: faculty.updatedAt,
       },
-        });
-    } catch (error) {
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
     }
+    next(error);
+  }
 };
 
 // Update faculty password controller
 export const updateFacultyPassword = async (req, res, next) => {
-    try {
+  try {
     const facultyId = req.user.id;
-        const { currentPassword, newPassword } = req.body;
+    const { currentPassword, newPassword } = req.body;
 
-        // Find faculty member
+    // Find faculty member
     const user = await prisma.user.findUnique({
       where: { id: facultyId },
-        });
+    });
 
     if (!user) {
       const error = new Error("Faculty member not found");
-            error.statusCode = 404;
-            throw error;
-        }
+      error.statusCode = 404;
+      throw error;
+    }
 
-        // Verify current password
+    // Verify current password
     const isValidPassword = await bcrypt.compare(
       currentPassword,
       user.password
     );
-        if (!isValidPassword) {
+    if (!isValidPassword) {
       const error = new Error("Current password is incorrect");
-            error.statusCode = 401;
-            throw error;
-        }
-
-        // Hash new password
-        const hashedPassword = await bcrypt.hash(newPassword, 12);
-
-        // Update password
-    await prisma.user.update({
-            where: { id: facultyId },
-      data: { password: hashedPassword },
-        });
-
-        res.status(200).json({
-      message: "Password updated successfully",
-        });
-    } catch (error) {
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
+      error.statusCode = 401;
+      throw error;
     }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+    // Update password
+    await prisma.user.update({
+      where: { id: facultyId },
+      data: { password: hashedPassword },
+    });
+
+    res.status(200).json({
+      message: "Password updated successfully",
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
 };
 
 // Controller for updating logged in user details
@@ -220,144 +220,144 @@ export const updateFacultyProfile = async (req, res, next) => {
 
 // Get student by ID controller
 export const getStudent = async (req, res, next) => {
-    try {
-        const { studentId } = req.params;
+  try {
+    const { studentId } = req.params;
 
-        const student = await prisma.student.findUnique({
-            where: { id: studentId },
-            include: {
-                statuses: {
-                    include: {
+    const student = await prisma.student.findUnique({
+      where: { id: studentId },
+      include: {
+        statuses: {
+          include: {
             definition: true,
           },
-                    },
-                supervisors: true,
-                proposals: true,
-                notifications: true,
+        },
+        supervisors: true,
+        proposals: true,
+        notifications: true,
 
-                school: true,
-                campus: true,
-                department: true,
+        school: true,
+        campus: true,
+        department: true,
         user: true,
       },
-        });
+    });
 
-        if (!student) {
+    if (!student) {
       const error = new Error("Student not found");
-            error.statusCode = 404;
-            throw error;
-        }
-
-        res.status(200).json({
-      student,
-        });
-    } catch (error) {
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
+      error.statusCode = 404;
+      throw error;
     }
+
+    res.status(200).json({
+      student,
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
 };
 
 // Get all students controller
 export const getAllStudents = async (req, res, next) => {
-    try {
-        // Get the faculty member's school and campus from the request
-        const { schoolId, campusId } = req.user;
+  try {
+    // Get the faculty member's school and campus from the request
+    const { schoolId, campusId } = req.user;
 
-        const students = await prisma.student.findMany({
-            where: {
-                schoolId,
+    const students = await prisma.student.findMany({
+      where: {
+        schoolId,
         campusId,
-            },
-            include: {
-                statuses: {
-                    include: {
+      },
+      include: {
+        statuses: {
+          include: {
             definition: true,
           },
-                },
-                supervisors: true,
-                proposals: true,
-                notifications: true,
+        },
+        supervisors: true,
+        proposals: true,
+        notifications: true,
 
-                school: true,
-                campus: true,
-                department: true,
+        school: true,
+        campus: true,
+        department: true,
         user: true,
       },
-        });
+    });
 
-        res.status(200).json({
+    res.status(200).json({
       students,
-        });
-    } catch (error) {
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
     }
+    next(error);
+  }
 };
 
 // Controller to get student statuses with update history
 export const getStudentStatuses = async (req, res, next) => {
-    try {
-        const { studentId } = req.params;
+  try {
+    const { studentId } = req.params;
 
-        // Check if student exists
-        const student = await prisma.student.findUnique({
-            where: { id: studentId },
-            include: {
-                statuses: {
-                    include: {
-                        definition: true,
-                        updatedBy: {
-                            select: {
-                                id: true,
-                                name: true,
-                                email: true,
+    // Check if student exists
+    const student = await prisma.student.findUnique({
+      where: { id: studentId },
+      include: {
+        statuses: {
+          include: {
+            definition: true,
+            updatedBy: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
                 role: true,
               },
-                        },
-                        notificationsSent: {
-                            select: {
-                                recipients: true,
-                                type: true,
-                                message: true,
-                                sentAt: true,
+            },
+            notificationsSent: {
+              select: {
+                recipients: true,
+                type: true,
+                message: true,
+                sentAt: true,
                 studentStatus: true,
               },
             },
-                    },
-                    orderBy: {
+          },
+          orderBy: {
             updatedAt: "desc",
           },
         },
       },
-        });
+    });
 
-        if (!student) {
+    if (!student) {
       const error = new Error("Student not found");
-            error.statusCode = 404;
-            throw error;
-        }
-
-        res.status(200).json({
-      statuses: student.statuses,
-        });
-    } catch (error) {
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
+      error.statusCode = 404;
+      throw error;
     }
+
+    res.status(200).json({
+      statuses: student.statuses,
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
 };
 
 /** PROPOSAL MANAGEMENT CONTROLLERS */
 // Submit proposal for student
 export const submitProposal = async (req, res, next) => {
-    try {
-        const { studentId } = req.params;
-        const { title, description, submissionDate, researchArea } = req.body;
+  try {
+    const { studentId } = req.params;
+    const { title, description, submissionDate, researchArea } = req.body;
     // console.log("file", req.file);
     // const proposalFile = req.file;
 
@@ -367,12 +367,12 @@ export const submitProposal = async (req, res, next) => {
     //     throw error;
     // }
 
-        // Check if student exists
-        const student = await prisma.student.findUnique({
-            where: { id: studentId },
-            include: {
-                statuses: {
-                    where: {
+    // Check if student exists
+    const student = await prisma.student.findUnique({
+      where: { id: studentId },
+      include: {
+        statuses: {
+          where: {
             isCurrent: true,
           },
           take: 1,
@@ -383,13 +383,13 @@ export const submitProposal = async (req, res, next) => {
           },
         },
       },
-        });
+    });
 
-        if (!student) {
+    if (!student) {
       const error = new Error("Student not found");
-            error.statusCode = 404;
-            throw error;
-        }
+      error.statusCode = 404;
+      throw error;
+    }
     // Get current year
     const currentYear = new Date().getFullYear();
 
@@ -424,379 +424,379 @@ export const submitProposal = async (req, res, next) => {
         where: { id: student.proposals[0].id },
         data: { isCurrent: false },
       });
-        }
+    }
 
-        // Create new proposal with file buffer
-        const proposal = await prisma.proposal.create({
-            data: {
+    // Create new proposal with file buffer
+    const proposal = await prisma.proposal.create({
+      data: {
         proposalCode,
-                title,
-                description,
-                submissionDate: new Date(submissionDate),
-                researchArea,
+        title,
+        description,
+        submissionDate: new Date(submissionDate),
+        researchArea,
         // fileData: proposalFile.buffer,
         // fileName: proposalFile.originalname,
         // fileType: proposalFile.mimetype,
-                isCurrent: true,
-                
-                student: {
+        isCurrent: true,
+
+        student: {
           connect: { id: studentId },
-                },
-                submittedBy: {
+        },
+        submittedBy: {
           connect: { id: req.user.id },
         },
       },
-        });
+    });
 
-        // Update current status to not be current
-        if (student.statuses[0]) {
-            await prisma.studentStatus.update({
-                where: { id: student.statuses[0].id },
-                data: { 
-                    isCurrent: false,
+    // Update current status to not be current
+    if (student.statuses[0]) {
+      await prisma.studentStatus.update({
+        where: { id: student.statuses[0].id },
+        data: {
+          isCurrent: false,
           endDate: new Date(),
         },
-            });
-        }
+      });
+    }
 
-        let statusDefinition = await prisma.statusDefinition.findUnique({
+    let statusDefinition = await prisma.statusDefinition.findUnique({
       where: { name: "proposal received" },
-        });
+    });
 
-        if (!statusDefinition) {
-            statusDefinition = await prisma.statusDefinition.create({   
-                data: {
+    if (!statusDefinition) {
+      statusDefinition = await prisma.statusDefinition.create({
+        data: {
           name: "Proposal Received",
           description: "Proposal has been received by the faculty member",
         },
-            });
-        }   
+      });
+    }
 
-        // Create new status record for proposal submission
-        await prisma.studentStatus.create({
-            data: {
-                student: {
+    // Create new status record for proposal submission
+    await prisma.studentStatus.create({
+      data: {
+        student: {
           connect: { id: studentId },
-                },
-                definition: {
+        },
+        definition: {
           connect: { id: statusDefinition.id },
-                },
-                updatedBy: {
+        },
+        updatedBy: {
           connect: { id: req.user.id },
-                },
-                startDate: new Date(),
+        },
+        startDate: new Date(),
         isCurrent: true,
       },
-        });
+    });
 
-        // Create initial proposal status
-        await prisma.proposalStatus.create({
-            data: {
-                proposal: {
+    // Create initial proposal status
+    await prisma.proposalStatus.create({
+      data: {
+        proposal: {
           connect: { id: proposal.id },
-                },
-                definition: {
+        },
+        definition: {
           connect: { id: statusDefinition.id },
-                },
-                startDate: new Date(),
-                isActive: true,
+        },
+        startDate: new Date(),
+        isActive: true,
         isCurrent: true,
       },
-        });
+    });
 
-        res.status(201).json({
+    res.status(201).json({
       message: "Proposal submitted successfully",
-            proposal: {
-                id: proposal.id,
-                title: proposal.title,
-                submissionDate: proposal.submissionDate,
-                fileName: proposal.fileName,
+      proposal: {
+        id: proposal.id,
+        title: proposal.title,
+        submissionDate: proposal.submissionDate,
+        fileName: proposal.fileName,
         status: proposal.status,
       },
-        });
-    } catch (error) {
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
     }
+    next(error);
+  }
 };
 
 // Get all proposals for a student
 export const getStudentProposals = async (req, res, next) => {
-    try {
-        const { studentId } = req.params;
+  try {
+    const { studentId } = req.params;
 
-        const proposals = await prisma.proposal.findMany({
-            where: {
+    const proposals = await prisma.proposal.findMany({
+      where: {
         studentId: studentId,
-            },
-            include: {
-                student: true,
-                submittedBy: {
-                    select: {
-                        id: true,
-                        name: true,
-                        email: true,
+      },
+      include: {
+        student: true,
+        submittedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
             role: true,
           },
-                },
-                reviewGrades: true,
-                defenseGrades: true,
+        },
+        reviewGrades: true,
+        defenseGrades: true,
         defenses: {
           include: {
             panelists: true,
           },
         },
-                reviewers: {
-                    select: {
-                        id: true,
-                        name: true,
+        reviewers: {
+          select: {
+            id: true,
+            name: true,
             email: true,
           },
-                },
-                panelists: {
-                    select: {
-                        id: true,
-                        name: true,
+        },
+        panelists: {
+          select: {
+            id: true,
+            name: true,
             email: true,
           },
-                },
-                statuses: {
-                    include: {
+        },
+        statuses: {
+          include: {
             definition: true,
           },
         },
-            },
-            orderBy: {
+      },
+      orderBy: {
         submittedAt: "desc",
       },
-        });
+    });
 
-        res.status(200).json({ proposals });
-    } catch (error) {
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
+    res.status(200).json({ proposals });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
     }
+    next(error);
+  }
 };
 
 // Get all proposals in a school
 export const getSchoolProposals = async (req, res, next) => {
-    try {
-        // Get faculty member's school from their profile
-        const faculty = await prisma.facultyMember.findUnique({
-            where: { userId: req.user.id },
-            include: {
-                campus: true,
+  try {
+    // Get faculty member's school from their profile
+    const faculty = await prisma.facultyMember.findUnique({
+      where: { userId: req.user.id },
+      include: {
+        campus: true,
         school: true,
       },
-        });
+    });
 
-        if (!faculty || !faculty.campusId) {
+    if (!faculty || !faculty.campusId) {
       const error = new Error(
         "Faculty member not found or not associated with a campus"
       );
-            error.statusCode = 404;
-            throw error;
-        }
+      error.statusCode = 404;
+      throw error;
+    }
 
-        // Get all proposals from students in the same campus
-        const proposals = await prisma.proposal.findMany({
-            where: {
-                student: {
+    // Get all proposals from students in the same campus
+    const proposals = await prisma.proposal.findMany({
+      where: {
+        student: {
           AND: [{ campusId: faculty.campusId }, { schoolId: faculty.schoolId }],
         },
-            },
-            include: {
-                student: {
-                    select: {
-                        id: true,
-                        firstName: true,
-                        lastName: true,
+      },
+      include: {
+        student: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
             email: true,
           },
-                },
-                reviewGrades: {
-                    select: {
-                        id: true,
+        },
+        reviewGrades: {
+          select: {
+            id: true,
             verdict: true,
-                        feedback: true,
-                        createdAt: true,
-                        gradedBy: {
-                            select: {
-                                id: true,
+            feedback: true,
+            createdAt: true,
+            gradedBy: {
+              select: {
+                id: true,
                 name: true,
               },
-                        },
-                        submittedBy: {
-                            select: {
-                                id: true,
+            },
+            submittedBy: {
+              select: {
+                id: true,
                 name: true,
               },
             },
           },
-                },
-                defenseGrades: {
-                    select: {
-                        id: true,
-                        grade: true,
-                        feedback: true,
-                        createdAt: true,
-                        gradedBy: {
-                            select: {
-                                id: true,
+        },
+        defenseGrades: {
+          select: {
+            id: true,
+            grade: true,
+            feedback: true,
+            createdAt: true,
+            gradedBy: {
+              select: {
+                id: true,
                 name: true,
               },
-                        },
-                        submittedBy: {
-                            select: {
-                                id: true,
+            },
+            submittedBy: {
+              select: {
+                id: true,
                 name: true,
               },
             },
           },
-                },
-                panelists: {
-                    select: {
-                        id: true,
-                        name: true,
+        },
+        panelists: {
+          select: {
+            id: true,
+            name: true,
             email: true,
-                },
+          },
         },
         defenses: true,
-               
-                statuses: {
-                    include: {
+
+        statuses: {
+          include: {
             definition: true,
-                    },
-                    orderBy: {
+          },
+          orderBy: {
             createdAt: "desc",
-                    },
+          },
           take: 1,
         },
-            },
-            orderBy: {
+      },
+      orderBy: {
         submittedAt: "desc",
       },
-        });
+    });
 
-        res.status(200).json({
+    res.status(200).json({
       message: "Proposals retrieved successfully",
       proposals: proposals,
-        });
-    } catch (error) {
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
     }
+    next(error);
+  }
 };
 
 // Get proposal details
 export const getProposal = async (req, res, next) => {
-    try {
-        const { proposalId } = req.params;
+  try {
+    const { proposalId } = req.params;
 
-        const proposal = await prisma.proposal.findFirst({
-            where: {
-                id: proposalId,
-            },
-            include: {
-                student: true,
-                submittedBy: {
-                    select: {
-                        id: true,
-                        name: true,
-                        email: true,
+    const proposal = await prisma.proposal.findFirst({
+      where: {
+        id: proposalId,
+      },
+      include: {
+        student: true,
+        submittedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
             role: true,
           },
-                },
-                reviewers: {
-                    select: {
-                        id: true,
-                        name: true,
+        },
+        reviewers: {
+          select: {
+            id: true,
+            name: true,
             email: true,
           },
-                },
-                panelists: {
-                    select: {
-                        id: true,
-                        name: true,
+        },
+        panelists: {
+          select: {
+            id: true,
+            name: true,
             email: true,
           },
-                },
-                defenseGrades: true,
-                reviewGrades: true,
-                statuses: {
-                    include: {
+        },
+        defenseGrades: true,
+        reviewGrades: true,
+        statuses: {
+          include: {
             definition: true,
           },
         },
       },
-        });
+    });
 
-        if (!proposal) {
+    if (!proposal) {
       const error = new Error("Proposal not found");
-            error.statusCode = 404;
-            throw error;
-        }
-
-        res.status(200).json({ proposal });
-    } catch (error) {
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
+      error.statusCode = 404;
+      throw error;
     }
+
+    res.status(200).json({ proposal });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
 };
 
 /** PROPOSAL MANAGEMENT CONTROLLERS */
 
 // Grade proposal
 export const gradeProposal = async (req, res, next) => {
-    try {
-        const { studentId, proposalId } = req.params;
-        const { grade, feedback } = req.body;
+  try {
+    const { studentId, proposalId } = req.params;
+    const { grade, feedback } = req.body;
 
-        const proposal = await prisma.proposal.findFirst({
-            where: {
-                id: proposalId,
+    const proposal = await prisma.proposal.findFirst({
+      where: {
+        id: proposalId,
         studentId: studentId,
       },
-        });
+    });
 
-        if (!proposal) {
+    if (!proposal) {
       const error = new Error("Proposal not found");
-            error.statusCode = 404;
-            throw error;
-        }
+      error.statusCode = 404;
+      throw error;
+    }
 
-        // Create grade for proposal
-        const gradedProposal = await prisma.proposalGrade.create({
-            data: {
-                grade,
-                feedback,
-                proposal: {
+    // Create grade for proposal
+    const gradedProposal = await prisma.proposalGrade.create({
+      data: {
+        grade,
+        feedback,
+        proposal: {
           connect: { id: proposalId },
-                },
-                gradedBy: {
+        },
+        gradedBy: {
           connect: { id: req.user.id },
         },
       },
-        });
+    });
 
-        // Update student status
-        await prisma.studentStatus.create({
-            data: {
-                student: {
+    // Update student status
+    await prisma.studentStatus.create({
+      data: {
+        student: {
           connect: { id: studentId },
-                },
-                definition: {
+        },
+        definition: {
           connect: { code: "PROPOSAL_GRADED" },
-                },
-                updatedBy: {
+        },
+        updatedBy: {
           connect: { id: req.user.id },
         },
       },
@@ -886,232 +886,232 @@ export const addNewReviewer = async (req, res, next) => {
       message: "Reviewer added successfully",
       reviewer: newReviewer,
     });
-    } catch (error) {
+  } catch (error) {
     console.error("Error in addNewReviewer:", error);
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
+    if (!error.statusCode) {
+      error.statusCode = 500;
     }
+    next(error);
+  }
 };
 
 // Add reviewers to proposal
 export const addReviewers = async (req, res, next) => {
-    try {
-        const { proposalId } = req.params;
-        const { reviewers } = req.body;
+  try {
+    const { proposalId } = req.params;
+    const { reviewers } = req.body;
 
-        // Validate input
-        if (!proposalId || !reviewers || !Array.isArray(reviewers)) {
+    // Validate input
+    if (!proposalId || !reviewers || !Array.isArray(reviewers)) {
       const error = new Error("Invalid input data");
-            error.statusCode = 400;
-            throw error;
-        }
+      error.statusCode = 400;
+      throw error;
+    }
 
-        // Validate reviewer objects
-        for (const reviewer of reviewers) {
-            if (!reviewer.name || !reviewer.email) {
+    // Validate reviewer objects
+    for (const reviewer of reviewers) {
+      if (!reviewer.name || !reviewer.email) {
         const error = new Error("Each reviewer must have name and email");
-                error.statusCode = 400;
-                throw error;
-            }
-        }
+        error.statusCode = 400;
+        throw error;
+      }
+    }
 
-        // Get proposal with student details and current status
-        const proposal = await prisma.proposal.findUnique({
-            where: { id: proposalId },
-            include: {
-                student: true,
-                reviewers: true,
-                statuses: {
-                    include: {
+    // Get proposal with student details and current status
+    const proposal = await prisma.proposal.findUnique({
+      where: { id: proposalId },
+      include: {
+        student: true,
+        reviewers: true,
+        statuses: {
+          include: {
             definition: true,
           },
         },
       },
-        });
+    });
 
-        if (!proposal) {
+    if (!proposal) {
       const error = new Error("Proposal not found");
-            error.statusCode = 404;
-            throw error;
-        }
+      error.statusCode = 404;
+      throw error;
+    }
 
-        if (!proposal.student) {
+    if (!proposal.student) {
       const error = new Error("Student not found for this proposal");
-            error.statusCode = 404;
-            throw error;
-        }
+      error.statusCode = 404;
+      throw error;
+    }
 
-        // Get user's campus
-        const faculty = await prisma.facultyMember.findUnique({
-            where: { userId: req.user.id },
-            include: {
+    // Get user's campus
+    const faculty = await prisma.facultyMember.findUnique({
+      where: { userId: req.user.id },
+      include: {
         campus: true,
       },
-        });
+    });
 
-        if (!faculty || !faculty.campus) {
+    if (!faculty || !faculty.campus) {
       const error = new Error("Faculty member or campus not found");
-            error.statusCode = 404;
-            throw error;
-        }
+      error.statusCode = 404;
+      throw error;
+    }
 
-        // Create reviewers if they don't exist and connect to proposal and campus
-        const reviewerPromises = reviewers.map(async ({ name, email }) => {
-            const reviewer = await prisma.reviewer.upsert({
-                where: { email },
-                update: {
-                    name,
-                    proposals: {
+    // Create reviewers if they don't exist and connect to proposal and campus
+    const reviewerPromises = reviewers.map(async ({ name, email }) => {
+      const reviewer = await prisma.reviewer.upsert({
+        where: { email },
+        update: {
+          name,
+          proposals: {
             connect: { id: proposalId },
-                    },
-                    campus: {
-            connect: { id: faculty.campusId },
           },
-                },
-                create: {
-                    email,
-                    name,
-                    proposals: {
-            connect: { id: proposalId },
-                    },
-                    campus: {
+          campus: {
             connect: { id: faculty.campusId },
           },
         },
-            });
-            return reviewer;
-        });
+        create: {
+          email,
+          name,
+          proposals: {
+            connect: { id: proposalId },
+          },
+          campus: {
+            connect: { id: faculty.campusId },
+          },
+        },
+      });
+      return reviewer;
+    });
 
-        const createdReviewers = await Promise.all(reviewerPromises);
+    const createdReviewers = await Promise.all(reviewerPromises);
 
-        // Update proposal with reviewer connections
-        await prisma.proposal.update({
-            where: { id: proposalId },
-            data: {
-                reviewers: {
+    // Update proposal with reviewer connections
+    await prisma.proposal.update({
+      where: { id: proposalId },
+      data: {
+        reviewers: {
           connect: createdReviewers.map((r) => ({ id: r.id })),
         },
       },
-        });
+    });
 
-        // Check if we need to update the proposal status
-        // const needsStatusUpdate = 
-        //     proposal.statuses.length === 0 ||     !proposal.statuses.some(status => status.definition.name.toLowerCase() === 'proposal in review') ||
-        //     proposal.reviewers.length === 0;
+    // Check if we need to update the proposal status
+    // const needsStatusUpdate =
+    //     proposal.statuses.length === 0 ||     !proposal.statuses.some(status => status.definition.name.toLowerCase() === 'proposal in review') ||
+    //     proposal.reviewers.length === 0;
 
-            const needsStatusUpdate = 
-            proposal.statuses.length === 0 || 
+    const needsStatusUpdate =
+      proposal.statuses.length === 0 ||
       !proposal.statuses.some(
         (status) =>
           status.definition.name.toLowerCase() === "proposal in review"
       );
 
-        if (needsStatusUpdate) {
-            // Find the status definition for 'proposal in review'
-            const statusDefinition = await prisma.statusDefinition.findUnique({
+    if (needsStatusUpdate) {
+      // Find the status definition for 'proposal in review'
+      const statusDefinition = await prisma.statusDefinition.findUnique({
         where: { name: "proposal in review" },
-            });
+      });
 
-            if (!statusDefinition) {
+      if (!statusDefinition) {
         const error = new Error("Status definition not found");
-                error.statusCode = 500;
-                throw error;
-            }
+        error.statusCode = 500;
+        throw error;
+      }
 
-            const currentDate = new Date();
-            
-            // Set current status to false for all existing statuses and add end date
-            if (proposal.statuses.length > 0) {
-                await prisma.proposalStatus.updateMany({
-                    where: { proposalId },
-                    data: { 
-                        isCurrent: false,
+      const currentDate = new Date();
+
+      // Set current status to false for all existing statuses and add end date
+      if (proposal.statuses.length > 0) {
+        await prisma.proposalStatus.updateMany({
+          where: { proposalId },
+          data: {
+            isCurrent: false,
             endDate: currentDate,
           },
-                });
-            }
+        });
+      }
 
-            // Update previous student statuses to not current and set end date
-            await prisma.studentStatus.updateMany({
-                where: { 
-                    studentId: proposal.student.id,
+      // Update previous student statuses to not current and set end date
+      await prisma.studentStatus.updateMany({
+        where: {
+          studentId: proposal.student.id,
           isCurrent: true,
-                },
-                data: { 
-                    isCurrent: false,
+        },
+        data: {
+          isCurrent: false,
           endDate: currentDate,
         },
-            });
+      });
 
-            // Create new proposal status
-            await prisma.proposalStatus.create({
-                data: {
-                    proposal: {
+      // Create new proposal status
+      await prisma.proposalStatus.create({
+        data: {
+          proposal: {
             connect: { id: proposalId },
-                    },
-                    definition: {
+          },
+          definition: {
             connect: { id: statusDefinition.id },
-                    },
-                    startDate: new Date(),
-                    isActive: true,
+          },
+          startDate: new Date(),
+          isActive: true,
           isCurrent: true,
         },
-            });
+      });
 
-            // Update student status using the student from the proposal
-            await prisma.studentStatus.create({
-                data: {
-                    student: {
+      // Update student status using the student from the proposal
+      await prisma.studentStatus.create({
+        data: {
+          student: {
             connect: { id: proposal.student.id },
-                    },
-                    definition: {
+          },
+          definition: {
             connect: { id: statusDefinition.id },
-                    },
-                    updatedBy: {
+          },
+          updatedBy: {
             connect: { id: req.user.id },
-                    },
-                    startDate: new Date(),
+          },
+          startDate: new Date(),
           isCurrent: true,
         },
-            });
-        }
+      });
+    }
 
-        res.status(200).json({
+    res.status(200).json({
       message: "Reviewers added successfully",
       reviewers: createdReviewers,
-        });
-    } catch (error) {
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
     }
+    next(error);
+  }
 };
 
 // Get reviewers for a campus
 export const getReviewers = async (req, res, next) => {
-    try {
-        // Get faculty member to retrieve campus ID
-        const facultyMember = await prisma.facultyMember.findUnique({
-            where: {
+  try {
+    // Get faculty member to retrieve campus ID
+    const facultyMember = await prisma.facultyMember.findUnique({
+      where: {
         userId: req.user.id,
-            },
-            select: {
+      },
+      select: {
         campusId: true,
       },
-        });
+    });
 
-        if (!facultyMember || !facultyMember.campusId) {
+    if (!facultyMember || !facultyMember.campusId) {
       const error = new Error("Faculty member campus not found");
-            error.statusCode = 400;
-            throw error;
-        }
+      error.statusCode = 400;
+      throw error;
+    }
 
-        // Get all reviewers for the faculty member's campus
-        const reviewers = await prisma.reviewer.findMany({
-            where: {
+    // Get all reviewers for the faculty member's campus
+    const reviewers = await prisma.reviewer.findMany({
+      where: {
         campusId: facultyMember.campusId,
       },
       include: {
@@ -1125,120 +1125,120 @@ export const getReviewers = async (req, res, next) => {
             },
           },
         },
-            },
-            orderBy: {
+      },
+      orderBy: {
         name: "asc",
       },
-        });
+    });
 
     console.log(reviewers);
 
-        res.status(200).json({
+    res.status(200).json({
       message: "Reviewers retrieved successfully",
       reviewers: reviewers,
-        });
-    } catch (error) {
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
     }
+    next(error);
+  }
 };
 
 /** to be deleted */
 // Add reviewer mark to proposal
 export const addReviewerMark = async (req, res, next) => {
-    try {
-        const { proposalId, reviewerId } = req.params;
+  try {
+    const { proposalId, reviewerId } = req.params;
     const { verdict, feedback } = req.body;
 
-        // Get the currently logged-in faculty user
-        const submittedById = req.user.id;
+    // Get the currently logged-in faculty user
+    const submittedById = req.user.id;
 
-        // Validate input
+    // Validate input
     if (!proposalId || !reviewerId || verdict === undefined || !feedback) {
       const error = new Error("Invalid input data");
-            error.statusCode = 400;
-            throw error;
-        }
+      error.statusCode = 400;
+      throw error;
+    }
 
-        // Check if proposal exists
-        const proposal = await prisma.proposal.findUnique({
-            where: { id: proposalId },
-            include: {
-                reviewGrades: true,
-                reviewers: true,
-                student: true,
-                statuses: {
-                    include: {
+    // Check if proposal exists
+    const proposal = await prisma.proposal.findUnique({
+      where: { id: proposalId },
+      include: {
+        reviewGrades: true,
+        reviewers: true,
+        student: true,
+        statuses: {
+          include: {
             definition: true,
           },
         },
       },
-        });
+    });
 
-        if (!proposal) {
+    if (!proposal) {
       const error = new Error("Proposal not found");
-            error.statusCode = 404;
-            throw error;
-        }
+      error.statusCode = 404;
+      throw error;
+    }
 
-        // Check if reviewer is assigned to proposal
+    // Check if reviewer is assigned to proposal
     const isReviewerAssigned = proposal.reviewers.some(
       (reviewer) => reviewer.id === reviewerId
     );
 
-        if (!isReviewerAssigned) {
+    if (!isReviewerAssigned) {
       const error = new Error("Reviewer is not assigned to this proposal");
-            error.statusCode = 400;
-            throw error;
-        }
+      error.statusCode = 400;
+      throw error;
+    }
 
-        let updatedOrNewGrade;
-        // Create or update the review grade
+    let updatedOrNewGrade;
+    // Create or update the review grade
     const existingGrade = proposal.reviewGrades.find(
       (grade) => grade.gradedById === reviewerId
     );
 
-        if (existingGrade) {
-            // Update existing grade
-            updatedOrNewGrade = await prisma.proposalReviewGrade.update({
-                where: { id: existingGrade.id },
+    if (existingGrade) {
+      // Update existing grade
+      updatedOrNewGrade = await prisma.proposalReviewGrade.update({
+        where: { id: existingGrade.id },
         data: {
           verdict,
           feedback,
           updatedBy: { connect: { id: submittedById } },
         },
-            });
-        } else {
-            // Create new grade
-            updatedOrNewGrade = await prisma.proposalReviewGrade.create({
-                data: {
-                    proposal: { connect: { id: proposalId } },
-                    gradedBy: { connect: { id: reviewerId } },
+      });
+    } else {
+      // Create new grade
+      updatedOrNewGrade = await prisma.proposalReviewGrade.create({
+        data: {
+          proposal: { connect: { id: proposalId } },
+          gradedBy: { connect: { id: reviewerId } },
           verdict,
-                    feedback,
+          feedback,
           submittedBy: { connect: { id: submittedById } },
         },
-            });
-        }
+      });
+    }
 
     // Get updated proposal data
-        const updatedProposal = await prisma.proposal.findUnique({
-            where: { id: proposalId },
-            include: {
-                reviewGrades: true,
-                reviewers: true,
-                student: true,
-                statuses: {
-                    include: {
+    const updatedProposal = await prisma.proposal.findUnique({
+      where: { id: proposalId },
+      include: {
+        reviewGrades: true,
+        reviewers: true,
+        student: true,
+        statuses: {
+          include: {
             definition: true,
           },
         },
       },
-        });
+    });
 
-        // Check if current status is already "Proposal Review Finished"
+    // Check if current status is already "Proposal Review Finished"
     const currentStatus = updatedProposal.statuses.find(
       (status) => status.isCurrent
     );
@@ -1252,14 +1252,14 @@ export const addReviewerMark = async (req, res, next) => {
       !isAlreadyFinished &&
       updatedProposal.reviewGrades.length === updatedProposal.reviewers.length
     ) {
-            // Update proposal status
-            await prisma.proposalStatus.updateMany({
-                where: {
-                    proposalId,
+      // Update proposal status
+      await prisma.proposalStatus.updateMany({
+        where: {
+          proposalId,
           isCurrent: true,
-                },
-                data: {
-                    isCurrent: false,
+        },
+        data: {
+          isCurrent: false,
           endDate: new Date(),
         },
       });
@@ -1278,335 +1278,335 @@ export const addReviewerMark = async (req, res, next) => {
           where: {
             name: statusName,
           },
-            });
+        });
 
-            if (!proposalReviewFinishedStatus) {
+      if (!proposalReviewFinishedStatus) {
         throw new Error("Status definition not found");
-            }
+      }
 
-            await prisma.proposalStatus.create({
-                data: {
-                    proposal: { connect: { id: proposalId } },
-                    definition: { connect: { id: proposalReviewFinishedStatus.id } },
-                    isCurrent: true,
+      await prisma.proposalStatus.create({
+        data: {
+          proposal: { connect: { id: proposalId } },
+          definition: { connect: { id: proposalReviewFinishedStatus.id } },
+          isCurrent: true,
           startDate: new Date(),
         },
-            });
+      });
 
-            // Update student status if proposal passed review
-            if (updatedProposal.student) {
-                await prisma.studentStatus.updateMany({
-                    where: {
-                        studentId: updatedProposal.student.id,
+      // Update student status if proposal passed review
+      if (updatedProposal.student) {
+        await prisma.studentStatus.updateMany({
+          where: {
+            studentId: updatedProposal.student.id,
             isCurrent: true,
-                    },
-                    data: {
-                        isCurrent: false,
+          },
+          data: {
+            isCurrent: false,
             endDate: new Date(),
           },
         });
 
-                await prisma.studentStatus.create({
-                    data: {
-                        student: { connect: { id: updatedProposal.student.id } },
-                        definition: { connect: { id: proposalReviewFinishedStatus.id } },
-                        isCurrent: true,
-                        startDate: new Date(),
+        await prisma.studentStatus.create({
+          data: {
+            student: { connect: { id: updatedProposal.student.id } },
+            definition: { connect: { id: proposalReviewFinishedStatus.id } },
+            isCurrent: true,
+            startDate: new Date(),
             updatedBy: { connect: { id: submittedById } },
           },
-                });
-            }
-        }
+        });
+      }
+    }
 
-        res.status(existingGrade ? 200 : 201).json({
+    res.status(existingGrade ? 200 : 201).json({
       message: existingGrade
         ? "Reviewer mark updated successfully"
         : "Reviewer mark added successfully",
-            grade: updatedOrNewGrade,
-        });
-    } catch (error) {
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
+      grade: updatedOrNewGrade,
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
     }
+    next(error);
+  }
 };
 
 // Delete reviewer from proposal
 export const deleteReviewer = async (req, res, next) => {
-    try {
-        const { proposalId, reviewerId } = req.params;
+  try {
+    const { proposalId, reviewerId } = req.params;
 
-        // Check if proposal exists
-        const proposal = await prisma.proposal.findUnique({
-            where: {
+    // Check if proposal exists
+    const proposal = await prisma.proposal.findUnique({
+      where: {
         id: proposalId,
-            },
-            include: {
-                reviewers: true,
+      },
+      include: {
+        reviewers: true,
         reviewGrades: true,
       },
-        });
+    });
 
-        if (!proposal) {
+    if (!proposal) {
       const error = new Error("Proposal not found");
-            error.statusCode = 404;
-            throw error;
-        }
+      error.statusCode = 404;
+      throw error;
+    }
 
-        // Check if reviewer is assigned to proposal
+    // Check if reviewer is assigned to proposal
     const isReviewerAssigned = proposal.reviewers.some(
       (reviewer) => reviewer.id === reviewerId
     );
 
-        if (!isReviewerAssigned) {
+    if (!isReviewerAssigned) {
       const error = new Error("Reviewer is not assigned to this proposal");
-            error.statusCode = 400;
-            throw error;
-        }
+      error.statusCode = 400;
+      throw error;
+    }
 
-        // Check if reviewer has submitted any grades
+    // Check if reviewer has submitted any grades
     const hasGrades = proposal.reviewGrades.some(
       (grade) => grade.reviewerId === reviewerId
     );
 
-        if (hasGrades) {
+    if (hasGrades) {
       const error = new Error(
         "Cannot remove reviewer who has already submitted grades"
       );
-            error.statusCode = 400;
-            throw error;
-        }
+      error.statusCode = 400;
+      throw error;
+    }
 
-        // Check if reviewer has other proposals assigned
-        const otherProposals = await prisma.proposal.findMany({
-            where: {
-                AND: [
-                    {
-                        reviewers: {
-                            some: {
+    // Check if reviewer has other proposals assigned
+    const otherProposals = await prisma.proposal.findMany({
+      where: {
+        AND: [
+          {
+            reviewers: {
+              some: {
                 id: reviewerId,
               },
             },
-                    },
-                    {
-                        id: {
+          },
+          {
+            id: {
               not: proposalId,
             },
           },
         ],
       },
-        });
+    });
 
-        // Delete reviewer from proposal
-        await prisma.proposal.update({
-            where: {
+    // Delete reviewer from proposal
+    await prisma.proposal.update({
+      where: {
         id: proposalId,
-            },
-            data: {
-                reviewers: {
-                    disconnect: {
+      },
+      data: {
+        reviewers: {
+          disconnect: {
             id: reviewerId,
           },
         },
       },
-        });
+    });
 
-        // If reviewer has no other proposals, delete the reviewer
-        if (otherProposals.length === 0) {
-            await prisma.reviewer.delete({
-                where: {
+    // If reviewer has no other proposals, delete the reviewer
+    if (otherProposals.length === 0) {
+      await prisma.reviewer.delete({
+        where: {
           id: reviewerId,
         },
-            });
-        }
-
-        res.status(200).json({
-      message: "Reviewer removed successfully",
-        });
-    } catch (error) {
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
+      });
     }
+
+    res.status(200).json({
+      message: "Reviewer removed successfully",
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
 };
 
 // Get panelists for a campus
 export const getPanelists = async (req, res, next) => {
-    try {
-        // Get faculty member to retrieve campus ID
-        const facultyMember = await prisma.facultyMember.findUnique({
-            where: {
+  try {
+    // Get faculty member to retrieve campus ID
+    const facultyMember = await prisma.facultyMember.findUnique({
+      where: {
         userId: req.user.id,
-            },
-            select: {
+      },
+      select: {
         campusId: true,
       },
-        });
+    });
 
-        if (!facultyMember || !facultyMember.campusId) {
+    if (!facultyMember || !facultyMember.campusId) {
       const error = new Error("Faculty member campus not found");
-            error.statusCode = 400;
-            throw error;
-        }
+      error.statusCode = 400;
+      throw error;
+    }
 
-        // Get all panelists for the faculty member's campus
-        const panelists = await prisma.panelist.findMany({
-            orderBy: {
+    // Get all panelists for the faculty member's campus
+    const panelists = await prisma.panelist.findMany({
+      orderBy: {
         name: "asc",
       },
-        });
+    });
 
-        res.status(200).json({
+    res.status(200).json({
       message: "Panelists retrieved successfully",
       panelists: panelists,
-        });
-    } catch (error) {
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
     }
+    next(error);
+  }
 };
 
 // Add panelists to proposal
 export const addPanelists = async (req, res, next) => {
-    try {
-        const { proposalId } = req.params;
-        const { panelists } = req.body;
+  try {
+    const { proposalId } = req.params;
+    const { panelists } = req.body;
 
-        // Validate input
-        if (!proposalId || !panelists || !Array.isArray(panelists)) {
+    // Validate input
+    if (!proposalId || !panelists || !Array.isArray(panelists)) {
       const error = new Error("Invalid input data");
-            error.statusCode = 400;
-            throw error;
-        }
+      error.statusCode = 400;
+      throw error;
+    }
 
-        console.log(panelists);
+    console.log(panelists);
 
-        // Validate panelist objects
-        for (const panelist of panelists) {
-            if (!panelist.name || !panelist.email) {
+    // Validate panelist objects
+    for (const panelist of panelists) {
+      if (!panelist.name || !panelist.email) {
         const error = new Error("Each panelist must have name and email");
-                error.statusCode = 400;
-                throw error;
-            }
-        }
+        error.statusCode = 400;
+        throw error;
+      }
+    }
 
-        // Get proposal with student details and current status
-        const proposal = await prisma.proposal.findUnique({
-            where: { id: proposalId },
-            include: {
-                student: true,
-                panelists: true,
-                statuses: {
-                    where: {
+    // Get proposal with student details and current status
+    const proposal = await prisma.proposal.findUnique({
+      where: { id: proposalId },
+      include: {
+        student: true,
+        panelists: true,
+        statuses: {
+          where: {
             isCurrent: true,
-                    },
-                    include: {
+          },
+          include: {
             definition: true,
           },
         },
       },
-        });
+    });
 
-        if (!proposal) {
+    if (!proposal) {
       const error = new Error("Proposal not found");
-            error.statusCode = 404;
-            throw error;
-        }
+      error.statusCode = 404;
+      throw error;
+    }
 
-        if (!proposal.student) {
+    if (!proposal.student) {
       const error = new Error("Student not found for this proposal");
-            error.statusCode = 404;
-            throw error;
-        }
+      error.statusCode = 404;
+      throw error;
+    }
 
-        // Get user's campus
-        const faculty = await prisma.facultyMember.findUnique({
-            where: { userId: req.user.id },
+    // Get user's campus
+    const faculty = await prisma.facultyMember.findUnique({
+      where: { userId: req.user.id },
       select: { campusId: true },
-        });
+    });
 
-        if (!faculty || !faculty.campusId) {
+    if (!faculty || !faculty.campusId) {
       const error = new Error("Faculty campus not found");
-            error.statusCode = 404;
-            throw error;
-        }
+      error.statusCode = 404;
+      throw error;
+    }
 
-        // Process each panelist
-        const panelistsToAdd = [];
-        for (const panelist of panelists) {
-            // Check if panelist already exists
-            let existingPanelist = await prisma.panelist.findFirst({
-                where: {
-                    email: panelist.email,
+    // Process each panelist
+    const panelistsToAdd = [];
+    for (const panelist of panelists) {
+      // Check if panelist already exists
+      let existingPanelist = await prisma.panelist.findFirst({
+        where: {
+          email: panelist.email,
           campusId: faculty.campusId,
         },
-            });
+      });
 
-            // Create panelist if doesn't exist
-            if (!existingPanelist) {
-                existingPanelist = await prisma.panelist.create({
-                    data: {
-                        name: panelist.name,
-                        email: panelist.email,
-                        campus: {
+      // Create panelist if doesn't exist
+      if (!existingPanelist) {
+        existingPanelist = await prisma.panelist.create({
+          data: {
+            name: panelist.name,
+            email: panelist.email,
+            campus: {
               connect: { id: faculty.campusId },
             },
           },
-                });
-            }
+        });
+      }
 
-            // Check if panelist is already assigned to this proposal
+      // Check if panelist is already assigned to this proposal
       const alreadyAssigned = proposal.panelists.some(
         (p) => p.id === existingPanelist.id
       );
-            if (!alreadyAssigned) {
-                panelistsToAdd.push(existingPanelist.id);
-            }
-        }
+      if (!alreadyAssigned) {
+        panelistsToAdd.push(existingPanelist.id);
+      }
+    }
 
-        // Add panelists to proposal
-        if (panelistsToAdd.length > 0) {
-            await prisma.proposal.update({
-                where: { id: proposalId },
-                data: {
-                    panelists: {
+    // Add panelists to proposal
+    if (panelistsToAdd.length > 0) {
+      await prisma.proposal.update({
+        where: { id: proposalId },
+        data: {
+          panelists: {
             connect: panelistsToAdd.map((id) => ({ id })),
           },
         },
-            });
-        }
+      });
+    }
 
-        // Get updated proposal with panelists
-        const updatedProposal = await prisma.proposal.findUnique({
-            where: { id: proposalId },
-            include: {
+    // Get updated proposal with panelists
+    const updatedProposal = await prisma.proposal.findUnique({
+      where: { id: proposalId },
+      include: {
         panelists: true,
       },
-        });
+    });
 
-        res.status(200).json({
+    res.status(200).json({
       message: "Panelists added successfully",
       panelists: updatedProposal.panelists,
-        });
-    } catch (error) {
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
     }
+    next(error);
+  }
 };
 
 /** to be deleted */
 export const addPanelistMark = async (req, res, next) => {
-    try {
-        const { proposalId, panelistId } = req.params;
-        const { grade, feedback } = req.body;
+  try {
+    const { proposalId, panelistId } = req.params;
+    const { grade, feedback } = req.body;
 
-        // Validate input
+    // Validate input
     if (
       !proposalId ||
       !panelistId ||
@@ -1614,276 +1614,276 @@ export const addPanelistMark = async (req, res, next) => {
       feedback === undefined
     ) {
       const error = new Error("Invalid input data");
-            error.statusCode = 400;
-            throw error;
-        }
+      error.statusCode = 400;
+      throw error;
+    }
 
-        // Check if proposal exists
-        const proposal = await prisma.proposal.findUnique({
-            where: { id: proposalId },
-            include: {
-                panelists: true,
-                defenseGrades: true,
-                student: true,
-                statuses: {
-                    include: {
+    // Check if proposal exists
+    const proposal = await prisma.proposal.findUnique({
+      where: { id: proposalId },
+      include: {
+        panelists: true,
+        defenseGrades: true,
+        student: true,
+        statuses: {
+          include: {
             definition: true,
           },
         },
       },
-        });
+    });
 
-        if (!proposal) {
+    if (!proposal) {
       const error = new Error("Proposal not found");
-            error.statusCode = 404;
-            throw error;
-        }
+      error.statusCode = 404;
+      throw error;
+    }
 
-        // Check if panelist is assigned to proposal
+    // Check if panelist is assigned to proposal
     const isPanelistAssigned = proposal.panelists.some(
       (panelist) => panelist.id === panelistId
     );
 
-        if (!isPanelistAssigned) {
+    if (!isPanelistAssigned) {
       const error = new Error("Panelist is not assigned to this proposal");
-            error.statusCode = 400;
-            throw error;
-        }
+      error.statusCode = 400;
+      throw error;
+    }
 
-        let resultingGrade;
+    let resultingGrade;
 
-        // Create or update the defense grade
+    // Create or update the defense grade
     const existingGrade = proposal.defenseGrades.find(
       (grade) => grade.gradedById === panelistId
     );
 
-        if (existingGrade) {
-            // Update existing grade
-            resultingGrade = await prisma.proposalDefenseGrade.update({
-                where: { id: existingGrade.id },
+    if (existingGrade) {
+      // Update existing grade
+      resultingGrade = await prisma.proposalDefenseGrade.update({
+        where: { id: existingGrade.id },
         data: { grade, feedback, updatedBy: { connect: { id: req.user.id } } },
-            });
-        } else {
-            // Create new grade
-            resultingGrade = await prisma.proposalDefenseGrade.create({
-                data: {
-                    proposal: { connect: { id: proposalId } },
-                    gradedBy: { connect: { id: panelistId } },
-                    grade,
-                    feedback,
+      });
+    } else {
+      // Create new grade
+      resultingGrade = await prisma.proposalDefenseGrade.create({
+        data: {
+          proposal: { connect: { id: proposalId } },
+          gradedBy: { connect: { id: panelistId } },
+          grade,
+          feedback,
           submittedBy: { connect: { id: req.user.id } },
         },
-            });
-        }
+      });
+    }
 
-        // Calculate average if there are multiple grades
-        const updatedProposal = await prisma.proposal.findUnique({
-            where: { id: proposalId },
+    // Calculate average if there are multiple grades
+    const updatedProposal = await prisma.proposal.findUnique({
+      where: { id: proposalId },
       include: { defenseGrades: true },
-        });
+    });
 
-        if (updatedProposal.defenseGrades.length > 1) {
+    if (updatedProposal.defenseGrades.length > 1) {
       const totalGrade = updatedProposal.defenseGrades.reduce(
         (sum, grade) => sum + grade.grade,
         0
       );
-            const averageGrade = totalGrade / updatedProposal.defenseGrades.length;
+      const averageGrade = totalGrade / updatedProposal.defenseGrades.length;
 
-            // Update proposal with average defense mark
-            await prisma.proposal.update({
-                where: { id: proposalId },
-                data: {
+      // Update proposal with average defense mark
+      await prisma.proposal.update({
+        where: { id: proposalId },
+        data: {
           averageDefenseMark: averageGrade,
         },
-            });
+      });
 
-            // Update proposal status
-            await prisma.proposalStatus.updateMany({
-                where: {
-                    proposalId,
+      // Update proposal status
+      await prisma.proposalStatus.updateMany({
+        where: {
+          proposalId,
           isCurrent: true,
-                },
-                data: {
-                    isCurrent: false,
+        },
+        data: {
+          isCurrent: false,
           endDate: new Date(),
         },
-            });
+      });
 
-            // Get status definitions based on grade
-            const passedStatus = await prisma.statusDefinition.findFirst({
+      // Get status definitions based on grade
+      const passedStatus = await prisma.statusDefinition.findFirst({
         where: { name: "passed-proposal graded" },
-            });
+      });
 
-            const failedStatus = await prisma.statusDefinition.findFirst({
+      const failedStatus = await prisma.statusDefinition.findFirst({
         where: { name: "failed-proposal graded" },
-            });
+      });
 
-            if (!passedStatus || !failedStatus) {
+      if (!passedStatus || !failedStatus) {
         throw new Error("Status definitions not found");
-            }
+      }
 
-            // Create new proposal status
-            await prisma.proposalStatus.create({
-                data: {
-                    proposal: { connect: { id: proposalId } },
-                    definition: {
-                        connect: {
+      // Create new proposal status
+      await prisma.proposalStatus.create({
+        data: {
+          proposal: { connect: { id: proposalId } },
+          definition: {
+            connect: {
               id: averageGrade >= 60 ? passedStatus.id : failedStatus.id,
             },
-                    },
-                    isCurrent: true,
+          },
+          isCurrent: true,
           startDate: new Date(),
         },
-            });
+      });
 
-            // Update student status if student exists
-            if (proposal.student) {
-                // Set current student status to not current
-                await prisma.studentStatus.updateMany({
-                    where: {
-                        studentId: proposal.student.id,
+      // Update student status if student exists
+      if (proposal.student) {
+        // Set current student status to not current
+        await prisma.studentStatus.updateMany({
+          where: {
+            studentId: proposal.student.id,
             isCurrent: true,
-                    },
-                    data: {
-                        isCurrent: false,
+          },
+          data: {
+            isCurrent: false,
             endDate: new Date(),
           },
-                });
+        });
 
-                // Create new student status
-                await prisma.studentStatus.create({
-                    data: {
-                        student: { connect: { id: proposal.student.id } },
-                        definition: { 
-                            connect: { 
+        // Create new student status
+        await prisma.studentStatus.create({
+          data: {
+            student: { connect: { id: proposal.student.id } },
+            definition: {
+              connect: {
                 id: averageGrade >= 60 ? passedStatus.id : failedStatus.id,
               },
-                        },
-                        isCurrent: true,
-                        startDate: new Date(),
+            },
+            isCurrent: true,
+            startDate: new Date(),
             updatedBy: { connect: { id: req.user.id } },
           },
-                });
-            }
-        }
+        });
+      }
+    }
 
-        res.status(existingGrade ? 200 : 201).json({
+    res.status(existingGrade ? 200 : 201).json({
       message: existingGrade
         ? "Panelist mark updated successfully"
         : "Panelist mark added successfully",
       grade: resultingGrade,
     });
-    } catch (error) {
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
     }
+    next(error);
+  }
 };
 
 // Delete panelist from proposal
 export const deletePanelist = async (req, res, next) => {
-    try {
-        const { proposalId, panelistId } = req.params;
+  try {
+    const { proposalId, panelistId } = req.params;
 
-        // Check if proposal exists
-        const proposal = await prisma.proposal.findUnique({
-            where: {
+    // Check if proposal exists
+    const proposal = await prisma.proposal.findUnique({
+      where: {
         id: proposalId,
-            },
-            include: {
-                panelists: true,
+      },
+      include: {
+        panelists: true,
         defenseGrades: true,
       },
-        });
+    });
 
-        if (!proposal) {
+    if (!proposal) {
       const error = new Error("Proposal not found");
-            error.statusCode = 404;
-            throw error;
-        }
+      error.statusCode = 404;
+      throw error;
+    }
 
-        // Check if panelist is assigned to proposal
+    // Check if panelist is assigned to proposal
     const isPanelistAssigned = proposal.panelists.some(
       (panelist) => panelist.id === panelistId
     );
 
-        if (!isPanelistAssigned) {
+    if (!isPanelistAssigned) {
       const error = new Error("Panelist is not assigned to this proposal");
-            error.statusCode = 400;
-            throw error;
-        }
+      error.statusCode = 400;
+      throw error;
+    }
 
-        // Check if panelist has submitted any grades
+    // Check if panelist has submitted any grades
     const hasGrades = proposal.defenseGrades.some(
       (grade) => grade.panelistId === panelistId
     );
 
-        if (hasGrades) {
+    if (hasGrades) {
       const error = new Error(
         "Cannot remove panelist who has already submitted grades"
       );
-            error.statusCode = 400;
-            throw error;
-        }
+      error.statusCode = 400;
+      throw error;
+    }
 
-        // Check if panelist has other proposals assigned
-        const otherProposals = await prisma.proposal.findMany({
-            where: {
-                AND: [
-                    {
-                        panelists: {
-                            some: {
+    // Check if panelist has other proposals assigned
+    const otherProposals = await prisma.proposal.findMany({
+      where: {
+        AND: [
+          {
+            panelists: {
+              some: {
                 id: panelistId,
               },
             },
-                    },
-                    {
-                        id: {
+          },
+          {
+            id: {
               not: proposalId,
             },
           },
         ],
       },
-        });
+    });
 
-        // Delete panelist from proposal
-        await prisma.proposal.update({
-            where: {
+    // Delete panelist from proposal
+    await prisma.proposal.update({
+      where: {
         id: proposalId,
-            },
-            data: {
-                panelists: {
-                    disconnect: {
+      },
+      data: {
+        panelists: {
+          disconnect: {
             id: panelistId,
           },
         },
       },
-        });
+    });
 
-        // If panelist has no other proposals, delete the panelist and disconnect from all relations
-        if (otherProposals.length === 0) {
-            // First disconnect from all proposals
-            // await prisma.proposal.updateMany({
-            //     where: {
-            //         panelists: {
-            //             some: {
-            //                 id: panelistId
-            //             }
-            //         }
-            //     },
-            //     data: {
-            //         panelists: {
-            //             disconnect: {
-            //                 id: panelistId
-            //             }
-            //         }
-            //     }
-            // });
+    // If panelist has no other proposals, delete the panelist and disconnect from all relations
+    if (otherProposals.length === 0) {
+      // First disconnect from all proposals
+      // await prisma.proposal.updateMany({
+      //     where: {
+      //         panelists: {
+      //             some: {
+      //                 id: panelistId
+      //             }
+      //         }
+      //     },
+      //     data: {
+      //         panelists: {
+      //             disconnect: {
+      //                 id: panelistId
+      //             }
+      //         }
+      //     }
+      // });
 
-            // Then delete the panelist
-            await prisma.panelist.delete({
-                where: {
+      // Then delete the panelist
+      await prisma.panelist.delete({
+        where: {
           id: panelistId,
         },
       });
@@ -1914,7 +1914,7 @@ export const getChairpersons = async (req, res, next) => {
       },
     });
 
-        res.status(200).json({
+    res.status(200).json({
       message: "Chairpersons retrieved successfully",
       chairpersons,
     });
@@ -1966,12 +1966,12 @@ export const createChairperson = async (req, res, next) => {
       message: "Chairperson created successfully",
       chairperson,
     });
-    } catch (error) {
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
     }
+    next(error);
+  }
 };
 
 /**
@@ -2204,245 +2204,243 @@ export const deleteExternalPerson = async (req, res, next) => {
 /** to be deleted */
 // Add defense date to proposal
 export const addDefenseDate = async (req, res, next) => {
-    try {
-        const { proposalId } = req.params;
-        const { defenseDate, type } = req.body;
+  try {
+    const { proposalId } = req.params;
+    const { defenseDate, type } = req.body;
 
-        // Validate input
-        if (!proposalId || !defenseDate || !type) {
+    // Validate input
+    if (!proposalId || !defenseDate || !type) {
       const error = new Error("Invalid input data");
-            error.statusCode = 400;
-            throw error;
-        }
+      error.statusCode = 400;
+      throw error;
+    }
 
-        // Check if proposal exists
-        const proposal = await prisma.proposal.findUnique({
-            where: { id: proposalId },
-            include: {
-                student: true,
-                panelists: true,
-                statuses: {
-                    where: {
+    // Check if proposal exists
+    const proposal = await prisma.proposal.findUnique({
+      where: { id: proposalId },
+      include: {
+        student: true,
+        panelists: true,
+        statuses: {
+          where: {
             isCurrent: true,
-                    },
-                    include: {
+          },
+          include: {
             definition: true,
           },
         },
       },
-        });
+    });
 
-        if (!proposal) {
+    if (!proposal) {
       const error = new Error("Proposal not found");
-            error.statusCode = 404;
-            throw error;
-        }
+      error.statusCode = 404;
+      throw error;
+    }
 
-        // If type is reschedule, just update the defense date
+    // If type is reschedule, just update the defense date
     if (type === "reschedule") {
-            const updatedProposal = await prisma.proposal.update({
-                where: { id: proposalId },
-                data: {
+      const updatedProposal = await prisma.proposal.update({
+        where: { id: proposalId },
+        data: {
           defenseDate: new Date(defenseDate),
         },
-            });
+      });
 
-            return res.status(200).json({
+      return res.status(200).json({
         message: "Defense date rescheduled successfully",
         proposal: updatedProposal,
-            });
-        }
+      });
+    }
 
-        // For new defense date scheduling, continue with status updates
-        // Update current proposal status to not current
-        await prisma.proposalStatus.updateMany({
-            where: {
-                proposalId,
+    // For new defense date scheduling, continue with status updates
+    // Update current proposal status to not current
+    await prisma.proposalStatus.updateMany({
+      where: {
+        proposalId,
         isCurrent: true,
-            },
-            data: {
-                isCurrent: false,
+      },
+      data: {
+        isCurrent: false,
         endDate: new Date(),
       },
-        });
+    });
 
-        // Get the status definition for "waiting for proposal defense"
-        const waitingForDefenseStatus = await prisma.statusDefinition.findFirst({
-            where: {
+    // Get the status definition for "waiting for proposal defense"
+    const waitingForDefenseStatus = await prisma.statusDefinition.findFirst({
+      where: {
         name: "waiting for proposal defense",
       },
-        });
+    });
 
-        if (!waitingForDefenseStatus) {
+    if (!waitingForDefenseStatus) {
       throw new Error("Status definition not found");
-        }
+    }
 
-        // Create new proposal status
-        await prisma.proposalStatus.create({
-            data: {
-                proposal: { connect: { id: proposalId } },
-                definition: { connect: { id: waitingForDefenseStatus.id } },
-                isCurrent: true,
+    // Create new proposal status
+    await prisma.proposalStatus.create({
+      data: {
+        proposal: { connect: { id: proposalId } },
+        definition: { connect: { id: waitingForDefenseStatus.id } },
+        isCurrent: true,
         startDate: new Date(),
       },
-        });
+    });
 
-        // Update student status
-        if (proposal.student) {
-            // Set current student status to not current
-            await prisma.studentStatus.updateMany({
-                where: {
-                    studentId: proposal.student.id,
+    // Update student status
+    if (proposal.student) {
+      // Set current student status to not current
+      await prisma.studentStatus.updateMany({
+        where: {
+          studentId: proposal.student.id,
           isCurrent: true,
-                },
-                data: {
-                    isCurrent: false,
+        },
+        data: {
+          isCurrent: false,
           endDate: new Date(),
         },
-            });
+      });
 
-            // Create new student status
-            await prisma.studentStatus.create({
-                data: {
-                    student: { connect: { id: proposal.student.id } },
-                    definition: { connect: { id: waitingForDefenseStatus.id } },
-                    isCurrent: true,
-                    startDate: new Date(),
+      // Create new student status
+      await prisma.studentStatus.create({
+        data: {
+          student: { connect: { id: proposal.student.id } },
+          definition: { connect: { id: waitingForDefenseStatus.id } },
+          isCurrent: true,
+          startDate: new Date(),
           updatedBy: { connect: { id: req.user.id } },
         },
-            });
-        }
+      });
+    }
 
-        // Update proposal with defense date
-        const updatedProposal = await prisma.proposal.update({
-            where: { id: proposalId },
-            data: {
+    // Update proposal with defense date
+    const updatedProposal = await prisma.proposal.update({
+      where: { id: proposalId },
+      data: {
         defenseDate: new Date(defenseDate),
       },
-        });
+    });
 
-        res.status(200).json({
+    res.status(200).json({
       message: "Defense date added successfully",
       proposal: updatedProposal,
-        });
-    } catch (error) {
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
     }
+    next(error);
+  }
 };
 
 export const addComplianceReportDate = async (req, res, next) => {
-    try {
-        const { proposalId } = req.params;
-        const { complianceReportDate } = req.body;
+  try {
+    const { proposalId } = req.params;
+    const { complianceReportDate } = req.body;
 
-        // Validate input
-        if (!proposalId || !complianceReportDate) {
+    // Validate input
+    if (!proposalId || !complianceReportDate) {
       const error = new Error("Invalid input data");
-            error.statusCode = 400;
-            throw error;
-        }
+      error.statusCode = 400;
+      throw error;
+    }
 
-        // Check if proposal exists
-        const proposal = await prisma.proposal.findUnique({
-            where: { id: proposalId },
-            include: {
-                student: true,
-                statuses: {
-                    include: {
+    // Check if proposal exists
+    const proposal = await prisma.proposal.findUnique({
+      where: { id: proposalId },
+      include: {
+        student: true,
+        statuses: {
+          include: {
             definition: true,
           },
         },
       },
-        });
+    });
 
-        if (!proposal) {
+    if (!proposal) {
       const error = new Error("Proposal not found");
-            error.statusCode = 404;
-            throw error;
-        }
+      error.statusCode = 404;
+      throw error;
+    }
 
-        // Get status definition for compliance report submitted
+    // Get status definition for compliance report submitted
     const complianceReportSubmittedStatus =
       await prisma.statusDefinition.findFirst({
         where: { name: "compliance report submitted" },
-        });
+      });
 
-        if (!complianceReportSubmittedStatus) {
+    if (!complianceReportSubmittedStatus) {
       throw new Error("Status definition not found");
-        }
+    }
 
-        // Update current status to not current
-        await prisma.proposalStatus.updateMany({
-            where: {
-                proposalId,
+    // Update current status to not current
+    await prisma.proposalStatus.updateMany({
+      where: {
+        proposalId,
         isCurrent: true,
-            },
-            data: {
-                isCurrent: false,
+      },
+      data: {
+        isCurrent: false,
         endDate: new Date(),
       },
-        });
+    });
 
-        // Create new status for compliance report submitted
-        await prisma.proposalStatus.create({
-            data: {
-                proposal: { connect: { id: proposalId } },
-                definition: { connect: { id: complianceReportSubmittedStatus.id } },
-                isCurrent: true,
+    // Create new status for compliance report submitted
+    await prisma.proposalStatus.create({
+      data: {
+        proposal: { connect: { id: proposalId } },
+        definition: { connect: { id: complianceReportSubmittedStatus.id } },
+        isCurrent: true,
         startDate: new Date(),
       },
-        });
+    });
 
-        // Update student status if student exists
-        if (proposal.student) {
-            // Set current student status to not current
-            await prisma.studentStatus.updateMany({
-                where: {
-                    studentId: proposal.student.id,
+    // Update student status if student exists
+    if (proposal.student) {
+      // Set current student status to not current
+      await prisma.studentStatus.updateMany({
+        where: {
+          studentId: proposal.student.id,
           isCurrent: true,
-                },
-                data: {
-                    isCurrent: false,
+        },
+        data: {
+          isCurrent: false,
           endDate: new Date(),
         },
-            });
+      });
 
-            // Create new student status
-            await prisma.studentStatus.create({
-                data: {
-                    student: { connect: { id: proposal.student.id } },
-                    definition: { connect: { id: complianceReportSubmittedStatus.id } },
-                    isCurrent: true,
-                    startDate: new Date(),
+      // Create new student status
+      await prisma.studentStatus.create({
+        data: {
+          student: { connect: { id: proposal.student.id } },
+          definition: { connect: { id: complianceReportSubmittedStatus.id } },
+          isCurrent: true,
+          startDate: new Date(),
           updatedBy: { connect: { id: req.user.id } },
         },
-            });
-        }
+      });
+    }
 
-        // Update proposal with compliance report date
-        const updatedProposal = await prisma.proposal.update({
-            where: { id: proposalId },
-            data: {
-                complianceReportDate: new Date(complianceReportDate),
+    // Update proposal with compliance report date
+    const updatedProposal = await prisma.proposal.update({
+      where: { id: proposalId },
+      data: {
+        complianceReportDate: new Date(complianceReportDate),
       },
-        });
+    });
 
-        res.status(200).json({
+    res.status(200).json({
       message: "Compliance report date added successfully",
       proposal: updatedProposal,
-        });
-    } catch (error) {
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
     }
+    next(error);
+  }
 };
-
-
 
 /**
  * Update field letter date for a proposal
@@ -2450,8 +2448,8 @@ export const addComplianceReportDate = async (req, res, next) => {
  * @access Private (School Admin)
  */
 export const updateFieldLetterDate = async (req, res, next) => {
-    try {
-        const { proposalId } = req.params;
+  try {
+    const { proposalId } = req.params;
     const { fieldLetterDate } = req.body;
 
     if (!fieldLetterDate) {
@@ -2469,29 +2467,29 @@ export const updateFieldLetterDate = async (req, res, next) => {
     }
 
     // Check if proposal exists
-        const proposal = await prisma.proposal.findUnique({
-            where: { id: proposalId },
-            include: {
-                student: true,
+    const proposal = await prisma.proposal.findUnique({
+      where: { id: proposalId },
+      include: {
+        student: true,
       },
-        });
+    });
 
-        if (!proposal) {
+    if (!proposal) {
       const error = new Error("Proposal not found");
-            error.statusCode = 404;
-            throw error;
-        }
+      error.statusCode = 404;
+      throw error;
+    }
 
-        // Get letter to field status definition
+    // Get letter to field status definition
     const letterToFieldStatus = await prisma.statusDefinition.findFirst({
       where: { name: "letter to field issued" },
-        });
+    });
 
-        if (!letterToFieldStatus) {
+    if (!letterToFieldStatus) {
       const error = new Error("Letter to field status definition not found");
-            error.statusCode = 404;
-            throw error;
-        }
+      error.statusCode = 404;
+      throw error;
+    }
 
     // Get fieldwork status definition
     const fieldworkStatus = await prisma.statusDefinition.findFirst({
@@ -2504,23 +2502,23 @@ export const updateFieldLetterDate = async (req, res, next) => {
       throw error;
     }
 
-        // Update student status
-        await prisma.studentStatus.updateMany({
-            where: {
-                studentId: proposal.student.id,
+    // Update student status
+    await prisma.studentStatus.updateMany({
+      where: {
+        studentId: proposal.student.id,
         isCurrent: true,
-            },
-            data: {
-                isCurrent: false,
+      },
+      data: {
+        isCurrent: false,
         endDate: new Date(),
       },
-        });
+    });
 
     // Create letter to field status
-        await prisma.studentStatus.create({
-            data: {
-                student: { connect: { id: proposal.student.id } },
-                definition: { connect: { id: letterToFieldStatus.id } },
+    await prisma.studentStatus.create({
+      data: {
+        student: { connect: { id: proposal.student.id } },
+        definition: { connect: { id: letterToFieldStatus.id } },
         isCurrent: false,
         startDate: new Date(),
         endDate: new Date(),
@@ -2533,8 +2531,8 @@ export const updateFieldLetterDate = async (req, res, next) => {
       data: {
         student: { connect: { id: proposal.student.id } },
         definition: { connect: { id: fieldworkStatus.id } },
-                isCurrent: true,
-                startDate: new Date(),
+        isCurrent: true,
+        startDate: new Date(),
         updatedBy: { connect: { id: req.user.id } },
       },
     });
@@ -2545,7 +2543,7 @@ export const updateFieldLetterDate = async (req, res, next) => {
         proposalId: proposalId,
         isCurrent: true,
       },
-            data: {
+      data: {
         isCurrent: false,
         endDate: new Date(),
       },
@@ -2553,7 +2551,7 @@ export const updateFieldLetterDate = async (req, res, next) => {
 
     await prisma.proposalStatus.create({
       data: {
-                proposal: { connect: { id: proposalId } },
+        proposal: { connect: { id: proposalId } },
         definition: { connect: { id: letterToFieldStatus.id } },
         isCurrent: true,
         startDate: new Date(),
@@ -2562,9 +2560,9 @@ export const updateFieldLetterDate = async (req, res, next) => {
     });
 
     // Update the field letter date
-        const updatedProposal = await prisma.proposal.update({
-            where: { id: proposalId },
-            data: {
+    const updatedProposal = await prisma.proposal.update({
+      where: { id: proposalId },
+      data: {
         fieldLetterDate: new Date(fieldLetterDate),
       },
     });
@@ -2584,16 +2582,16 @@ export const updateFieldLetterDate = async (req, res, next) => {
 
 /**
  * Update Ethics Committee Date for a proposal
- * @param {*} req 
- * @param {*} res 
- * @param {*} next 
+ * @param {*} req
+ * @param {*} res
+ * @param {*} next
  */
 
 export const updateEthicsCommitteeDate = async (req, res, next) => {
   try {
-        const { proposalId } = req.params;
+    const { proposalId } = req.params;
     const { ethicsCommitteeDate } = req.body;
-    
+
     if (!ethicsCommitteeDate) {
       const error = new Error("ETHICS COMMITTEE DATE IS REQUIRED");
       error.statusCode = 400;
@@ -2608,18 +2606,18 @@ export const updateEthicsCommitteeDate = async (req, res, next) => {
       throw error;
     }
     // Check if proposal exists
-        const proposal = await prisma.proposal.findUnique({
-            where: { id: proposalId },
-            include: {
-                student: true,
+    const proposal = await prisma.proposal.findUnique({
+      where: { id: proposalId },
+      include: {
+        student: true,
       },
-        });
+    });
 
-        if (!proposal) {
+    if (!proposal) {
       const error = new Error("Proposal not found");
-            error.statusCode = 404;
-            throw error;
-        }
+      error.statusCode = 404;
+      throw error;
+    }
 
     // Get letter to field status definition
     const ethicsCommitteeStatus = await prisma.statusDefinition.findFirst({
@@ -2628,74 +2626,73 @@ export const updateEthicsCommitteeDate = async (req, res, next) => {
 
     if (!ethicsCommitteeStatus) {
       throw new Error("Ethics Committee Status not found");
-        }
+    }
 
-           // Update student status
-        await prisma.studentStatus.updateMany({
-            where: {
-                studentId: proposal.student.id,
-        isCurrent: true,
-            },
-            data: {
-                isCurrent: false,
-        endDate: new Date(),
-      },
-        });
-
-         // Create letter to ethics committee status
-        await prisma.studentStatus.create({
-            data: {
-                student: { connect: { id: proposal.student.id } },
-                definition: { connect: { id: ethicsCommitteeStatus.id } },
-        isCurrent: true,
-        startDate: new Date(),
-       
-        updatedBy: { connect: { id: req.user.id } },
-      },
-    });
-
-     // Update proposal statuses
-    await prisma.proposalStatus.updateMany({
+    // Update student status
+    await prisma.studentStatus.updateMany({
       where: {
-        proposalId: proposalId,
+        studentId: proposal.student.id,
         isCurrent: true,
       },
-            data: {
+      data: {
         isCurrent: false,
         endDate: new Date(),
       },
     });
 
-        // Create the status for Ethics Committee
-     await prisma.proposalStatus.create({
+    // Create letter to ethics committee status
+    await prisma.studentStatus.create({
       data: {
-                proposal: { connect: { id: proposalId } },
+        student: { connect: { id: proposal.student.id } },
         definition: { connect: { id: ethicsCommitteeStatus.id } },
         isCurrent: true,
         startDate: new Date(),
-        
+
+        updatedBy: { connect: { id: req.user.id } },
+      },
+    });
+
+    // Update proposal statuses
+    await prisma.proposalStatus.updateMany({
+      where: {
+        proposalId: proposalId,
+        isCurrent: true,
+      },
+      data: {
+        isCurrent: false,
+        endDate: new Date(),
+      },
+    });
+
+    // Create the status for Ethics Committee
+    await prisma.proposalStatus.create({
+      data: {
+        proposal: { connect: { id: proposalId } },
+        definition: { connect: { id: ethicsCommitteeStatus.id } },
+        isCurrent: true,
+        startDate: new Date(),
       },
     });
 
     // Update the Ethics Committee date
-        const updatedProposal = await prisma.proposal.update({
-            where: { id: proposalId },
-            data: {
-                ethicsCommitteeDate: new Date(ethicsCommitteeDate),
-              },
-        });
+    const updatedProposal = await prisma.proposal.update({
+      where: { id: proposalId },
+      data: {
+        ethicsCommitteeDate: new Date(ethicsCommitteeDate),
+      },
+    });
     res.status(200).json({
       message: "ETHICS COMMITTEE DATE ISSUED",
       proposal: updatedProposal,
-          });
+    });
   } catch (error) {
-   console.error("Error in updateEthicsCommitteeDate:", error);
+    console.error("Error in updateEthicsCommitteeDate:", error);
     if (!error.statusCode) {
       error.statusCode = 500;
     }
     next(error);
   }
-}
+};
 
 /**
  * Generate and record a defense report
@@ -2706,30 +2703,48 @@ export const generateDefenseReport = async (req, res) => {
   try {
     // Validate input fields
     const { proposalId } = req.params;
-    const { title, studentName, regNo, topic, supervisors, verdict, reportDate, department } = req.body;
+    const {
+      title,
+      studentName,
+      regNo,
+      topic,
+      supervisors,
+      verdict,
+      reportDate,
+      department,
+    } = req.body;
     const reportFile = req.file;
 
-    if (!proposalId || !title || !studentName || !regNo || !topic || !verdict || !reportDate || !reportFile) {
+    if (
+      !proposalId ||
+      !title ||
+      !studentName ||
+      !regNo ||
+      !topic ||
+      !verdict ||
+      !reportDate ||
+      !reportFile
+    ) {
       return res.status(400).json({
-        message: 'Missing required fields'
+        message: "Missing required fields",
       });
     }
 
     // Check if proposal exists
     const proposal = await prisma.proposal.findUnique({
-      where: { id: proposalId }
+      where: { id: proposalId },
     });
 
     if (!proposal) {
       return res.status(404).json({
-        message: 'Proposal not found'
+        message: "Proposal not found",
       });
     }
 
     // Sanitize student name for filename
     const sanitizedName = studentName
-      .replace(/[^a-zA-Z0-9\s]/g, '') // Remove special characters
-      .replace(/\s+/g, '_') // Replace spaces with underscores
+      .replace(/[^a-zA-Z0-9\s]/g, "") // Remove special characters
+      .replace(/\s+/g, "_") // Replace spaces with underscores
       .toLowerCase(); // Convert to lowercase
 
     // Generate filename using sanitized student name
@@ -2752,8 +2767,8 @@ export const generateDefenseReport = async (req, res) => {
         fileName: filename, // Use the sanitized filename
         fileType: reportFile.mimetype,
         proposal: { connect: { id: proposalId } },
-        generatedBy: { connect: { id: req.user.id } }
-      }
+        generatedBy: { connect: { id: req.user.id } },
+      },
     });
 
     // Log activity
@@ -2763,8 +2778,8 @@ export const generateDefenseReport = async (req, res) => {
         action: `Generated defense report for ${studentName} (${regNo})`,
         entityType: "DefenseReport",
         entityId: defenseReport.id,
-        details: `Report type: Defense Report, Verdict: ${verdict}`
-      }
+        details: `Report type: Defense Report, Verdict: ${verdict}`,
+      },
     });
 
     res.status(201).json({
@@ -2779,15 +2794,14 @@ export const generateDefenseReport = async (req, res) => {
         regNo: defenseReport.regNo,
         topic: defenseReport.topic,
         verdict: defenseReport.verdict,
-        fileName: defenseReport.fileName // Include filename in response
-      }
+        fileName: defenseReport.fileName, // Include filename in response
+      },
     });
-
   } catch (error) {
-    console.error('Error generating defense report:', error);
+    console.error("Error generating defense report:", error);
     res.status(500).json({
-      message: 'Error generating defense report',
-      error: error.message
+      message: "Error generating defense report",
+      error: error.message,
     });
   }
 };
@@ -2855,28 +2869,34 @@ export const downloadDefenseReport = async (req, res) => {
       select: {
         fileData: true,
         fileName: true,
-        fileType: true
-      }
+        fileType: true,
+      },
     });
 
     if (!report || !report.fileData) {
       return res.status(404).json({
-        message: 'Defense report not found or file data is missing'
+        message: "Defense report not found or file data is missing",
       });
     }
 
     // Set response headers
-    res.setHeader('Content-Type', report.fileType || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-    res.setHeader('Content-Disposition', `attachment; filename="${report.fileName}"`);
-    
+    res.setHeader(
+      "Content-Type",
+      report.fileType ||
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${report.fileName}"`
+    );
+
     // Send the file data
     res.send(Buffer.from(report.fileData));
-
   } catch (error) {
-    console.error('Error downloading defense report:', error);
+    console.error("Error downloading defense report:", error);
     res.status(500).json({
-      message: 'Error downloading defense report',
-      error: error.message
+      message: "Error downloading defense report",
+      error: error.message,
     });
   }
 };
@@ -2930,9 +2950,9 @@ export const getStudentBooks = async (req, res, next) => {
       orderBy: {
         submissionDate: "desc",
       },
-        });
+    });
 
-        res.status(200).json({
+    res.status(200).json({
       message: "Student books retrieved successfully",
       books,
     });
@@ -2988,12 +3008,12 @@ export const getAllBooks = async (req, res, next) => {
       message: "Books retrieved successfully",
       books,
     });
-    } catch (error) {
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
     }
+    next(error);
+  }
 };
 
 export const getBook = async (req, res, next) => {
@@ -3450,11 +3470,11 @@ export const updateInternalExaminerMark = async (req, res, next) => {
       throw error;
     }
 
-    if (!comments) {
-      const error = new Error("Comments are required");
-      error.statusCode = 400;
-      throw error;
-    }
+    // if (!comments) {
+    //   const error = new Error("Comments are required");
+    //   error.statusCode = 400;
+    //   throw error;
+    // }
 
     // Check if assignment exists
     const existingAssignment = await prisma.examinerBookAssignment.findUnique({
@@ -4030,8 +4050,8 @@ export const scheduleProposalDefense = async (req, res, next) => {
       include: {
         student: {
           include: {
-            supervisors: true // Include supervisors
-          }
+            supervisors: true, // Include supervisors
+          },
         },
         statuses: {
           include: {
@@ -4218,26 +4238,34 @@ export const scheduleProposalDefense = async (req, res, next) => {
         name: `${existingProposal.student.firstName} ${existingProposal.student.lastName}`,
       },
       // Add all supervisors
-      ...existingProposal.student.supervisors.map(supervisor => ({
+      ...existingProposal.student.supervisors.map((supervisor) => ({
         category: "SUPERVISOR",
         id: supervisor.id,
         email: supervisor.email,
         name: supervisor.name,
       })),
       // Add chairperson if exists
-      ...(proposalDefense.chairperson ? [{
-        category: "CHAIRPERSON",
-        id: proposalDefense.chairperson.id,
-        email: proposalDefense.chairperson.email,
-        name: proposalDefense.chairperson.name,
-      }] : []),
+      ...(proposalDefense.chairperson
+        ? [
+            {
+              category: "CHAIRPERSON",
+              id: proposalDefense.chairperson.id,
+              email: proposalDefense.chairperson.email,
+              name: proposalDefense.chairperson.name,
+            },
+          ]
+        : []),
       // Add minutes secretary if exists
-      ...(proposalDefense.minutesSecretary ? [{
-        category: "MINUTES_SECRETARY",
-        id: proposalDefense.minutesSecretary.id,
-        email: proposalDefense.minutesSecretary.email,
-        name: proposalDefense.minutesSecretary.name,
-      }] : []),
+      ...(proposalDefense.minutesSecretary
+        ? [
+            {
+              category: "MINUTES_SECRETARY",
+              id: proposalDefense.minutesSecretary.id,
+              email: proposalDefense.minutesSecretary.email,
+              name: proposalDefense.minutesSecretary.name,
+            },
+          ]
+        : []),
       // Add panelists
       ...proposalDefense.panelists.map((panelist) => ({
         category: "PANELIST",
@@ -4434,9 +4462,9 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
         proposal: {
           include: {
             student: {
-                include: {
-                    supervisors: true
-                }
+              include: {
+                supervisors: true,
+              },
             },
           },
         },
@@ -4478,8 +4506,8 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
       },
       include: {
         panelists: true,
-        chairperson:true,
-        
+        chairperson: true,
+
         proposal: {
           include: {
             student: true,
@@ -4571,7 +4599,11 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
     // After updating the defense status, add notification scheduling
     if (defenseStatus === "COMPLETED" || defenseStatus === "FAILED") {
       // Schedule notifications for passed defense
-      if (verdict === "PASS" || verdict === "PASS_WITH_MINOR_CORRECTIONS" || verdict === "PASS_WITH_MAJOR_CORRECTIONS") {
+      if (
+        verdict === "PASS" ||
+        verdict === "PASS_WITH_MINOR_CORRECTIONS" ||
+        verdict === "PASS_WITH_MAJOR_CORRECTIONS"
+      ) {
         const student = existingDefense.proposal.student;
         const supervisors = existingDefense.proposal.student.supervisors;
         const chairperson = existingDefense.chairperson;
@@ -4580,18 +4612,21 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
         complianceDueDate.setMonth(complianceDueDate.getMonth() + 2);
 
         // Format dates for email
-        const formattedDefenseDate = defenseDate.toLocaleDateString('en-US', {
-          weekday: 'long',
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric'
+        const formattedDefenseDate = defenseDate.toLocaleDateString("en-US", {
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
         });
-        const formattedComplianceDate = complianceDueDate.toLocaleDateString('en-US', {
-          weekday: 'long',
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric'
-        });
+        const formattedComplianceDate = complianceDueDate.toLocaleDateString(
+          "en-US",
+          {
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+          }
+        );
 
         // Determine correction type message
         let correctionMessage = "";
@@ -4603,11 +4638,11 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
 
         // Send immediate notification to chairperson (only initial verdict)
         await notificationService.scheduleNotification({
-          type: 'EMAIL',
-          statusType: 'PENDING',
-          title: 'Proposal Defense Verdict Recorded',
+          type: "EMAIL",
+          statusType: "PENDING",
+          title: "Proposal Defense Verdict Recorded",
           message: `The verdict for the proposal defense you chaired has been recorded.`,
-          recipientCategory: 'CHAIRPERSON',
+          recipientCategory: "CHAIRPERSON",
           recipientId: chairperson.id,
           recipientEmail: chairperson.email,
           recipientName: chairperson.name,
@@ -4620,28 +4655,34 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
                 <li>Date: ${formattedDefenseDate}</li>
                 <li>Title: ${existingDefense.proposal.title}</li>
                 <li>Verdict: ${verdict}</li>
-                ${comments ? `<li>Comments: ${comments}</li>` : ''}
+                ${comments ? `<li>Comments: ${comments}</li>` : ""}
               </ul>
-              ${correctionMessage ? `
+              ${
+                correctionMessage
+                  ? `
                 <p><strong>Corrections Information:</strong></p>
                 <ul>
                   <li>Type of corrections: ${correctionMessage}</li>
                   <li>Compliance report due: ${formattedComplianceDate}</li>
                 </ul>
-              ` : ''}
+              `
+                  : ""
+              }
               <p>Best regards,</p>
               <p>UMI System</p>
-            `
-          }
+            `,
+          },
         });
 
         // Send immediate notification to student
         await notificationService.scheduleNotification({
-          type: 'EMAIL',
-          statusType: 'PENDING',
-          title: 'Proposal Defense Result',
-          message: `Congratulations! You have successfully defended your proposal${correctionMessage ? ` with ${correctionMessage}` : ''}.`,
-          recipientCategory: 'STUDENT',
+          type: "EMAIL",
+          statusType: "PENDING",
+          title: "Proposal Defense Result",
+          message: `Congratulations! You have successfully defended your proposal${
+            correctionMessage ? ` with ${correctionMessage}` : ""
+          }.`,
+          recipientCategory: "STUDENT",
           recipientId: student.id,
           recipientEmail: student.email,
           recipientName: `${student.firstName} ${student.lastName}`,
@@ -4653,30 +4694,38 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
                 <li>Date: ${formattedDefenseDate}</li>
                 <li>Title: ${existingDefense.proposal.title}</li>
                 <li>Verdict: ${verdict}</li>
-                ${comments ? `<li>Comments: ${comments}</li>` : ''}
+                ${comments ? `<li>Comments: ${comments}</li>` : ""}
               </ul>
-              ${correctionMessage ? `
+              ${
+                correctionMessage
+                  ? `
                 <p><strong>Important:</strong></p>
                 <ul>
                   <li>You are required to submit a compliance report by ${formattedComplianceDate}</li>
                   <li>The compliance report should address all corrections mentioned during the defense</li>
                   <li>Please work closely with your supervisor on the corrections</li>
                 </ul>
-              ` : ''}
+              `
+                  : ""
+              }
               <p>Best regards,</p>
               <p>UMI System</p>
-            `
-          }
+            `,
+          },
         });
 
         // Send immediate notification to all supervisors
         for (const supervisor of supervisors) {
           await notificationService.scheduleNotification({
-            type: 'EMAIL',
-            statusType: 'PENDING',
-            title: 'Student Proposal Defense Result',
-            message: `Your student ${student.firstName} ${student.lastName} has successfully defended their proposal${correctionMessage ? ` with ${correctionMessage}` : ''}.`,
-            recipientCategory: 'SUPERVISOR',
+            type: "EMAIL",
+            statusType: "PENDING",
+            title: "Student Proposal Defense Result",
+            message: `Your student ${student.firstName} ${
+              student.lastName
+            } has successfully defended their proposal${
+              correctionMessage ? ` with ${correctionMessage}` : ""
+            }.`,
+            recipientCategory: "SUPERVISOR",
             recipientId: supervisor.id,
             recipientEmail: supervisor.email,
             recipientName: supervisor.name,
@@ -4688,20 +4737,24 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
                   <li>Date: ${formattedDefenseDate}</li>
                   <li>Title: ${existingDefense.proposal.title}</li>
                   <li>Verdict: ${verdict}</li>
-                  ${comments ? `<li>Comments: ${comments}</li>` : ''}
+                  ${comments ? `<li>Comments: ${comments}</li>` : ""}
                 </ul>
-                ${correctionMessage ? `
+                ${
+                  correctionMessage
+                    ? `
                   <p><strong>Supervisor Action Required:</strong></p>
                   <ul>
                     <li>Please guide the student in addressing the corrections</li>
                     <li>Compliance report is due by ${formattedComplianceDate}</li>
                     <li>You will need to review and approve the compliance report</li>
                   </ul>
-                ` : ''}
+                `
+                    : ""
+                }
                 <p>Best regards,</p>
                 <p>UMI System</p>
-              `
-            }
+              `,
+            },
           });
         }
 
@@ -4711,11 +4764,11 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
 
         // Reminder for student
         await notificationService.scheduleNotification({
-          type: 'REMINDER',
-          statusType: 'PENDING',
-          title: 'Compliance Report Reminder',
+          type: "REMINDER",
+          statusType: "PENDING",
+          title: "Compliance Report Reminder",
           message: `Reminder: Your compliance report is due in 2 weeks.`,
-          recipientCategory: 'STUDENT',
+          recipientCategory: "STUDENT",
           recipientId: student.id,
           recipientEmail: student.email,
           recipientName: `${student.firstName} ${student.lastName}`,
@@ -4731,18 +4784,18 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
               </ul>
               <p>Best regards,</p>
               <p>UMI System</p>
-            `
-          }
+            `,
+          },
         });
 
         // Reminder for all supervisors
         for (const supervisor of supervisors) {
           await notificationService.scheduleNotification({
-            type: 'REMINDER',
-            statusType: 'PENDING',
-            title: 'Student Compliance Report Reminder',
+            type: "REMINDER",
+            statusType: "PENDING",
+            title: "Student Compliance Report Reminder",
             message: `Reminder: Your student's compliance report is due in 2 weeks.`,
-            recipientCategory: 'SUPERVISOR',
+            recipientCategory: "SUPERVISOR",
             recipientId: supervisor.id,
             recipientEmail: supervisor.email,
             recipientName: supervisor.name,
@@ -4758,8 +4811,8 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
                 </ul>
                 <p>Best regards,</p>
                 <p>UMI System</p>
-              `
-            }
+              `,
+            },
           });
         }
 
@@ -4769,11 +4822,11 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
 
         // Final reminder for student
         await notificationService.scheduleNotification({
-          type: 'REMINDER',
-          statusType: 'PENDING',
-          title: 'Final Compliance Report Reminder',
+          type: "REMINDER",
+          statusType: "PENDING",
+          title: "Final Compliance Report Reminder",
           message: `Final reminder: Your compliance report is due in 1 week.`,
-          recipientCategory: 'STUDENT',
+          recipientCategory: "STUDENT",
           recipientId: student.id,
           recipientEmail: student.email,
           recipientName: `${student.firstName} ${student.lastName}`,
@@ -4789,18 +4842,18 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
               </ul>
               <p>Best regards,</p>
               <p>UMI System</p>
-            `
-          }
+            `,
+          },
         });
 
         // Final reminder for all supervisors
         for (const supervisor of supervisors) {
           await notificationService.scheduleNotification({
-            type: 'REMINDER',
-            statusType: 'PENDING',
-            title: 'Final Student Compliance Report Reminder',
+            type: "REMINDER",
+            statusType: "PENDING",
+            title: "Final Student Compliance Report Reminder",
             message: `Final reminder: Your student's compliance report is due in 1 week.`,
-            recipientCategory: 'SUPERVISOR',
+            recipientCategory: "SUPERVISOR",
             recipientId: supervisor.id,
             recipientEmail: supervisor.email,
             recipientName: supervisor.name,
@@ -4816,8 +4869,8 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
                 </ul>
                 <p>Best regards,</p>
                 <p>UMI System</p>
-              `
-            }
+              `,
+            },
           });
         }
       }
@@ -5877,725 +5930,719 @@ export const resetPassword = async (req, res, next) => {
   }
 };
 
-
 // Controller for getting all faculty members
 export const getAllFacultyMembers = async (req, res, next) => {
   try {
-
-      const schoolFacultyMember = await prisma.facultyMember.findUnique({
+    const schoolFacultyMember = await prisma.facultyMember.findUnique({
+      where: {
+        userId: req.user.id,
+      },
+      include: {
+        school: true,
+        campus: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            designation: true,
+          },
+        },
+      },
+    });
+    const [supervisors] = await Promise.all([
+      prisma.supervisor.findMany({
         where: {
-          userId: req.user.id
+          schoolId: schoolFacultyMember?.schoolId,
         },
         include: {
           school: true,
           campus: true,
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              role: true,
-              designation: true
-            }
-          }
-        }
-      });
-      const [supervisors] = await Promise.all([
-        prisma.supervisor.findMany({
-          where: {
-            schoolId: schoolFacultyMember?.schoolId
-          },
-          include: {
-            school: true,
-            campus: true,
-            department: true
-          }
-        })
-      ]);
+          department: true,
+        },
+      }),
+    ]);
 
-      res.status(200).json({facultyMembers: [
-          ...supervisors
-      ]}
-        );
+    res.status(200).json({ facultyMembers: [...supervisors] });
   } catch (error) {
-      if (!error.statusCode) {
-          error.statusCode = 500;
-      }
-      next(error);
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
   }
 };
-
 
 // Controller for getting all campuses - working
 export const getAllCampuses = async (req, res, next) => {
   try {
-      const campuses = await prisma.campus.findMany({
-          include: {
-              schools: true
-          }
-      });
+    const campuses = await prisma.campus.findMany({
+      include: {
+        schools: true,
+      },
+    });
 
-      res.status(200).json({
-          message: 'Campuses fetched successfully',
-          campuses
-      });
-
+    res.status(200).json({
+      message: "Campuses fetched successfully",
+      campuses,
+    });
   } catch (error) {
-      if (!error.statusCode) {
-          error.statusCode = 500;
-      }
-      next(error);
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
   }
 };
 
 // Controller for getting all departments of a school
 export const getAllDepartments = async (req, res, next) => {
   try {
-      const { schoolId } = req.params;
+    const { schoolId } = req.params;
 
-      // Check if school exists
-      const school = await prisma.school.findUnique({
-          where: { id: schoolId }
-      });
+    // Check if school exists
+    const school = await prisma.school.findUnique({
+      where: { id: schoolId },
+    });
 
-      if (!school) {
-          const error = new Error('School not found');
-          error.statusCode = 404;
-          throw error;
-      }
+    if (!school) {
+      const error = new Error("School not found");
+      error.statusCode = 404;
+      throw error;
+    }
 
-      const departments = await prisma.department.findMany({
-          where: { schoolId },
-          include: {
-              school: true
-          }
-      });
+    const departments = await prisma.department.findMany({
+      where: { schoolId },
+      include: {
+        school: true,
+      },
+    });
 
-      res.status(200).json({
-          message: 'Departments fetched successfully',
-          departments
-      });
-
+    res.status(200).json({
+      message: "Departments fetched successfully",
+      departments,
+    });
   } catch (error) {
-      if (!error.statusCode) {
-          error.statusCode = 500;
-      }
-      next(error);
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
   }
 };
 
 // Controller for getting all schools
 export const getAllSchools = async (req, res, next) => {
   try {
+    console.log("getAllSchools");
+    const schools = await prisma.school.findMany({
+      include: {
+        campus: true,
+        departments: true,
+        members: true,
+      },
+    });
 
-      console.log('getAllSchools');
-      const schools = await prisma.school.findMany({
-          include: {
-              campus: true,
-              departments: true,
-              members: true
-          }
-      });
-
-      res.status(200).json({
-          message: 'Schools fetched successfully',
-          schools
-      });
+    res.status(200).json({
+      message: "Schools fetched successfully",
+      schools,
+    });
   } catch (error) {
-      if (!error.statusCode) {
-          error.statusCode = 500;
-      }
-      next(error);
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
   }
 };
 
 // Controller for creating a supervisor
 export const createSupervisor = async (req, res, next) => {
   try {
-      const {
-          name,
-          title,
-          workEmail,
-          personalEmail,
-          primaryPhone,
-          secondaryPhone,
-          designation,
-          schoolId,
-          campusId,
-          departmentId,
-          facultyType,
-          employeeId,
-          password
-      } = req.body;
+    const {
+      name,
+      title,
+      workEmail,
+      personalEmail,
+      primaryPhone,
+      secondaryPhone,
+      designation,
+      schoolId,
+      campusId,
+      departmentId,
+      facultyType,
+      employeeId,
+      password,
+    } = req.body;
 
-      // Hash password
-      const hashedPassword = await bcrypt.hash(password, 12);
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 12);
 
-      // Set role based on faculty type
-      let role = 'SUPERVISOR';
+    // Set role based on faculty type
+    let role = "SUPERVISOR";
 
-      
+    // Create user first
+    const user = await prisma.user.create({
+      data: {
+        name,
+        title,
+        email: workEmail,
+        designation,
+        password: hashedPassword,
+        role,
+        phone: primaryPhone,
+      },
+    });
 
-      // Create user first
-      const user = await prisma.user.create({
-          data: {
-              name,
-              title,
-              email: workEmail,
-              designation,
-              password: hashedPassword,
-              role,
-              phone: primaryPhone
-          }
-      });
+    // Create supervisor and link user
+    const supervisor = await prisma.supervisor.create({
+      data: {
+        title,
+        name,
+        workEmail,
+        personalEmail,
+        primaryPhone,
+        secondaryPhone,
+        designation,
+        school: { connect: { id: schoolId } },
+        campus: { connect: { id: campusId } },
+        department: { connect: { id: departmentId } },
+        facultyType,
+        role,
+        employeeId,
+        user: { connect: { id: user.id } },
+      },
+    });
 
-      // Create supervisor and link user
-      const supervisor = await prisma.supervisor.create({
-          data: {
-              title,
-              name,
-              workEmail,
-              personalEmail,
-              primaryPhone,
-              secondaryPhone,
-              designation,
-              school: { connect: { id: schoolId } },
-              campus: { connect: { id: campusId } },
-              department: { connect: { id: departmentId } },
-              facultyType,
-              role,
-              employeeId,
-              user: { connect: { id: user.id } }
-          }
-      });
-
-      res.status(201).json({
-          message: 'Supervisor created successfully',
-          supervisor
-      });
+    res.status(201).json({
+      message: "Supervisor created successfully",
+      supervisor,
+    });
   } catch (error) {
-      if (!error.statusCode) {
-          error.statusCode = 500;
-      }
-      next(error);
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
   }
 };
 
 // Controller for getting a single supervisor
 export const getSupervisor = async (req, res, next) => {
   try {
-      const { supervisorId } = req.params;
+    const { supervisorId } = req.params;
 
-      const supervisor = await prisma.supervisor.findUnique({
-          where: { id: supervisorId },
-          include: {
-              school: true,
-              campus: true,
-              department: true,
-              
-          }
-      });
+    const supervisor = await prisma.supervisor.findUnique({
+      where: { id: supervisorId },
+      include: {
+        school: true,
+        campus: true,
+        department: true,
+      },
+    });
 
-      if (!supervisor) {
-          const error = new Error('Supervisor not found');
-          error.statusCode = 404;
-          throw error;
-      }
+    if (!supervisor) {
+      const error = new Error("Supervisor not found");
+      error.statusCode = 404;
+      throw error;
+    }
 
-      res.status(200).json({
-          supervisor
-      });
+    res.status(200).json({
+      supervisor,
+    });
   } catch (error) {
-      if (!error.statusCode) {
-          error.statusCode = 500;
-      }
-      next(error);
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
   }
 };
 
 // Get students assigned to supervisor
 export const getAssignedStudents = async (req, res, next) => {
   try {
-      const { supervisorId } = req.params;
+    const { supervisorId } = req.params;
 
-      // Check if supervisor exists
-      const supervisor = await prisma.supervisor.findUnique({
-          where: { id: supervisorId },
-          include: {
-              user: true
-          }
-      });
+    // Check if supervisor exists
+    const supervisor = await prisma.supervisor.findUnique({
+      where: { id: supervisorId },
+      include: {
+        user: true,
+      },
+    });
 
-      if (!supervisor) {
-          const error = new Error('Supervisor not found');
-          error.statusCode = 404;
-          throw error;
-      }
+    if (!supervisor) {
+      const error = new Error("Supervisor not found");
+      error.statusCode = 404;
+      throw error;
+    }
 
-      // Get all students assigned to this supervisor
-      const assignedStudents = await prisma.student.findMany({
-          where: {
-              supervisors: {
-                  some: {
-                      id: supervisorId
-                  }
-              }
+    // Get all students assigned to this supervisor
+    const assignedStudents = await prisma.student.findMany({
+      where: {
+        supervisors: {
+          some: {
+            id: supervisorId,
           },
+        },
+      },
+      include: {
+        campus: true,
+        statuses: {
           include: {
-              campus: true,
-              statuses: {
-                  
-                  include: {
-                      definition: true
-                  }
-              },
-              school: true,
-              department: true
-          }
-      });
-
-      res.status(200).json({
-          message: 'Students retrieved successfully',
-          supervisor: {
-              id: supervisor.id,
-              name: supervisor.user.name,
-              email: supervisor.user.email
+            definition: true,
           },
-          students: assignedStudents
-      });
+        },
+        school: true,
+        department: true,
+      },
+    });
 
+    res.status(200).json({
+      message: "Students retrieved successfully",
+      supervisor: {
+        id: supervisor.id,
+        name: supervisor.user.name,
+        email: supervisor.user.email,
+      },
+      students: assignedStudents,
+    });
   } catch (error) {
-      if (!error.statusCode) {
-          error.statusCode = 500;
-      }
-      next(error);
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
   }
 };
 
 // Controller for updating a supervisor
 export const updateSupervisor = async (req, res, next) => {
   try {
-      const { supervisorId } = req.params;
-      const { schoolId, campusId, departmentId, userId, ...updateData } = req.body;
+    const { supervisorId } = req.params;
+    const { schoolId, campusId, departmentId, userId, ...updateData } =
+      req.body;
 
-      // Get existing supervisor data before update
-      const existingSupervisor = await prisma.supervisor.findUnique({
-          where: { id: supervisorId },
-          include: {
-              user: true
-          }
+    // Get existing supervisor data before update
+    const existingSupervisor = await prisma.supervisor.findUnique({
+      where: { id: supervisorId },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!existingSupervisor) {
+      const error = new Error("Supervisor not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // Check if email is being changed and if it already exists
+    if (updateData.workEmail !== existingSupervisor.workEmail) {
+      const emailExists = await prisma.user.findUnique({
+        where: { email: updateData.workEmail },
       });
 
-      if (!existingSupervisor) {
-          const error = new Error('Supervisor not found');
-          error.statusCode = 404;
-          throw error;
+      if (emailExists) {
+        const error = new Error("Work email already exists");
+        error.statusCode = 400;
+        throw error;
       }
 
-      // Check if email is being changed and if it already exists
-      if (updateData.workEmail !== existingSupervisor.workEmail) {
-          const emailExists = await prisma.user.findUnique({
-              where: { email: updateData.workEmail }
-          });
+      // Update the user's email
+      await prisma.user.update({
+        where: { id: existingSupervisor.user.id },
+        data: { email: updateData.workEmail },
+      });
+    }
 
-          if (emailExists) {
-              const error = new Error('Work email already exists');
-              error.statusCode = 400;
-              throw error;
-          }
-
-          // Update the user's email
-          await prisma.user.update({
-              where: { id: existingSupervisor.user.id },
-              data: { email: updateData.workEmail }
-          });
+    // Track changes
+    const changes = [];
+    Object.keys(updateData).forEach((key) => {
+      if (updateData[key] !== existingSupervisor[key]) {
+        changes.push({
+          field: key,
+          oldValue: existingSupervisor[key],
+          newValue: updateData[key],
+        });
       }
+    });
 
-      // Track changes
-      const changes = [];
-      Object.keys(updateData).forEach(key => {
-          if (updateData[key] !== existingSupervisor[key]) {
-              changes.push({
-                  field: key,
-                  oldValue: existingSupervisor[key],
-                  newValue: updateData[key]
-              });
-          }
-      });
+    const updatedSupervisor = await prisma.supervisor.update({
+      where: { id: supervisorId },
+      data: {
+        ...updateData,
+        school: schoolId ? { connect: { id: schoolId } } : undefined,
+        campus: campusId ? { connect: { id: campusId } } : undefined,
+        department: departmentId
+          ? { connect: { id: departmentId } }
+          : undefined,
+      },
+      include: {
+        school: true,
+        campus: true,
+        department: true,
+        user: true,
+      },
+    });
 
-      const updatedSupervisor = await prisma.supervisor.update({
-          where: { id: supervisorId },
-          data: {
-              ...updateData,
-              school: schoolId ? { connect: { id: schoolId } } : undefined,
-              campus: campusId ? { connect: { id: campusId } } : undefined,
-              department: departmentId ? { connect: { id: departmentId } } : undefined
-          },
-          include: {
-              school: true,
-              campus: true,
-              department: true,
-              user: true
-          }
-      });
-
-      res.status(200).json({
-          message: 'Supervisor updated successfully',
-          supervisor: updatedSupervisor,
-          changes
-      });
+    res.status(200).json({
+      message: "Supervisor updated successfully",
+      supervisor: updatedSupervisor,
+      changes,
+    });
   } catch (error) {
-      if (!error.statusCode) {
-          error.statusCode = 500;
-      }
-      next(error);
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
   }
 };
 
 // Controller for assigning students to supervisor
 export const assignStudentsToSupervisor = async (req, res, next) => {
   try {
-      const { supervisorId } = req.params;
-      const { studentIds } = req.body;
+    const { supervisorId } = req.params;
+    const { studentIds } = req.body;
 
-      // Check if supervisor exists
-      const supervisor = await prisma.supervisor.findUnique({
-          where: { id: supervisorId },
-          include: {
-              user: true
-          }
+    // Check if supervisor exists
+    const supervisor = await prisma.supervisor.findUnique({
+      where: { id: supervisorId },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!supervisor) {
+      const error = new Error("Supervisor not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // Check if all students exist and if they already have supervisors
+    const students = await prisma.student.findMany({
+      where: {
+        id: {
+          in: studentIds,
+        },
+      },
+      include: {
+        supervisors: true,
+      },
+    });
+
+    if (students.length !== studentIds.length) {
+      const error = new Error("One or more students not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // Check if any student already has a supervisor
+    const studentsWithSupervisors = students.filter(
+      (student) => student.supervisors.length > 0
+    );
+    if (studentsWithSupervisors.length > 0) {
+      const error = new Error(
+        "One or more students already have supervisors assigned"
+      );
+      error.statusCode = 400;
+      error.details = studentsWithSupervisors.map((student) => student.id);
+      throw error;
+    }
+
+    // Get normal progress status definition
+    const normalProgressStatus = await prisma.statusDefinition.findFirst({
+      where: {
+        name: "normal progress",
+      },
+    });
+
+    if (!normalProgressStatus) {
+      const error = new Error("Normal Progress status definition not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // Update all students to be assigned to this supervisor and update their status
+    const updatePromises = studentIds.map(async (studentId) => {
+      // First update all existing statuses to not current
+      await prisma.studentStatus.updateMany({
+        where: {
+          studentId: studentId,
+          isCurrent: true,
+        },
+        data: { isCurrent: false, endDate: new Date() },
       });
 
-      if (!supervisor) {
-          const error = new Error('Supervisor not found');
-          error.statusCode = 404;
-          throw error;
-      }
+      // Create new normal progress status
+      await prisma.studentStatus.create({
+        data: {
+          student: { connect: { id: studentId } },
+          definition: { connect: { id: normalProgressStatus.id } },
+          isCurrent: true,
+          startDate: new Date(),
+          conditions: "Normal Progress",
+          isActive: true,
+        },
+      });
 
-      // Check if all students exist and if they already have supervisors
-      const students = await prisma.student.findMany({
+      // Assign supervisor
+      return prisma.student.update({
+        where: { id: studentId },
+        data: { supervisors: { connect: { id: supervisorId } } },
+      });
+    });
+
+    await Promise.all(updatePromises);
+
+    // Get updated students with their details
+    const updatedStudents = await prisma.student.findMany({
+      where: {
+        id: {
+          in: studentIds,
+        },
+      },
+      include: {
+        campus: true,
+        statuses: {
           where: {
-              id: {
-                  in: studentIds
-              }
+            isCurrent: true,
           },
           include: {
-              supervisors: true
-          }
-      });
-
-      if (students.length !== studentIds.length) {
-          const error = new Error('One or more students not found');
-          error.statusCode = 404;
-          throw error;
-      }
-
-      // Check if any student already has a supervisor
-      const studentsWithSupervisors = students.filter(student => student.supervisors.length > 0);
-      if (studentsWithSupervisors.length > 0) {
-          const error = new Error('One or more students already have supervisors assigned');
-          error.statusCode = 400;
-          error.details = studentsWithSupervisors.map(student => student.id);
-          throw error;
-      }
-
-      // Get normal progress status definition
-      const normalProgressStatus = await prisma.statusDefinition.findFirst({
-          where: {
-              name: 'normal progress'
-          }
-      });
-
-      if (!normalProgressStatus) {
-          const error = new Error('Normal Progress status definition not found');
-          error.statusCode = 404;
-          throw error;
-      }
-
-      // Update all students to be assigned to this supervisor and update their status
-      const updatePromises = studentIds.map(async studentId => {
-          // First update all existing statuses to not current
-          await prisma.studentStatus.updateMany({
-              where: { 
-                  studentId: studentId,
-                  isCurrent: true
-              },
-              data: { isCurrent: false, endDate: new Date() }
-          });
-
-          // Create new normal progress status
-          await prisma.studentStatus.create({
-              data: {
-                  student: { connect: { id: studentId } },
-                  definition: { connect: { id: normalProgressStatus.id } },
-                  isCurrent: true,
-                  startDate: new Date(),
-                  conditions: "Normal Progress",
-                  isActive: true
-              }
-          });
-
-          // Assign supervisor
-          return prisma.student.update({
-              where: { id: studentId },
-              data: { supervisors: { connect: { id: supervisorId } } }
-          });
-      });
-
-      await Promise.all(updatePromises);
-
-      // Get updated students with their details
-      const updatedStudents = await prisma.student.findMany({
-          where: {
-              id: {
-                  in: studentIds
-              }
+            definition: true,
           },
-          include: {
-              campus: true,
-              statuses: {
-                  where: {
-                      isCurrent: true
-                  },
-                  include: {
-                      definition: true
-                  }
-              }
-          }
-      });
+        },
+      },
+    });
 
-      // Track this activity
-      await prisma.userActivity.create({
-          data: {
-              user: { connect: { id: req.user?.id } },
-              action: 'ASSIGN_STUDENTS',
-              entityType: 'Supervisor',
-              entityId: supervisorId,
-              details: JSON.stringify({
-                  supervisorId,
-                  studentIds,
-                  description: `Assigned ${studentIds.length} student(s) to supervisor ${supervisor.user.name}`,
-              })
-          }
-      });
+    // Track this activity
+    await prisma.userActivity.create({
+      data: {
+        user: { connect: { id: req.user?.id } },
+        action: "ASSIGN_STUDENTS",
+        entityType: "Supervisor",
+        entityId: supervisorId,
+        details: JSON.stringify({
+          supervisorId,
+          studentIds,
+          description: `Assigned ${studentIds.length} student(s) to supervisor ${supervisor.user.name}`,
+        }),
+      },
+    });
 
-      res.status(200).json({
-          message: 'Students assigned successfully',
-          students: updatedStudents
-      });
-
+    res.status(200).json({
+      message: "Students assigned successfully",
+      students: updatedStudents,
+    });
   } catch (error) {
-      if (!error.statusCode) {
-          error.statusCode = 500;
-      }
-      next(error);
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
   }
 };
-
 
 // Controller for deleting a supervisor
 export const deleteSupervisor = async (req, res, next) => {
   try {
-      const { supervisorId } = req.params;
+    const { supervisorId } = req.params;
 
-      const supervisor = await prisma.supervisor.findUnique({
-          where: { id: supervisorId },
-          include: {
-              user: true,
-              students: true
-          }
-      });
+    const supervisor = await prisma.supervisor.findUnique({
+      where: { id: supervisorId },
+      include: {
+        user: true,
+        students: true,
+      },
+    });
 
-      if (!supervisor) {
-          const error = new Error('Supervisor not found');
-          error.statusCode = 404;
-          throw error;
-      }
+    if (!supervisor) {
+      const error = new Error("Supervisor not found");
+      error.statusCode = 404;
+      throw error;
+    }
 
-      // Check if supervisor has any students
-      if (supervisor.students.length > 0) {
-          const error = new Error('Cannot delete supervisor with assigned students');
-          error.statusCode = 400;
-          throw error;
-      }
+    // Check if supervisor has any students
+    if (supervisor.students.length > 0) {
+      const error = new Error(
+        "Cannot delete supervisor with assigned students"
+      );
+      error.statusCode = 400;
+      throw error;
+    }
 
-      // Delete associated user
-      await prisma.user.delete({
-          where: { id: supervisor.user.id }
-      });
+    // Delete associated user
+    await prisma.user.delete({
+      where: { id: supervisor.user.id },
+    });
 
-      // Delete supervisor
-      await prisma.supervisor.delete({
-          where: { id: supervisorId }
-      });
+    // Delete supervisor
+    await prisma.supervisor.delete({
+      where: { id: supervisorId },
+    });
 
-      res.status(200).json({
-          message: 'Supervisor deleted successfully'
-      });
+    res.status(200).json({
+      message: "Supervisor deleted successfully",
+    });
   } catch (error) {
-      if (!error.statusCode) {
-          error.statusCode = 500;
-      }
-      next(error);
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
   }
 };
 
 // Controller for changing a student's supervisor
 export const changeStudentSupervisor = async (req, res, next) => {
   try {
-      const { studentId } = req.params;
-      const { oldSupervisorId, newSupervisorId, reason } = req.body;
+    const { studentId } = req.params;
+    const { oldSupervisorId, newSupervisorId, reason } = req.body;
 
-      // Check if student exists
-      const student = await prisma.student.findUnique({
-          where: { id: studentId },
-          include: {
-              supervisors: true,
-              user:true
-          }
-      });
+    // Check if student exists
+    const student = await prisma.student.findUnique({
+      where: { id: studentId },
+      include: {
+        supervisors: true,
+        user: true,
+      },
+    });
 
-      if (!student) {
-          const error = new Error('Student not found');
-          error.statusCode = 404;
-          throw error;
-      }
+    if (!student) {
+      const error = new Error("Student not found");
+      error.statusCode = 404;
+      throw error;
+    }
 
-      // Check if old supervisor is actually assigned to the student
-      const isOldSupervisorAssigned = student.supervisors.some(
-          supervisor => supervisor.id === oldSupervisorId
+    // Check if old supervisor is actually assigned to the student
+    const isOldSupervisorAssigned = student.supervisors.some(
+      (supervisor) => supervisor.id === oldSupervisorId
+    );
+
+    if (!isOldSupervisorAssigned) {
+      const error = new Error(
+        "The specified old supervisor is not assigned to this student"
       );
+      error.statusCode = 400;
+      throw error;
+    }
 
-      if (!isOldSupervisorAssigned) {
-          const error = new Error('The specified old supervisor is not assigned to this student');
-          error.statusCode = 400;
-          throw error;
-      }
+    // Check if new supervisor exists
+    const newSupervisor = await prisma.supervisor.findUnique({
+      where: { id: newSupervisorId },
+      include: {
+        user: true,
+      },
+    });
 
-      // Check if new supervisor exists
-      const newSupervisor = await prisma.supervisor.findUnique({
-          where: { id: newSupervisorId },
+    if (!newSupervisor) {
+      const error = new Error("New supervisor not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // Get old supervisor details for the activity log
+    const oldSupervisor = await prisma.supervisor.findUnique({
+      where: { id: oldSupervisorId },
+      include: {
+        user: true,
+      },
+    });
+
+    // Update student's supervisors (remove old, add new)
+    const updatedStudent = await prisma.student.update({
+      where: { id: studentId },
+      data: {
+        supervisors: {
+          disconnect: { id: oldSupervisorId },
+          connect: { id: newSupervisorId },
+        },
+      },
+      include: {
+        supervisors: {
           include: {
-              user: true
-          }
-      });
-
-      if (!newSupervisor) {
-          const error = new Error('New supervisor not found');
-          error.statusCode = 404;
-          throw error;
-      }
-
-      // Get old supervisor details for the activity log
-      const oldSupervisor = await prisma.supervisor.findUnique({
-          where: { id: oldSupervisorId },
-          include: {
-              user: true
-          }
-      });
-
-      // Update student's supervisors (remove old, add new)
-      const updatedStudent = await prisma.student.update({
-          where: { id: studentId },
-          data: {
-              supervisors: {
-                  disconnect: { id: oldSupervisorId },
-                  connect: { id: newSupervisorId }
-              }
+            user: true,
           },
-          include: {
-              supervisors: {
-                  include: {
-                      user: true
-                  }
-              },
-              campus: true,
-              school: true,
-              department: true
-          }
-      });
+        },
+        campus: true,
+        school: true,
+        department: true,
+      },
+    });
 
-      // Track this activity
-      await prisma.userActivity.create({
-          data: {
-              user: { connect: { id: req.user?.id } },
-              action: 'CHANGE_SUPERVISOR',
-              entityType: 'Student',
-              entityId: studentId,
-              details: JSON.stringify({
-                  studentId,
-                  oldSupervisorId,
-                  oldSupervisorName: oldSupervisor?.user?.name,
-                  newSupervisorId,
-                  newSupervisorName: newSupervisor.user.name,
-                  reason,
-                  description: `Changed supervisor for student ${student.name} from ${oldSupervisor?.user?.name} to ${newSupervisor.user.name}`
-              })
-          }
-      });
+    // Track this activity
+    await prisma.userActivity.create({
+      data: {
+        user: { connect: { id: req.user?.id } },
+        action: "CHANGE_SUPERVISOR",
+        entityType: "Student",
+        entityId: studentId,
+        details: JSON.stringify({
+          studentId,
+          oldSupervisorId,
+          oldSupervisorName: oldSupervisor?.user?.name,
+          newSupervisorId,
+          newSupervisorName: newSupervisor.user.name,
+          reason,
+          description: `Changed supervisor for student ${student.name} from ${oldSupervisor?.user?.name} to ${newSupervisor.user.name}`,
+        }),
+      },
+    });
 
-      // <p>This change was made for the following reason: ${reason}</p>
-      // Send email notification to the new supervisor through notification service
-      await notificationService.scheduleNotification({
-          type: "EMAIL",
-          statusType: "PENDING",
-          title: "New Student Supervision Assignment",
-          message: `You have been assigned as a supervisor for student ${student.firstName} ${student.lastName} .`,
-          recipientCategory: "USER",
-          recipientId: newSupervisor.user.id,
-          // recipientEmail: newSupervisor.user.email,
-          recipientEmail: "stephaniekirathe@gmail.com",
-          recipientName: newSupervisor.user.name,
-          scheduledFor: new Date(Date.now() + 60000), // Schedule for delivery 1 minute from now
-          // scheduledFor: new Date(new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' })).getTime() + 5 * 60000), // Schedule for delivery in Uganda timezone, 5 minutes from now
-          metadata: {
-              studentId: student.id,
-              supervisorId: newSupervisor.id,
-              // supervisorType: isPrimary ? 'primary' : 'secondary',
-              additionalContent: `<p>Please log in to the UMI Supervisor Platform to view more details about this student</p>
+    // <p>This change was made for the following reason: ${reason}</p>
+    // Send email notification to the new supervisor through notification service
+    await notificationService.scheduleNotification({
+      type: "EMAIL",
+      statusType: "PENDING",
+      title: "New Student Supervision Assignment",
+      message: `You have been assigned as a supervisor for student ${student.firstName} ${student.lastName} .`,
+      recipientCategory: "USER",
+      recipientId: newSupervisor.user.id,
+      // recipientEmail: newSupervisor.user.email,
+      recipientEmail: "stephaniekirathe@gmail.com",
+      recipientName: newSupervisor.user.name,
+      scheduledFor: new Date(Date.now() + 60000), // Schedule for delivery 1 minute from now
+      // scheduledFor: new Date(new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' })).getTime() + 5 * 60000), // Schedule for delivery in Uganda timezone, 5 minutes from now
+      metadata: {
+        studentId: student.id,
+        supervisorId: newSupervisor.id,
+        // supervisorType: isPrimary ? 'primary' : 'secondary',
+        additionalContent: `<p>Please log in to the UMI Supervisor Platform to view more details about this student</p>
               <p>Thank you,</p>
               <p>UMI Research Management Team </p>
-              `
-          }
-      });
+              `,
+      },
+    });
 
-      // Send email notification to the student through notification service
-      await notificationService.scheduleNotification({
-          type: "EMAIL",
-          statusType: "PENDING",
-          title: "Supervisor Change Notification",
-          message: `Your supervisor has been changed from ${oldSupervisor?.user?.title} ${oldSupervisor?.user?.name} to ${newSupervisor.user.title} ${newSupervisor.user.name}. `,
-          recipientCategory: "USER",
-          recipientId: student?.user?.id,
-          // recipientEmail: student?.user?.email,
-          recipientEmail: "stephaniekirathe@gmail.com",
-          
-          recipientName: student?.user?.name,
-          scheduledFor: new Date(Date.now() + 60000), // Schedule for delivery 1 minute from now
-          // scheduledFor: new Date(new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' })).getTime() + 60000), // Schedule for delivery in Uganda timezone, 1 minute from now
-          metadata: {
-              oldSupervisorId: oldSupervisorId,
-              newSupervisorId: newSupervisorId,
-              // supervisorType: isPrimary ? 'primary' : 'secondary',
-              reason: reason,
-              additionalContent: `
+    // Send email notification to the student through notification service
+    await notificationService.scheduleNotification({
+      type: "EMAIL",
+      statusType: "PENDING",
+      title: "Supervisor Change Notification",
+      message: `Your supervisor has been changed from ${oldSupervisor?.user?.title} ${oldSupervisor?.user?.name} to ${newSupervisor.user.title} ${newSupervisor.user.name}. `,
+      recipientCategory: "USER",
+      recipientId: student?.user?.id,
+      // recipientEmail: student?.user?.email,
+      recipientEmail: "stephaniekirathe@gmail.com",
+
+      recipientName: student?.user?.name,
+      scheduledFor: new Date(Date.now() + 60000), // Schedule for delivery 1 minute from now
+      // scheduledFor: new Date(new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' })).getTime() + 60000), // Schedule for delivery in Uganda timezone, 1 minute from now
+      metadata: {
+        oldSupervisorId: oldSupervisorId,
+        newSupervisorId: newSupervisorId,
+        // supervisorType: isPrimary ? 'primary' : 'secondary',
+        reason: reason,
+        additionalContent: `
             
               <p>If you have any questions about this change, please contact thr research administration office.</p>
               <p>Thank you,</p>
               <p>UMI Research Management Team </p>
-              `
-          }
-      });
+              `,
+      },
+    });
 
-      res.status(200).json({
-          message: 'Supervisor changed successfully',
-          student: updatedStudent
-      });
-
+    res.status(200).json({
+      message: "Supervisor changed successfully",
+      student: updatedStudent,
+    });
   } catch (error) {
-      if (!error.statusCode) {
-          error.statusCode = 500;
-      }
-      next(error);
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
   }
 };
