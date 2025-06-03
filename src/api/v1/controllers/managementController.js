@@ -8126,7 +8126,7 @@ export const updateMinutesSentDate = async (req, res, next) => {
 export const updateComplianceReportDate = async (req, res, next) => {
     try {
         const { bookId } = req.params;
-        const { complianceReportDate } = req.body;
+        const { complianceReportDate, actualTopic } = req.body;
 
         if (!bookId) {
             const error = new Error('Book ID is required');
@@ -8136,6 +8136,12 @@ export const updateComplianceReportDate = async (req, res, next) => {
 
         if (!complianceReportDate) {
             const error = new Error('Compliance report date is required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        if (!actualTopic) {
+            const error = new Error('Actual topic is required');
             error.statusCode = 400;
             throw error;
         }
@@ -8154,11 +8160,12 @@ export const updateComplianceReportDate = async (req, res, next) => {
             throw error;
         }
 
-        // Update book with compliance report date
+        // Update book with compliance report date and actual topic
         const updatedBook = await prisma.book.update({
             where: { id: bookId },
             data: {
-                complianceReportDate: new Date(complianceReportDate)
+                complianceReportDate: new Date(complianceReportDate),
+                actualTopic: actualTopic
             },
             include: {
                 student: true
@@ -8221,14 +8228,14 @@ export const updateComplianceReportDate = async (req, res, next) => {
         await prisma.userActivity.create({
             data: {
                 userId: req.user.id,
-                action: `Updated compliance report date to ${new Date(complianceReportDate).toISOString().split('T')[0]} for book: ${existingBook.title || `Book for ${existingBook.student?.firstName || 'Unknown Student'}`}`,
+                action: `Updated compliance report date to ${new Date(complianceReportDate).toISOString().split('T')[0]} and actual topic for book: ${existingBook.title || `Book for ${existingBook.student?.firstName || 'Unknown Student'}`}`,
                 entityId: updatedBook.id,
                 entityType: "Student Book"
             }
         });
 
         res.status(200).json({
-            message: 'Compliance report date updated successfully',
+            message: 'Compliance report date and actual topic updated successfully',
             book: updatedBook
         });
 
