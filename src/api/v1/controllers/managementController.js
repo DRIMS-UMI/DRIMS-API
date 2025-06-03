@@ -5563,6 +5563,7 @@ export const assignExaminersToBook = async (req, res, next) => {
             error.statusCode = 400;
             throw error;
         }
+        console.log("Assigning Assignment")
 
         // Check if book exists
         const book = await prisma.book.findUnique({
@@ -5824,11 +5825,11 @@ export const updateExternalExaminerMark = async (req, res, next) => {
       throw error;
     }
 
-    if (!comments) {
-      const error = new Error("Comments are required");
-      error.statusCode = 400;
-      throw error;
-    }
+    // if (!comments) {
+    //   const error = new Error("Comments are required");
+    //   error.statusCode = 400;
+    //   throw error;
+    // }
 
     // Check if assignment exists
     const existingAssignment = await prisma.examinerBookAssignment.findUnique({
@@ -7268,7 +7269,7 @@ export const getProposalDefenses = async (req, res, next) => {
 export const recordVivaVerdict = async (req, res, next) => {
     try {
         const { vivaId } = req.params;
-        const { verdict, comments } = req.body;
+        const { verdict, comments, externalMark, internalMark } = req.body;
 
         // Validate inputs
         if (!vivaId || !verdict) {
@@ -7276,6 +7277,23 @@ export const recordVivaVerdict = async (req, res, next) => {
             error.statusCode = 400;
             throw error;
         }
+
+        // Validate marks if provided
+        if (externalMark !== undefined && (externalMark < 0 || externalMark > 100)) {
+            const error = new Error('External mark must be between 0 and 100');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        if (internalMark !== undefined && (internalMark < 0 || internalMark > 100)) {
+            const error = new Error('Internal mark must be between 0 and 100');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Calculate final marks (20% of each)
+        const finalExternalMark = externalMark !== undefined ? (externalMark * 0.2) : null;
+        const finalInternalMark = internalMark !== undefined ? (internalMark * 0.2) : null;
 
         // Check if viva exists
         const existingViva = await prisma.viva.findUnique({
@@ -7295,13 +7313,23 @@ export const recordVivaVerdict = async (req, res, next) => {
             throw error;
         }
 
-        // Determine viva status based on verdict
+        // Determine viva status based on verdict and marks
         let vivaStatus;
         switch (verdict) {
             case 'PASS':
             case 'PASS_WITH_MINOR_CORRECTIONS':
             case 'PASS_WITH_MAJOR_CORRECTIONS':
-                vivaStatus = 'COMPLETED';
+                // Check if marks are provided and valid
+                if (externalMark !== undefined && internalMark !== undefined) {
+                    // Both marks must be at least 50 to pass
+                    if (externalMark >= 50 && internalMark >= 50) {
+                        vivaStatus = 'COMPLETED';
+                    } else {
+                        vivaStatus = 'FAILED';
+                    }
+                } else {
+                    vivaStatus = 'COMPLETED';
+                }
                 break;
             case 'FAIL':
                 vivaStatus = 'FAILED';
@@ -7313,13 +7341,17 @@ export const recordVivaVerdict = async (req, res, next) => {
                 vivaStatus = 'COMPLETED';
         }
 
-        // Update viva with verdict
+        // Update viva with verdict and marks
         const updatedViva = await prisma.viva.update({
             where: { id: vivaId },
             data: {
                 verdict,
                 comments,
                 status: vivaStatus,
+                externalMark,
+                internalMark,
+                finalExternalMark,
+                finalInternalMark,
                 completedAt: new Date()
             },
             include: {
@@ -7333,7 +7365,7 @@ export const recordVivaVerdict = async (req, res, next) => {
         });
 
         // Update student and book status if passed
-        if (verdict === 'PASS' || verdict === 'PASS_WITH_MINOR_CORRECTIONS' || verdict === 'PASS_WITH_MAJOR_CORRECTIONS') {
+        if (verdict === 'PASS' || verdict === 'PASS_WITH_MINOR_CORRECTIONS' || verdict === 'PASS_WITH_MAJOR_CORRECTIONS' || vivaStatus === 'COMPLETED') {
             // Find status definition for minutes pending
             const minutesPendingStatus = await prisma.statusDefinition.findFirst({
                 where: { name: 'minutes pending' }
@@ -7384,20 +7416,67 @@ export const recordVivaVerdict = async (req, res, next) => {
                     }
                 });
             }
+        } else if (vivaStatus === "FAILED") {
+            const failedVivaStatus = await prisma.statusDefinition.findFirst({
+                where: { name: 'failed viva' }
+            });
+
+            await prisma.studentStatus.updateMany({
+                where: {
+                    studentId: existingViva.book.student.id,
+                    isCurrent: true
+                },
+                data: {
+                    isCurrent: false,
+                    endDate: new Date()
+                }
+            });
+
+             // Update student status
+             await prisma.studentStatus.create({
+                data: {
+                    student: {connect: {id: existingViva.book.student.id}},
+                    definition: {connect: {id: failedVivaStatus.id}},
+                    startDate: new Date(),
+                    isCurrent: true
+                }
+            });
+
+              // First, update all current book statuses to not current
+              await prisma.bookStatus.updateMany({
+                where: {
+                    bookId: existingViva.bookId,
+                    isCurrent: true
+                },
+                data: {
+                    isCurrent: false,
+                    endDate: new Date()
+                }
+            });
+            
+            // Create new book status
+            await prisma.bookStatus.create({
+                data: {
+                    book: {connect: {id: existingViva.bookId}},
+                    definition: {connect: {id: failedVivaStatus.id}},
+                    startDate: new Date(),
+                    isCurrent: true
+                }
+            });
         }
 
         // Log activity
         await prisma.userActivity.create({
             data: {
                 userId: req.user.id,
-                action: `Recorded viva verdict: ${verdict} for ${existingViva.book?.title || `Book ID: ${existingViva.bookId}`}`,
+                action: `Recorded viva verdict: ${verdict} with marks (External: ${externalMark}, Internal: ${internalMark}) for ${existingViva.book?.title || `Book ID: ${existingViva.bookId}`}`,
                 entityId: existingViva.bookId,
                 entityType: "Student Book"
             }
         });
 
         res.status(200).json({
-            message: 'Viva verdict recorded successfully',
+            message: 'Viva verdict and marks recorded successfully',
             viva: updatedViva
         });
 
@@ -7414,108 +7493,173 @@ export const recordVivaVerdict = async (req, res, next) => {
 export const scheduleViva = async (req, res, next) => {
     try {
         const { bookId } = req.params;
-        const { date, panelists, attempt, location, startTime, endTime } = req.body;
+        const {
+            scheduledDate,
+            location,
+            panelistIds,
+            reviewerIds,
+            chairpersonId,
+            minutesSecretaryId,
+        } = req.body;
 
         // Validate inputs
-        if (!bookId || !date || !panelists || panelists.length === 0) {
-            const error = new Error('Book ID, date, and at least one panelist are required');
-            error.statusCode = 400;
-            throw error;
+        if (
+            !bookId ||
+            !scheduledDate ||
+            !Array.isArray(panelistIds) ||
+            panelistIds.length === 0
+        ) {
+            throw new Error(
+                "Book ID, scheduled date, and at least one panelist are required",
+                { statusCode: 400 }
+            );
         }
 
         // Check if book exists
         const existingBook = await prisma.book.findUnique({
             where: { id: bookId },
-            include: { student: true }
+            include: {
+                student: {
+                    include: {
+                        supervisors: true,
+                    },
+                },
+                statuses: {
+                    include: {
+                        definition: true,
+                    },
+                },
+            },
         });
 
         if (!existingBook) {
-            const error = new Error('Book not found');
+            const error = new Error("Dissertation not found");
             error.statusCode = 404;
             throw error;
         }
 
-        // Find status definition for viva scheduled
-        const statusDefinition = await prisma.statusDefinition.findFirst({
-            where: { name: 'scheduled for viva' }
+        // Check if panelists exist
+        const panelists = await prisma.panelist.findMany({
+            where: {
+                id: {
+                    in: panelistIds,
+                },
+            },
         });
 
-        // Set any existing vivas for this book to not current
-        await prisma.viva.updateMany({
-            where: { 
+        if (panelists.length !== panelistIds.length) {
+            const error = new Error("One or more panelists not found");
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Get the current attempt number
+        const currentVivas = await prisma.viva.findMany({
+            where: {
                 bookId: bookId,
-                isCurrent: true 
             },
-            data: { isCurrent: false }
+            orderBy: {
+                attempt: "desc",
+            },
+            take: 1,
         });
+
+        const attemptNumber = currentVivas.length > 0 ? currentVivas[0].attempt + 1 : 1;
+
+        // If there's a current viva, mark it as not current
+        if (currentVivas.length > 0 && currentVivas[0].isCurrent) {
+            await prisma.viva.update({
+                where: { id: currentVivas[0].id },
+                data: { isCurrent: false },
+            });
+        }
 
         // Create new viva
-        const newViva = await prisma.viva.create({
+        const viva = await prisma.viva.create({
             data: {
-                bookId,
-                scheduledDate: new Date(date),
-                status: 'SCHEDULED',
-                attempt: attempt || 1,
+                book: { connect: { id: bookId } },
+                scheduledDate: new Date(scheduledDate),
+                location,
+                status: "SCHEDULED",
+                attempt: attemptNumber,
+                panelists: { connect: panelistIds.map((id) => ({ id })) },
                 isCurrent: true,
-                // location: location || 'To be announced',
-                // startTime: startTime || null,
-                // endTime: endTime || null,
-                panelists: {
-                    connect: panelists.map(id => ({ id }))
-                }
+                chairperson: chairpersonId
+                    ? { connect: { id: chairpersonId } }
+                    : undefined,
+                minutesSecretary: minutesSecretaryId
+                    ? { connect: { id: minutesSecretaryId } }
+                    : undefined,
+                reviewers: reviewerIds ? { connect: reviewerIds.map((id) => ({ id })) } : undefined,
             },
             include: {
+                panelists: true,
+                reviewers: true,
+                chairperson: true,
+                minutesSecretary: true,
                 book: {
                     include: {
-                        student: true
-                    }
+                        student: true,
+                    },
                 },
-                panelists: true
-            }
+            },
         });
 
-        // Update book status
-        if (statusDefinition) {
+        // Find the status definition for "waiting for viva"
+        const scheduledForVivaStatus = await prisma.statusDefinition.findFirst({
+            where: {
+                name: "scheduled for viva",
+            },
+        });
+
+        if (scheduledForVivaStatus) {
             // Set all current book statuses to not current
             await prisma.bookStatus.updateMany({
-                where: { 
+                where: {
                     bookId: bookId,
-                    isCurrent: true 
+                    isCurrent: true,
                 },
-                data: { isCurrent: false, endDate: new Date() }
+                data: {
+                    isCurrent: false,
+                    endDate: new Date(),
+                },
             });
 
             // Create new book status
             await prisma.bookStatus.create({
                 data: {
                     book: { connect: { id: bookId } },
-                    definition: { connect: { id: statusDefinition.id } },
+                    definition: { connect: { id: scheduledForVivaStatus.id } },
                     startDate: new Date(),
                     isActive: true,
-                    isCurrent: true
-                }
+                    isCurrent: true,
+                },
             });
 
-            // Update student status if needed
+            // Update student status as well
             if (existingBook.student) {
                 // Set all current student statuses to not current
                 await prisma.studentStatus.updateMany({
-                    where: { 
+                    where: {
                         studentId: existingBook.student.id,
-                        isCurrent: true 
+                        isCurrent: true,
                     },
-                    data: { isCurrent: false, endDate: new Date() }
+                    data: {
+                        isCurrent: false,
+                        endDate: new Date(),
+                    },
                 });
 
-                // Create new student status
+                // Create new student status with the same definition
                 await prisma.studentStatus.create({
                     data: {
                         student: { connect: { id: existingBook.student.id } },
-                        definition: { connect: { id: statusDefinition.id } },
+                        definition: { connect: { id: scheduledForVivaStatus.id } },
                         startDate: new Date(),
                         isActive: true,
-                        isCurrent: true
-                    }
+                        isCurrent: true,
+                        updatedBy: { connect: { id: req.user.id } },
+                    },
                 });
             }
         }
@@ -7524,19 +7668,233 @@ export const scheduleViva = async (req, res, next) => {
         await prisma.userActivity.create({
             data: {
                 userId: req.user.id,
-                action: `Scheduled viva for ${existingBook.title || `Book for ${existingBook.student?.name || 'Unknown Student'}`}`,
-                entityId: bookId,
-                entityType: "Student Book"
-            }
+                action: `Scheduled viva for ${
+                    existingBook.student?.firstName || "Unknown Student"
+                } ${existingBook.student?.lastName || ""}`,
+                entityId: viva.id,
+                entityType: "Viva",
+            },
         });
 
+        // Schedule viva invitation emails
+        // const vivaDate = new Date(viva.scheduledDate);
+        // const formattedDate = vivaDate.toLocaleDateString("en-US", {
+        //     weekday: "long",
+        //     year: "numeric",
+        //     month: "long",
+        //     day: "numeric",
+        //     hour: "numeric",
+        //     minute: "numeric",
+        // });
+
+        // // Send invitation emails to all participants
+        // const participants = [
+        //     // Add student first
+        //     {
+        //         category: "STUDENT",
+        //         id: existingBook.student.id,
+        //         email: existingBook.student.email,
+        //         name: `${existingBook.student.firstName} ${existingBook.student.lastName}`,
+        //     },
+        //     // Add all supervisors
+        //     ...existingBook.student.supervisors.map((supervisor) => ({
+        //         category: "SUPERVISOR",
+        //         id: supervisor.id,
+        //         email: supervisor.email,
+        //         name: supervisor.name,
+        //     })),
+        //     // Add chairperson if exists
+        //     ...(viva.chairperson
+        //         ? [
+        //             {
+        //                 category: "CHAIRPERSON",
+        //                 id: viva.chairperson.id,
+        //                 email: viva.chairperson.email,
+        //                 name: viva.chairperson.name,
+        //             },
+        //         ]
+        //         : []),
+        //     // Add minutes secretary if exists
+        //     ...(viva.minutesSecretary
+        //         ? [
+        //             {
+        //                 category: "MINUTES_SECRETARY",
+        //                 id: viva.minutesSecretary.id,
+        //                 email: viva.minutesSecretary.email,
+        //                 name: viva.minutesSecretary.name,
+        //             },
+        //         ]
+        //         : []),
+        //     // Add panelists
+        //     ...viva.panelists.map((panelist) => ({
+        //         category: "PANELIST",
+        //         id: panelist.id,
+        //         email: panelist.email,
+        //         name: panelist.name,
+        //     })),
+        //     // Add reviewers if they exist
+        //     ...(viva.reviewers ? viva.reviewers.map((reviewer) => ({
+        //         category: "REVIEWER",
+        //         id: reviewer.id,
+        //         email: reviewer.email,
+        //         name: reviewer.name,
+        //     })) : []),
+        // ];
+
+        // // Schedule immediate invitations
+        // for (const participant of participants) {
+        //     // Customize message based on participant type
+        //     let message = `You are invited to attend the viva of ${existingBook.student.firstName} ${existingBook.student.lastName}.`;
+        //     let additionalContent = `
+        //         <p><strong>Details:</strong></p>
+        //         <ul>
+        //             <li>Date: ${formattedDate}</li>
+        //             <li>Venue: ${viva.location}</li>
+        //             <li>Title: ${existingBook.title}</li>
+        //         </ul>
+        //     `;
+
+        //     if (participant.category === "STUDENT") {
+        //         message = `Your viva has been scheduled.`;
+        //         additionalContent += `
+        //             <p><strong>Important Information:</strong></p>
+        //             <ul>
+        //                 <li>Please ensure you have prepared your presentation</li>
+        //                 <li>Bring any necessary materials or equipment</li>
+        //                 <li>Arrive at least 15 minutes before the scheduled time</li>
+        //             </ul>
+        //         `;
+        //     }
+
+        //     additionalContent += `
+        //         <p>Please confirm your attendance.</p>
+        //         <p>Best regards,</p>
+        //         <p>UMI System</p>
+        //     `;
+
+        //     await notificationService.scheduleNotification({
+        //         type: "EMAIL",
+        //         statusType: "PENDING",
+        //         title: `Viva Invitation - ${existingBook.student.firstName} ${existingBook.student.lastName}`,
+        //         message,
+        //         recipientCategory: participant.category,
+        //         recipientId: participant.id,
+        //         recipientEmail: participant.email,
+        //         recipientName: participant.name,
+        //         scheduledFor: new Date(new Date().getTime() + 60000), // Send after 1 minute
+        //         metadata: {
+        //             additionalContent,
+        //         },
+        //     });
+        // }
+
+        // // Schedule reminder notifications (24 hours before viva)
+        // const reminderDate = new Date(vivaDate);
+        // reminderDate.setHours(reminderDate.getHours() - 24);
+
+        // for (const participant of participants) {
+        //     let message = `Reminder: Viva for ${existingBook.student.firstName} ${existingBook.student.lastName} is scheduled for tomorrow.`;
+        //     let additionalContent = `
+        //         <p><strong>Viva Details:</strong></p>
+        //         <ul>
+        //             <li>Date: ${formattedDate}</li>
+        //             <li>Venue: ${viva.location}</li>
+        //             <li>Title: ${existingBook.title}</li>
+        //         </ul>
+        //     `;
+
+        //     if (participant.category === "STUDENT") {
+        //         message = `Reminder: Your viva is scheduled for tomorrow.`;
+        //         additionalContent += `
+        //             <p><strong>Final Preparation Checklist:</strong></p>
+        //             <ul>
+        //                 <li>Review your presentation</li>
+        //                 <li>Prepare any necessary materials</li>
+        //                 <li>Get a good night's rest</li>
+        //                 <li>Plan your journey to the venue</li>
+        //             </ul>
+        //         `;
+        //     }
+
+        //     additionalContent += `
+        //         <p>Please ensure you have prepared for the viva.</p>
+        //         <p>Best regards,</p>
+        //         <p>UMI System</p>
+        //     `;
+
+        //     await notificationService.scheduleNotification({
+        //         type: "REMINDER",
+        //         statusType: "PENDING",
+        //         title: "Viva Reminder",
+        //         message,
+        //         recipientCategory: participant.category,
+        //         recipientId: participant.id,
+        //         recipientEmail: participant.email,
+        //         recipientName: participant.name,
+        //         scheduledFor: reminderDate,
+        //         metadata: {
+        //             additionalContent,
+        //         },
+        //     });
+        // }
+
+        // // Schedule final reminder (1 hour before viva)
+        // const finalReminderDate = new Date(vivaDate);
+        // finalReminderDate.setHours(finalReminderDate.getHours() - 1);
+
+        // for (const participant of participants) {
+        //     let message = `Final reminder: Viva for ${existingBook.student.firstName} ${existingBook.student.lastName} is scheduled in 1 hour.`;
+        //     let additionalContent = `
+        //         <p><strong>Viva Details:</strong></p>
+        //         <ul>
+        //             <li>Date: ${formattedDate}</li>
+        //             <li>Venue: ${viva.location}</li>
+        //             <li>Title: ${existingBook.title}</li>
+        //         </ul>
+        //     `;
+
+        //     if (participant.category === "STUDENT") {
+        //         message = `Final reminder: Your viva is scheduled in 1 hour.`;
+        //         additionalContent += `
+        //             <p><strong>Last Minute Checklist:</strong></p>
+        //             <ul>
+        //                 <li>Ensure you have all necessary materials</li>
+        //                 <li>Check your presentation one final time</li>
+        //                 <li>Head to the venue now</li>
+        //                 <li>Take deep breaths and stay calm</li>
+        //             </ul>
+        //         `;
+        //     }
+
+        //     additionalContent += `
+        //         <p>Please proceed to the venue.</p>
+        //         <p>Best regards,</p>
+        //         <p>UMI System</p>
+        //     `;
+
+        //     await notificationService.scheduleNotification({
+        //         type: "REMINDER",
+        //         statusType: "PENDING",
+        //         title: "Final Reminder: Viva",
+        //         message,
+        //         recipientCategory: participant.category,
+        //         recipientId: participant.id,
+        //         recipientEmail: participant.email,
+        //         recipientName: participant.name,
+        //         scheduledFor: finalReminderDate,
+        //         metadata: {
+        //             additionalContent,
+        //         },
+        //     });
+        // }
+
         res.status(201).json({
-            message: 'Viva scheduled successfully',
-            viva: newViva
+            message: "Viva scheduled successfully",
+            viva: viva,
         });
 
     } catch (error) {
-        console.error('Error in scheduleViva:', error);
+        console.error("Error in scheduleViva:", error);
         if (!error.statusCode) {
             error.statusCode = 500;
         }
