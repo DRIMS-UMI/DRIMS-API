@@ -54,7 +54,7 @@ model user {
   resetTokenExpiry DateTime?
 
   reactivatedAt DateTime?
-   reactivatedBy user? @relation("reactivatedUsers", fields: [reactivatedById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  reactivatedBy user? @relation("reactivatedUsers", fields: [reactivatedById], references: [id], onDelete: NoAction, onUpdate: NoAction)
   reactivatedById String? @db.ObjectId
   reactivatedUsers user[] @relation("reactivatedUsers")
   
@@ -251,8 +251,8 @@ model proposal {
   comments    String?
   markRange   Int?
 
-averageReviewMark Float?       
-averageDefenseMark Float?
+  averageReviewMark Float?       
+  averageDefenseMark Float?
   reviewGrades      proposalReviewGrade[]
   defenseGrades proposalDefenseGrade[]
   defenseReports proposalDefenseReport[]
@@ -484,8 +484,10 @@ model reviewer {
   campus    campus?            @relation(fields: [campusId], references: [id])
   campusId  String?            @db.ObjectId
   grades    proposalReviewGrade[]
-    proposalDefenseIds String[] @db.ObjectId
+  proposalDefenseIds String[] @db.ObjectId
   proposalDefenses proposalDefense[] @relation(fields: [proposalDefenseIds], references: [id])
+  vivaIds       String[] @db.ObjectId
+  vivas       viva[]  @relation(fields: [vivaIds], references: [id])
 }
 
 model panelist {
@@ -517,15 +519,26 @@ enum VivaVerdict {
 
 model viva {
   id           String   @id @default(auto()) @map("_id") @db.ObjectId
-   book          book        @relation(fields: [bookId], references: [id])
+  book          book        @relation(fields: [bookId], references: [id])
   bookId        String      @db.ObjectId
   scheduledDate DateTime
+  location  String?
   status        String      
-    verdict       VivaVerdict?
+  verdict       VivaVerdict?
   comments      String?
-   attempt       Int         // To track which attempt this is
-   panelistIds String[]  @db.ObjectId
+  attempt       Int         // To track which attempt this is
+  chairperson  facultyMember? @relation(fields: [chairpersonId], references: [id])
+  chairpersonId String?   @db.ObjectId
+  minutesSecretary      ExternalPerson? @relation("MinutesSecretary", fields: [minutesSecretaryId], references: [id])
+  minutesSecretaryId    String?        @db.ObjectId
+  panelistIds String[]  @db.ObjectId
   panelists   panelist[] @relation(fields: [panelistIds], references: [id])
+  reviewerIds  String[] @db.ObjectId
+  reviewers    reviewer[] @relation(fields: [reviewerIds], references: [id])
+  externalMark Float?    // External mark out of 100
+  internalMark Float?    // Internal mark out of 100
+  finalExternalMark Float? // Final external mark (20% of externalMark)
+  finalInternalMark Float? // Final internal mark (20% of internalMark)
   completedAt  DateTime?
   isCurrent    Boolean @default(true)
   createdAt     DateTime    @default(now())
@@ -554,11 +567,11 @@ model proposalDefense {
   chairpersonId String?   @db.ObjectId
   actingChairperson  ExternalPerson? @relation("ActingChairperson", fields: [actingChairpersonId], references: [id])
   actingChairpersonId   String?        @db.ObjectId
-   minutesSecretary      ExternalPerson? @relation("MinutesSecretary", fields: [minutesSecretaryId], references: [id])
-    minutesSecretaryId    String?        @db.ObjectId
+  minutesSecretary      ExternalPerson? @relation("MinutesSecretary", fields: [minutesSecretaryId], references: [id])
+  minutesSecretaryId    String?        @db.ObjectId
   panelistIds  String[] @db.ObjectId
   panelists    panelist[] @relation(fields: [panelistIds], references: [id])
-   reviewerIds  String[] @db.ObjectId
+  reviewerIds  String[] @db.ObjectId
   reviewers    reviewer[] @relation(fields: [reviewerIds], references: [id])
   completedAt  DateTime?
   isCurrent    Boolean  @default(true)
@@ -706,7 +719,8 @@ model facultyMember {
   userId      String?  @unique @db.ObjectId
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-   chairedDefenses     proposalDefense[]
+  chairedDefenses     proposalDefense[]
+  chairedVivas  viva[]
 }
 
 model ExternalPerson {
@@ -714,8 +728,10 @@ model ExternalPerson {
   name      String
   email     String
   role      String   // e.g. "Acting Chairperson", "Minutes Secretary"
-actingChairedDefenses proposalDefense[] @relation("ActingChairperson")
+  actingChairedDefenses proposalDefense[] @relation("ActingChairperson")
   minutesSecretaryDefenses proposalDefense[] @relation("MinutesSecretary")
+  minutesSecretaryVivas viva[] @relation("MinutesSecretary")
+
 }
 
 model graduation {
