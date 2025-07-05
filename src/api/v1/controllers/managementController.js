@@ -5244,6 +5244,7 @@ export const submitStudentBook = async (req, res, next) => {
                 submissionDate: new Date(submissionDate),
                 submissionCondition,
                 student: { connect: { id: studentId } },
+                isCurrent: true,
                 submittedBy: { connect: { id: req.user.id } }
             }
         });
@@ -5366,8 +5367,20 @@ export const getAllBooks = async (req, res, next) => {
                     select: {
                         id: true,
                         firstName: true,
+                        course:true,
                         lastName: true,
                         email: true,
+                        academicYear: true,
+                        gender: true,
+                        registrationNumber: true,
+                        intakePeriod: true,
+                        campus: true,
+                        school: true,
+                        statuses: {
+                            include: {
+                                definition: true
+                            },
+                        }
                        
                     }
                 },
@@ -5379,6 +5392,12 @@ export const getAllBooks = async (req, res, next) => {
                         updatedAt: 'desc'
                     }
                 },
+                examinerAssignments: {
+                    include: {
+                        examiner: true
+                    }
+                },
+                vivaHistory: true,
                 submittedBy: {
                     select: {
                         id: true,
@@ -7323,7 +7342,7 @@ export const recordVivaVerdict = async (req, res, next) => {
                 if (externalMark !== undefined && internalMark !== undefined) {
                     // Both marks must be at least 50 to pass
                     if (externalMark >= 50 && internalMark >= 50) {
-                        vivaStatus = 'COMPLETED';
+                vivaStatus = 'COMPLETED';
                     } else {
                         vivaStatus = 'FAILED';
                     }
@@ -7555,7 +7574,7 @@ export const scheduleViva = async (req, res, next) => {
 
         // Get the current attempt number
         const currentVivas = await prisma.viva.findMany({
-            where: {
+            where: { 
                 bookId: bookId,
             },
             orderBy: {
@@ -7615,7 +7634,7 @@ export const scheduleViva = async (req, res, next) => {
         if (scheduledForVivaStatus) {
             // Set all current book statuses to not current
             await prisma.bookStatus.updateMany({
-                where: {
+                where: { 
                     bookId: bookId,
                     isCurrent: true,
                 },
@@ -7640,7 +7659,7 @@ export const scheduleViva = async (req, res, next) => {
             if (existingBook.student) {
                 // Set all current student statuses to not current
                 await prisma.studentStatus.updateMany({
-                    where: {
+                    where: { 
                         studentId: existingBook.student.id,
                         isCurrent: true,
                     },
@@ -9634,6 +9653,8 @@ export const getGraduationStatistics = async (req, res) => {
       res.status(500).json({ message: 'Error adding student to graduation' });
     }
   };
+
+
 
 
 
