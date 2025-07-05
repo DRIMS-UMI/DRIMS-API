@@ -1755,6 +1755,57 @@ export const deleteSupervisor = async (req, res, next) => {
         next(error);
     }
 };
+
+// Controller for changing a faculty member's password
+export const changeSupervisorPassword = async (req, res, next) => {
+    try {
+        const { supervisorId } = req.params;
+        const { newPassword } = req.body;
+
+        if (!newPassword) {
+            const error = new Error('New password is required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Get faculty with associated user
+        const supervisor = await prisma.supervisor.findUnique({
+            where: { id: supervisorId },
+            include: { user: true }
+        });
+
+        if (!supervisor) {
+            const error = new Error('Supervisor not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        if (!supervisor.user) {
+            const error = new Error('No user account associated with this supervisor');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Hash the new password
+        const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+        // Update the user's password
+        await prisma.user.update({
+            where: { id: supervisor.user.id },
+            data: { password: hashedPassword }
+        });
+
+        res.status(200).json({
+            message: 'Supervisor password updated successfully'
+        });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
 // Controller for assigning Supervisors to Students
 // Controller for assigning supervisors to students
 export const assignSupervisorsToStudent = async (req, res, next) => {
