@@ -350,7 +350,7 @@ model book {
   internalSubmissionDate       DateTime?
   externalReportSubmissionDate DateTime?
   internalReportSubmissionDate DateTime?
-  isCurrent                    Boolean     @default(false)
+  isCurrent                    Boolean     @default(true)
   submissionCondition         String      // Normal or Resubmission
   researchAdminUpdated        Boolean     @default(false)
   examiners                    examiner[]  @relation(fields: [examinerIds], references: [id])
