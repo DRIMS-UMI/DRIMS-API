@@ -13,14 +13,18 @@ export const loginSupervisor = async (req, res, next) => {
 
     // Find supervisor by email
     const user = await prisma.user.findUnique({
-      where: { email },
+      where: { email,
+        role: "SUPERVISOR"
+       },
     });
 
     if (!user) {
-      const error = new Error("Faculty member not found");
+      const error = new Error("Supervisor not found");
       error.statusCode = 404;
       throw error;
     }
+
+    console.log("users", user)
 
     // Check if user is active
     if (!user.isActive) {
@@ -32,13 +36,14 @@ export const loginSupervisor = async (req, res, next) => {
     }
 
     // Check if user has correct role
-    if (user.role !== "SCHOOL_ADMIN" && user.role !== "FACULTY") {
+    if (user.role !== "SUPERVISOR") {
       const error = new Error(
-        "Unauthorized access - must be School Admin or Faculty"
+        "Unauthorized access - must be a Supervisor"
       );
       error.statusCode = 403;
       throw error;
     }
+    console.log("logged in")
 
     // Check password
     const isValidPassword = await bcrypt.compare(password, user.password);
@@ -47,6 +52,8 @@ export const loginSupervisor = async (req, res, next) => {
       error.statusCode = 401;
       throw error;
     }
+
+    console.log("password is valid")
 
     // Generate JWT token
     const token = jwt.sign(
@@ -67,7 +74,8 @@ export const loginSupervisor = async (req, res, next) => {
     // Return user data and token
     res.status(200).json({
       token,
-      faculty: {
+      role: user.role,
+      supervisor: {
         id: user.id,
         name: user.name,
         email: user.email,
@@ -121,3 +129,720 @@ export const getSupervisorProfile = async (req, res, next) => {
       next(error);
     }
   };
+
+// Update supervisor profile controller
+export const updateSupervisorProfile = async (req, res, next) => {
+  try {
+    const supervisorId = req.user.id;
+    const { name, phone, designation } = req.body;
+
+    const updatedSupervisor = await prisma.user.update({
+      where: { id: supervisorId },
+      data: {
+        name,
+        phone,
+        designation,
+        updatedAt: new Date(),
+      },
+    });
+
+    res.status(200).json({
+      message: "Profile updated successfully",
+      supervisor: {
+        id: updatedSupervisor.id,
+        name: updatedSupervisor.name,
+        email: updatedSupervisor.email,
+        phone: updatedSupervisor.phone,
+        designation: updatedSupervisor.designation,
+        updatedAt: updatedSupervisor.updatedAt,
+      },
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+// Change password controller
+export const changePassword = async (req, res, next) => {
+  try {
+    const supervisorId = req.user.id;
+    const { currentPassword, newPassword } = req.body;
+
+    // Get current user
+    const user = await prisma.user.findUnique({
+      where: { id: supervisorId },
+    });
+
+    if (!user) {
+      const error = new Error("User not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // Verify current password
+    const isValidPassword = await bcrypt.compare(currentPassword, user.password);
+    if (!isValidPassword) {
+      const error = new Error("Current password is incorrect");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+    // Update password
+    await prisma.user.update({
+      where: { id: supervisorId },
+      data: {
+        password: hashedPassword,
+        updatedAt: new Date(),
+      },
+    });
+
+    res.status(200).json({
+      message: "Password changed successfully",
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+// Logout controller
+export const logoutSupervisor = async (req, res, next) => {
+  try {
+    // In a real application, you might want to blacklist the token
+    // For now, we'll just return a success message
+    res.status(200).json({
+      message: "Logged out successfully",
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+// Get assigned students controller
+export const getAssignedStudents = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+
+    const getSupervisor = await prisma.supervisor.findUnique({
+      where: {
+        userId: userId
+      }
+    })
+
+    if (!getSupervisor) {
+      const error = new Error("Supervisor not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    const supervisorId = getSupervisor.id;
+
+    const students = await prisma.student.findMany({
+      where: {
+        supervisors: {
+          some: {
+            id: supervisorId,
+          },
+        },
+      },
+      include: {
+        campus: true,
+        statuses: {
+          include: {
+            definition: true,
+          },
+        },
+        school: true,
+        department: true,
+        proposals: {
+          orderBy: {
+            createdAt: 'desc'
+          },
+          take: 1
+        }
+      },
+    });
+
+    res.status(200).json({
+      students,
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+// Get student details controller
+export const getStudentDetails = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { studentId } = req.params;
+
+    const getSupervisor = await prisma.supervisor.findUnique({
+      where: {
+        userId: userId
+      }
+    })
+
+    if (!getSupervisor) {
+      const error = new Error("Supervisor not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    const supervisorId = getSupervisor.id;
+
+    // Verify that the student is assigned to this supervisor
+    const student = await prisma.student.findFirst({
+      where: {
+        id: studentId,
+        supervisors: {
+          some: {
+            id: supervisorId,
+          },
+        },
+      },
+      include: {
+        statuses: {
+          include: {
+            definition: true,
+          },
+        },
+        proposals: true,
+        notifications: true,
+
+        school: true,
+        campus: true,
+        department: true,
+       
+      
+      },
+    });
+
+    if (!student) {
+      const error = new Error("Student not found or not assigned to you");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    res.status(200).json({
+      student,
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+// Update student progress controller
+export const updateStudentProgress = async (req, res, next) => {
+  try {
+    const supervisorId = req.user.id;
+    const { studentId } = req.params;
+    const { status, comments } = req.body;
+
+    // Verify that the student is assigned to this supervisor
+    const student = await prisma.student.findFirst({
+      where: {
+        id: studentId,
+        supervisors: {
+          some: {
+            id: supervisorId,
+          },
+        },
+      },
+    });
+
+    if (!student) {
+      const error = new Error("Student not found or not assigned to you");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // Create status update
+    const statusUpdate = await prisma.studentStatus.create({
+      data: {
+        studentId,
+        status,
+        comments,
+        updatedBy: supervisorId,
+        updatedAt: new Date(),
+      },
+    });
+
+    res.status(200).json({
+      message: "Student progress updated successfully",
+      statusUpdate,
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+// Get student proposals controller
+export const getStudentProposals = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { studentId } = req.params;
+
+    const getSupervisor = await prisma.supervisor.findUnique({
+      where: {
+        userId: userId
+      }
+    })
+
+    if (!getSupervisor) {
+      const error = new Error("Supervisor not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    const supervisorId = getSupervisor.id;
+
+    // Verify that the student is assigned to this supervisor
+    const student = await prisma.student.findFirst({
+      where: {
+        id: studentId,
+        supervisors: {
+          some: {
+            id: supervisorId,
+          },
+        },
+      },
+    });
+
+    if (!student) {
+      const error = new Error("Student not found or not assigned to you");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const proposals = await prisma.proposal.findMany({
+      where: {
+        studentId,
+      },
+      include: {
+        student: true,
+        submittedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+          },
+        },
+        reviewGrades: true,
+        defenseGrades: true,
+        defenses: {
+          include: {
+            panelists: true,
+          },
+        },
+        reviewers: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        panelists: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        statuses: {
+          include: {
+            definition: true,
+          },
+        },
+      },
+      orderBy: {
+        submittedAt: "desc",
+      },
+    });
+
+    res.status(200).json({
+      proposals,
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+// Review proposal controller
+export const reviewProposal = async (req, res, next) => {
+  try {
+    const supervisorId = req.user.id;
+    const { proposalId } = req.params;
+    const { status, comments, feedback } = req.body;
+
+    // Get proposal and verify student is assigned to supervisor
+    const proposal = await prisma.proposal.findFirst({
+      where: {
+        id: proposalId,
+        student: {
+          supervisors: {
+            some: {
+              id: supervisorId,
+            },
+          },
+        },
+      },
+      include: {
+        student: true,
+      },
+    });
+
+    if (!proposal) {
+      const error = new Error("Proposal not found or not authorized");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // Update proposal status
+    const updatedProposal = await prisma.proposal.update({
+      where: {
+        id: proposalId,
+      },
+      data: {
+        status,
+        supervisorComments: comments,
+        supervisorFeedback: feedback,
+        updatedAt: new Date(),
+      },
+    });
+
+    res.status(200).json({
+      message: "Proposal reviewed successfully",
+      proposal: updatedProposal,
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+// Controller to get student statuses with update history, ensuring student is assigned to supervisor
+export const getStudentStatuses = async (req, res, next) => {
+  try {
+    const { studentId } = req.params;
+    const supervisorUserId = req.user.id;
+
+    // Get supervisor record
+    const supervisor = await prisma.supervisor.findUnique({
+      where: { userId: supervisorUserId },
+    });
+
+    if (!supervisor) {
+      const error = new Error("Supervisor not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // Check if student is assigned to this supervisor
+    const student = await prisma.student.findUnique({
+      where: { id: studentId,   supervisors: {
+        some: {
+          id: supervisor?.id,
+        },
+      }, },
+      include: {
+        supervisors: {
+          where: { id: supervisor.id },
+          select: { id: true },
+        },
+        statuses: {
+          include: {
+            definition: true,
+            updatedBy: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                role: true,
+              },
+            },
+            notificationsSent: {
+              select: {
+                recipients: true,
+                type: true,
+                message: true,
+                sentAt: true,
+                studentStatus: true,
+              },
+            },
+          },
+          orderBy: {
+            updatedAt: "desc",
+          },
+        },
+      },
+    });
+
+    if (!student) {
+      const error = new Error("Student not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (!student.supervisors || student.supervisors.length === 0) {
+      const error = new Error("You are not authorized to view this student's statuses");
+      error.statusCode = 403;
+      throw error;
+    }
+
+    res.status(200).json({
+      statuses: student.statuses,
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+
+/** Book management routes */
+// Controller for getting student books
+export const getStudentBooks = async (req, res, next) => {
+  try {
+    const { studentId } = req.params;
+    const supervisorUserId = req.user.id;
+
+    if (!studentId) {
+      const error = new Error("Student ID is required");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // Get supervisor record
+    const supervisor = await prisma.supervisor.findUnique({
+      where: { userId: supervisorUserId },
+    });
+
+    if (!supervisor) {
+      const error = new Error("Supervisor not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // Check if student is assigned to this supervisor
+    const student = await prisma.student.findUnique({
+      where: { id: studentId, supervisors: {
+        some: {
+          id: supervisor?.id,
+        },
+      }, },
+      include: {
+        supervisors: {
+          where: { id: supervisor.id },
+          select: { id: true },
+        },
+      },
+    });
+
+    if (!student) {
+      const error = new Error("Student not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (!student.supervisors || student.supervisors.length === 0) {
+      const error = new Error("You are not authorized to view this student's books");
+      error.statusCode = 403;
+      throw error;
+    }
+
+    const books = await prisma.book.findMany({
+      where: { studentId },
+      include: {
+        statuses: {
+          include: {
+            definition: true,
+          },
+          orderBy: {
+            updatedAt: "desc",
+          },
+        },
+        examinerAssignments: {
+          include: {
+            examiner: {
+              select: {
+                id: true,
+                name: true,
+                primaryEmail: true,
+                type: true,
+              },
+            },
+          },
+        },
+        vivaHistory: true,
+        submittedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+          },
+        },
+      },
+      orderBy: {
+        submissionDate: "desc",
+      },
+    });
+
+    res.status(200).json({
+      message: "Student books retrieved successfully",
+      books,
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+
+
+// Get dashboard stats controller
+export const getDashboardStats = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+
+
+    const getSupervisor = await prisma.supervisor.findUnique({
+      where: {
+        userId: userId
+      }
+    })
+
+    if (!getSupervisor) {
+      const error = new Error("Supervisor not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    const supervisorId = getSupervisor.id;
+
+    console.log("getSupervisor", getSupervisor)
+
+    // Get assigned students count
+    const assignedStudentsCount = await prisma.student.count({
+      where: {
+        supervisors: {
+          some: {
+            id: supervisorId,
+          },
+        },
+      },
+    });
+
+
+
+
+    // Get students assigned to this supervisor
+    const students = await prisma.student.findMany({
+      where: {
+        supervisors: {
+          some: {
+            id: supervisorId,
+          },
+        },
+      },
+      include: {
+        statuses: {
+          where: { isCurrent: true },
+          include: { definition: true }
+        }
+      }
+    });
+
+    // Get all status definitions
+    const statusDefinitions = await prisma.statusDefinition.findMany();
+
+    // Map status name to count
+    const statusMap = {};
+    for (const def of statusDefinitions) {
+      statusMap[def.name.toLowerCase().replace(/\s+/g, "")] = 0;
+    }
+
+    students.forEach(student => {
+      const currentStatus = student.statuses?.[0]?.definition?.name;
+      if (currentStatus) {
+        const key = currentStatus.toLowerCase().replace(/\s+/g, "");
+        if (statusMap.hasOwnProperty(key)) {
+          statusMap[key]++;
+        }
+      }
+    });
+
+    // Extract specific status counts
+    const workshop = statusMap.workshop || 0;
+    const normalProgress = statusMap.normalprogress || 0;
+    const underExamination = statusMap.underexamination || 0;
+
+    res.status(200).json({
+      stats: {
+        assignedStudentsCount,
+        workshop: workshop.toString(),
+        normalProgress: normalProgress.toString(),
+        underExamination: underExamination.toString(),
+      },
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+// Get notifications controller
+export const getNotifications = async (req, res, next) => {
+  try {
+    const supervisorId = req.user.id;
+
+    const notifications = await prisma.notification.findMany({
+      where: {
+        recipientId: supervisorId,
+        recipientType: 'SUPERVISOR',
+      },
+      orderBy: {
+        createdAt: 'desc'
+      },
+      take: 20,
+    });
+
+    res.status(200).json({
+      notifications,
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
