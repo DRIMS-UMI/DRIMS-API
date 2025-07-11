@@ -489,6 +489,120 @@ export const getStudentProposals = async (req, res, next) => {
   }
 };
 
+// Get all proposals in a school
+export const getSchoolProposals = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+
+
+    const getSupervisor = await prisma.supervisor.findUnique({
+      where: {
+        userId: userId
+      }
+    })
+
+    if (!getSupervisor) {
+      const error = new Error("Supervisor not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    const supervisorId = getSupervisor.id;
+
+    // Get all proposals where the supervisor is assigned
+    const proposals = await prisma.proposal.findMany({
+      where: {
+        student: {
+          supervisors: {
+            some: {
+              id: supervisorId,
+            },
+          },
+        },
+      },
+      include: {
+        student: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+        },
+        reviewGrades: {
+          select: {
+            id: true,
+            verdict: true,
+            feedback: true,
+            createdAt: true,
+            gradedBy: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            submittedBy: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+        defenseGrades: {
+          select: {
+            id: true,
+            grade: true,
+            feedback: true,
+            createdAt: true,
+            gradedBy: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            submittedBy: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+        panelists: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        defenses: true,
+        statuses: {
+          include: {
+            definition: true,
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+          take: 1,
+        },
+      },
+      orderBy: {
+        submittedAt: "desc",
+      },
+    });
+
+    res.status(200).json({
+      message: "Proposals retrieved successfully",
+      proposals: proposals,
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
 // Review proposal controller
 export const reviewProposal = async (req, res, next) => {
   try {
@@ -716,6 +830,79 @@ export const getStudentBooks = async (req, res, next) => {
 
     res.status(200).json({
       message: "Student books retrieved successfully",
+      books,
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+export const getAllBooks = async (req, res, next) => {
+  try {
+    // Get supervisor by user id
+    const userId = req.user.id;
+    const supervisor = await prisma.supervisor.findUnique({
+      where: { userId }
+    });
+
+    if (!supervisor) {
+      const error = new Error("Supervisor not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // Get books where this supervisor is assigned
+    const books = await prisma.book.findMany({
+      where: {
+        student: {
+          supervisors: {
+            some: {
+              id: supervisor.id
+            }
+          }
+        }
+      },
+      include: {
+        student: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+        },
+        statuses: {
+          include: {
+            definition: true,
+          },
+          orderBy: {
+            updatedAt: "desc",
+          },
+        },
+        submittedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+          },
+        },
+        examinerAssignments: {
+          include: {
+            examiner: true,
+          },
+        },
+      },
+      orderBy: {
+        submissionDate: "desc",
+      },
+    });
+
+    res.status(200).json({
+      message: "Books retrieved successfully",
       books,
     });
   } catch (error) {

@@ -15,7 +15,9 @@ import {
   getDashboardStats,
   getNotifications,
   getStudentStatuses,
-  getStudentBooks
+  getStudentBooks,
+  getSchoolProposals,
+  getAllBooks
 } from '../controllers/supervisorController.js';
 
 const router = express.Router();
@@ -38,9 +40,11 @@ router.get('/students/:studentId/statuses', authenticateToken, authorizeRoles('S
 // Proposal management routes
 router.get('/students/:studentId/proposals', authenticateToken, authorizeRoles('SUPERVISOR'), getStudentProposals);
 router.put('/proposals/:proposalId/review', authenticateToken, authorizeRoles('SUPERVISOR'), reviewProposal);
+router.get('/proposals', authenticateToken, authorizeRoles('SUPERVISOR'), getSchoolProposals);
 
 // dissertation /book management routes
 router.get('/student-books/:studentId', authenticateToken, authorizeRoles('SUPERVISOR'), getStudentBooks);
+router.get('/books', authenticateToken, authorizeRoles('SUPERVISOR'), getAllBooks);
 // Dashboard routes
 router.get('/dashboard/stats', authenticateToken, authorizeRoles('SUPERVISOR'), getDashboardStats);
 router.get('/notifications', authenticateToken, authorizeRoles('SUPERVISOR'), getNotifications);
