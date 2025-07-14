@@ -775,3 +775,27 @@ enum RequestStatus {
   BEING_PROCESSED
   CONCLUDED
 }
+
+// Direct Messaging Models
+model Conversation {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  participants  String[]  @db.ObjectId // Array of user IDs (student and supervisor)
+  messages      Message[] @relation("ConversationMessages") // Relation to messages
+  lastMessage   Message?  @relation("ConversationLastMessage", fields: [lastMessageId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  lastMessageId String?   @unique @db.ObjectId
+  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime  @default(now())
+}
+
+model Message {
+  id              String      @id @default(auto()) @map("_id") @db.ObjectId
+  conversation    Conversation @relation("ConversationMessages", fields: [conversationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  conversationId  String      @db.ObjectId
+  senderId        String      @db.ObjectId // user ID
+  text            String
+  formatting      Json?       // For bold, italic, lists, etc.
+  createdAt       DateTime    @default(now())
+  readBy          String[]    @db.ObjectId // Array of user IDs who have read the message
+
+  lastMessageOfConversation Conversation? @relation("ConversationLastMessage")
+}

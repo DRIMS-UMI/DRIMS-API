@@ -16,7 +16,8 @@ import {
   getStudentBooks,
   getStudentResearchRequests,
   createResearchRequest,
-  getResearchRequest
+  getResearchRequest,
+  listAllSupervisorsForMessaging
 } from '../controllers/studentController.js';
 
 const router = express.Router();
@@ -53,5 +54,8 @@ router.get('/books/:studentId', authenticateToken, authorizeRoles('STUDENT'), ge
 router.get('/research-requests', authenticateToken, authorizeRoles('STUDENT'), getStudentResearchRequests);
 router.post('/research-requests', authenticateToken, authorizeRoles('STUDENT'), createResearchRequest);
 router.get('/research-requests/:requestId', authenticateToken, authorizeRoles('STUDENT'), getResearchRequest);
+
+// Supervisors for messaging routes
+router.get('/supervisors-for-messaging', authenticateToken, authorizeRoles('STUDENT'), listAllSupervisorsForMessaging);
 
 export default router; 

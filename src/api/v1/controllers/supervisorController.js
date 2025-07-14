@@ -1033,3 +1033,24 @@ export const getNotifications = async (req, res, next) => {
     next(error);
   }
 };
+
+// List all students for messaging
+export const listAllStudentsForMessaging = async (req, res, next) => {
+  try {
+    const students = await prisma.user.findMany({
+      where: { role: 'STUDENT', isActive: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        title: true,
+        avatar: true
+      }
+    });
+    res.status(200).json({ students });
+  } catch (error) {
+    if (!error.statusCode) error.statusCode = 500;
+    next(error);
+  }
+};
