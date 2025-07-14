@@ -840,7 +840,7 @@ export const getStudentBooks = async (req, res, next) => {
   }
 };
 
-export const getAllBooks = async (req, res, next) => {
+ export const getAllBooks = async (req, res, next) => {
   try {
     // Get supervisor by user id
     const userId = req.user.id;

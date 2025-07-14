@@ -9705,14 +9705,94 @@ export const getGraduationStatistics = async (req, res) => {
     }
   };
 
+/* ********** RESEARCH REQUEST MANAGEMENT ********** */
 
+// Get all research requests for management
+export const getAllResearchRequests = async (req, res, next) => {
+  try {
+    const requests = await prisma.researchRequest.findMany({
+      orderBy: { submittedAt: 'desc' },
+      include: {
+        student: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            registrationNumber: true,
+            email: true
+          }
+        }
+      }
+    });
 
+    res.status(200).json({
+      message: "Research requests retrieved successfully",
+      requests
+    });
 
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
 
+// Update research request status and decision
+export const updateResearchRequest = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { status, decision } = req.body;
 
+    
 
+    // Validate status
+    const validStatuses = ['PENDING','IN_REVIEW', 'BEING_PROCESSED', 'CONCLUDED'];
+    if (status && !validStatuses.includes(status)) {
+      const error = new Error("Invalid status. Must be one of: PENDING, IN_REVIEW, BEING_PROCESSED, CONCLUDED");
+      error.statusCode = 400;
+      throw error;
+    }
 
+    // Find and update the research request
+    const updatedRequest = await prisma.researchRequest.update({
+      where: { id },
+      data: {
+        status: status || undefined,
+        decision: decision || undefined,
+        responseDate: new Date()
+      },
+      include: {
+        student: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            registrationNumber: true,
+            email: true
+          }
+        }
+      }
+    });
 
+    res.status(200).json({
+      message: "Research request updated successfully",
+      request: updatedRequest
+    });
 
+  } catch (error) {
+    if (error.code === 'P2025') {
+      // Prisma record not found error
+      const error = new Error("Research request not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
 
-
+/* ********** END OF RESEARCH REQUEST MANAGEMENT ********** */

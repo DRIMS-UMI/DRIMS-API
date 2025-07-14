@@ -166,6 +166,7 @@ model student {
   supervisors          supervisor[]     @relation(fields: [supervisorIds], references:[id])
   
   books                book[]         
+  researchRequests     researchRequest[] // Research requests made by the student
   resultsApprovedDate  DateTime?
   resultsSentDate      DateTime?
   senateApprovalDate   DateTime?
@@ -747,4 +748,30 @@ model graduation {
 
   @@index([academicYear])
  
+}
+
+// Research Request Model
+model researchRequest {
+  id                String   @id @default(auto()) @map("_id") @db.ObjectId
+  student           student  @relation(fields: [studentId], references: [id])
+  studentId         String   @db.ObjectId
+  requestType       String   // e.g., "Change of Supervisor", "Request for Proposal Defense Scheduling", "Other"
+  status            RequestStatus @default(PENDING)
+  decision          String?  // Free text response from supervisor/admin
+  submittedAt       DateTime @default(now())
+  responseDate      DateTime?
+  formData          Json?    // Store dynamic form data as JSON
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([studentId])
+  @@index([status])
+  @@index([requestType])
+}
+
+enum RequestStatus {
+  PENDING
+  IN_REVIEW
+  BEING_PROCESSED
+  CONCLUDED
 }
