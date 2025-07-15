@@ -164,6 +164,150 @@ class EmailService {
             return false;
         }
     }
+
+    // Send direct message notification email
+    async sendMessageNotificationEmail({
+        to,
+        recipientName,
+        senderName,
+        messageText,
+        conversationUrl
+    }) {
+        try {
+            const emailTemplate = this.generateMessageNotificationTemplate({
+                recipientName,
+                senderName,
+                messageText,
+                conversationUrl
+            });
+
+            const mailOptions = {
+                from: process.env.NODE_MAILER_USERCRED,
+                to: to,
+                subject: `New message from ${senderName}`,
+                html: emailTemplate
+            };
+
+            const result = await this.transporter.sendMail(mailOptions);
+            console.log('Message notification email sent successfully:', result.messageId);
+            return { success: true, messageId: result.messageId };
+        } catch (error) {
+            console.error('Error sending message notification email:', error);
+            throw new Error(`Failed to send email: ${error.message}`);
+        }
+    }
+
+    // Generate email template for message notifications
+    generateMessageNotificationTemplate({ recipientName, senderName, messageText, conversationUrl }) {
+        // Truncate message text if it's too long
+        const truncatedMessage = messageText.length > 200 ? messageText.substring(0, 200) + '...' : messageText;
+        
+        return `
+            <html>
+                <head>
+                    <style>
+                        body { 
+                            font-family: Arial, sans-serif; 
+                            line-height: 1.6; 
+                            color: #333; 
+                            margin: 0; 
+                            padding: 0; 
+                            background-color: #f4f4f4; 
+                        }
+                        .container { 
+                            max-width: 600px; 
+                            margin: 0 auto; 
+                            background-color: #fff; 
+                            border-radius: 8px; 
+                            overflow: hidden; 
+                            box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
+                        }
+                        .header { 
+                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                            color: white; 
+                            padding: 20px; 
+                            text-align: center; 
+                        }
+                        .header h2 { 
+                            margin: 0; 
+                            font-size: 24px; 
+                        }
+                        .content { 
+                            padding: 30px; 
+                        }
+                        .message-preview { 
+                            background-color: #f8f9fa; 
+                            border-left: 4px solid #667eea; 
+                            padding: 15px; 
+                            margin: 20px 0; 
+                            border-radius: 4px; 
+                        }
+                        .cta-button { 
+                            display: inline-block; 
+                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                            color: white; 
+                            padding: 12px 30px; 
+                            text-decoration: none; 
+                            border-radius: 25px; 
+                            font-weight: bold; 
+                            margin: 20px 0; 
+                            text-align: center; 
+                        }
+                        .footer { 
+                            background-color: #f8f9fa; 
+                            padding: 20px; 
+                            text-align: center; 
+                            font-size: 12px; 
+                            color: #666; 
+                        }
+                        .logo {
+                            width: 40px;
+                            height: 40px;
+                            margin: 0 auto 10px;
+                            background-color: rgba(255,255,255,0.2);
+                            border-radius: 50%;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            font-size: 20px;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="header">
+                            <div class="logo">📨</div>
+                            <h2>New Message Received</h2>
+                        </div>
+                        <div class="content">
+                            <p>Hello <strong>${recipientName}</strong>,</p>
+                            
+                            <p>You have received a new message from <strong>${senderName}</strong>:</p>
+                            
+                            <div class="message-preview">
+                                <p style="margin: 0; font-style: italic;">"${truncatedMessage}"</p>
+                            </div>
+                            
+                            <p>Click the button below to view and reply to this message:</p>
+                            
+                            <div style="text-align: center;">
+                                <a href="${conversationUrl || '#'}" class="cta-button">View Message</a>
+                            </div>
+                            
+                            <p style="font-size: 14px; color: #666; margin-top: 30px;">
+                                You're receiving this email because you have a message waiting in your UMI Research Management System account. 
+                                If you don't want to receive these notifications, you can adjust your notification preferences in your account settings.
+                            </p>
+                        </div>
+                        <div class="footer">
+                            <p>This is an automated message from UMI Research Management System.</p>
+                            <p>&copy; ${new Date().getFullYear()} UMI Research Management System. All rights reserved.</p>
+                        </div>
+                    </div>
+                </body>
+            </html>
+        `;
+    }
 }
 
 export default new EmailService(); 
