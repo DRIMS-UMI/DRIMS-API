@@ -27,7 +27,7 @@ app.start = async () => {
 
     const server = http.createServer(app);
 
-    setupSocketIO(server);
+    setupSocketIO(server, app);
 
     server.on("error", (error) => { 
         if (error.syscall !== 'listen') {
