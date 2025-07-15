@@ -1037,17 +1037,46 @@ export const getNotifications = async (req, res, next) => {
 // List all students for messaging
 export const listAllStudentsForMessaging = async (req, res, next) => {
   try {
+    const userId = req.user.id;
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { supervisor: { include: { students: true } } }
+    });
+
+    if (!user || !user.supervisor) {
+      const error = new Error("Supervisor not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    console.log("user", user)
+
+    // Find students assigned to this supervisor
     const students = await prisma.user.findMany({
-      where: { role: 'STUDENT', isActive: true },
+      where: {
+        role: 'STUDENT',
+        
+        student: {
+          supervisors: {
+            some: {
+              id: user.supervisor.id
+            }
+          }
+        }
+      },
       select: {
         id: true,
         name: true,
         email: true,
         role: true,
         title: true,
-        avatar: true
+        
       }
     });
+
+    console.log("students", students)
+
     res.status(200).json({ students });
   } catch (error) {
     if (!error.statusCode) error.statusCode = 500;
