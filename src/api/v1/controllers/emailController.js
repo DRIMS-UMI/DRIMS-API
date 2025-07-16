@@ -1,5 +1,5 @@
 import emailService from '../../../services/emailService.js';
-import { updateResultsSentDate } from './managementController.js';
+import { updateResultsSentDate } from './managementEvaluationController.js';
 
 class EmailController {
     // Send results email with Excel attachment
