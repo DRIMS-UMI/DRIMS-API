@@ -1,18 +1,84 @@
-import nodemailer from 'nodemailer';
+import axios from 'axios';
 import prisma from '../utils/db.mjs';
 import {scheduleJob, cancelJob} from 'node-schedule';
 
 class NotificationService {
     constructor() {
-        this.emailTransporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: {
-                user: process.env.NODE_MAILER_USERCRED,
-                pass: process.env.NODE_MAILER_PASSCRED,
-            },
+        this.zohoApiUrl = 'https://mail.zoho.com/api/accounts';
+        this.accountId = process.env.ZOHO_ACCOUNT_ID;
+        this.fromEmail = process.env.ZOHO_EMAIL_USER;
+        
+        // Don't set a static access token - we'll get it dynamically
+        this.accessToken = null;
+        
+        // Create axios instance for Zoho API (without authorization header initially)
+        this.apiClient = axios.create({
+            baseURL: this.zohoApiUrl,
+            headers: {
+                'Content-Type': 'application/json'
+            }
         });
 
         this.activeJobs = new Map();
+    }
+
+    // Get fresh Zoho access token
+    static async getZohoAccessToken() {
+        try {
+            const res = await axios.post('https://accounts.zoho.com/oauth/v2/token', null, {
+                params: {
+                    refresh_token: process.env.ZOHO_REFRESH_TOKEN,
+                    client_id: process.env.ZOHO_CLIENT_ID,
+                    client_secret: process.env.ZOHO_CLIENT_SECRET,
+                    grant_type: 'refresh_token',
+                },
+            });
+            return res.data.access_token;
+        } catch (error) {
+            console.error('Failed to refresh Zoho access token:', error?.response?.data || error.message);
+            throw new Error('Failed to refresh Zoho access token');
+        }
+    }
+
+    // Refresh access token
+    async refreshAccessToken() {
+        try {
+            const newAccessToken = await NotificationService.getZohoAccessToken();
+            this.accessToken = newAccessToken;
+            
+            // Update the authorization header
+            this.apiClient.defaults.headers['Authorization'] = `Zoho-oauthtoken ${this.accessToken}`;
+            
+            console.log('Notification service access token refreshed successfully');
+            return newAccessToken;
+        } catch (error) {
+            console.error('Error refreshing notification service access token:', error.message);
+            throw error;
+        }
+    }
+
+    // Enhanced send method with automatic token refresh on 401 errors
+    async sendEmailWithRetry(emailData) {
+        try {
+            // If we don't have a token yet, get one first
+            if (!this.accessToken) {
+                await this.refreshAccessToken();
+            }
+
+            const response = await this.apiClient.post(`/${this.accountId}/messages`, emailData);
+            return response;
+        } catch (error) {
+            // If we get an unauthorized error, try refreshing the token and retry once
+            if (error.response?.status === 401) {
+                console.log('Access token expired or invalid, refreshing...');
+                await this.refreshAccessToken();
+                
+                // Retry the request with the new token
+                const response = await this.apiClient.post(`/${this.accountId}/messages`, emailData);
+                return response;
+            }
+            throw error;
+        }
     }
 
     // Schedule a new notification with recipient type handling
@@ -225,12 +291,14 @@ class NotificationService {
     async sendEmail(notification) {
         const template = this.generateEmailTemplate(notification);
         
-        await this.emailTransporter.sendMail({
-            // to: notification.recipientEmail,
-            to: "stephaniekirathe@gmail.com",
+        const emailData = {
+            fromAddress: this.fromEmail,
+            toAddress: "stephaniekirathe@gmail.com", // notification.recipientEmail,
             subject: notification.title,
-            html: template,
-        });
+            content: template
+        };
+
+        await this.sendEmailWithRetry(emailData);
     }
 
     // Send system notification
@@ -244,11 +312,14 @@ class NotificationService {
         // Implementation for reminder notifications
         const template = this.generateEmailTemplate(notification);
         
-        await this.emailTransporter.sendMail({
-            to: notification.recipientEmail,
+        const emailData = {
+            fromAddress: this.fromEmail,
+            toAddress: notification.recipientEmail,
             subject: `REMINDER: ${notification.title}`,
-            html: template,
-        });
+            content: template
+        };
+
+        await this.sendEmailWithRetry(emailData);
     }
 
     // Get base email template

@@ -1,13 +1,20 @@
-import nodemailer from 'nodemailer';
+import axios from 'axios';
 
 class EmailService {
     constructor() {
-        this.transporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: {
-                user: process.env.NODE_MAILER_USERCRED,
-                pass: process.env.NODE_MAILER_PASSCRED,
-            },
+        this.zohoApiUrl = 'https://mail.zoho.com/api/accounts';
+        this.accountId = process.env.ZOHO_ACCOUNT_ID;
+        this.fromEmail = process.env.ZOHO_EMAIL_USER;
+        
+        // Don't set a static access token - we'll get it dynamically
+        this.accessToken = null;
+        
+        // Create axios instance for Zoho API (without authorization header initially)
+        this.apiClient = axios.create({
+            baseURL: this.zohoApiUrl,
+            headers: {
+                'Content-Type': 'application/json'
+            }
         });
     }
 
@@ -30,27 +37,172 @@ class EmailService {
                 message
             });
 
-            const mailOptions = {
-                from: process.env.NODE_MAILER_USERCRED,
-                to: to,
+            const emailData = {
+                fromAddress: this.fromEmail,
+                toAddress: to,
                 subject: subject,
-                html: emailTemplate,
+                content: emailTemplate,
                 attachments: [
                     {
-                        filename: fileName,
-                        content: excelBuffer,
-                        encoding: 'base64',
+                        attachmentName: fileName,
+                        content: excelBuffer.toString('base64'),
                         contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
                     }
                 ]
             };
 
-            const result = await this.transporter.sendMail(mailOptions);
-            console.log('Results email sent successfully:', result.messageId);
-            return { success: true, messageId: result.messageId };
+            const response = await this.sendEmailWithRetry(emailData);
+            console.log('Results email sent successfully via Zoho API:', response.data);
+            return { success: true, messageId: response.data.data?.messageId };
         } catch (error) {
-            console.error('Error sending results email:', error);
-            throw new Error(`Failed to send email: ${error.message}`);
+            console.error('Error sending results email via Zoho API:', error.response?.data || error.message);
+            throw new Error(`Failed to send email: ${error.response?.data?.message || error.message}`);
+        }
+    }
+
+    // Send direct message notification email
+    async sendMessageNotificationEmail({
+        to,
+        recipientName,
+        senderName,
+        messageText,
+        conversationUrl
+    }) {
+        try {
+            const emailTemplate = this.generateMessageNotificationTemplate({
+                recipientName,
+                senderName,
+                messageText,
+                conversationUrl
+            });
+
+            const emailData = {
+                fromAddress: this.fromEmail,
+                toAddress: to,
+                subject: `New message from ${senderName}`,
+                content: emailTemplate
+            };
+
+            const response = await this.sendEmailWithRetry(emailData);
+            console.log('Message notification email sent successfully via Zoho API:', response.data);
+            return { success: true, messageId: response.data.data?.messageId };
+        } catch (error) {
+            console.error('Error sending message notification email via Zoho API:', error.response?.data || error.message);
+            throw new Error(`Failed to send email: ${error.response?.data?.message || error.message}`);
+        }
+    }
+
+    // Send basic email using Zoho Mail API
+    async sendEmail({
+        to,
+        subject,
+        htmlContent,
+        textContent,
+        attachments = []
+    }) {
+        try {
+            const emailData = {
+                fromAddress: this.fromEmail,
+                toAddress: Array.isArray(to) ? to.join(',') : to,
+                subject: subject,
+                content: htmlContent || textContent,
+                ...(attachments.length > 0 && { attachments })
+            };
+
+            const response = await this.sendEmailWithRetry(emailData);
+            console.log('Email sent successfully via Zoho API:', response.data);
+            return { success: true, messageId: response.data.data?.messageId };
+        } catch (error) {
+            console.error('Error sending email via Zoho API:', error.response?.data || error.message);
+            throw new Error(`Failed to send email: ${error.response?.data?.message || error.message}`);
+        }
+    }
+
+    // Test email connection by getting account info
+    async testConnection() {
+        try {
+            // Ensure we have a token before testing
+            if (!this.accessToken) {
+                await this.refreshAccessToken();
+            }
+
+            const response = await this.apiClient.get(`/${this.accountId}`);
+            console.log('Zoho Mail API connection verified successfully:', response.data);
+            return true;
+        } catch (error) {
+            // Try refreshing token if we get 401
+            if (error.response?.status === 401) {
+                try {
+                    await this.refreshAccessToken();
+                    const response = await this.apiClient.get(`/${this.accountId}`);
+                    console.log('Zoho Mail API connection verified successfully after token refresh:', response.data);
+                    return true;
+                } catch (retryError) {
+                    console.error('Zoho Mail API connection failed even after token refresh:', retryError.response?.data || retryError.message);
+                    return false;
+                }
+            }
+            console.error('Zoho Mail API connection failed:', error.response?.data || error.message);
+            return false;
+        }
+    }
+
+    // Get fresh Zoho access token
+    static async getZohoAccessToken() {
+        try {
+            const res = await axios.post('https://accounts.zoho.com/oauth/v2/token', null, {
+                params: {
+                    refresh_token: process.env.ZOHO_REFRESH_TOKEN,
+                    client_id: process.env.ZOHO_CLIENT_ID,
+                    client_secret: process.env.ZOHO_CLIENT_SECRET,
+                    grant_type: 'refresh_token',
+                },
+            });
+            return res.data.access_token;
+        } catch (error) {
+            console.error('Failed to refresh Zoho access token:', error?.response?.data || error.message);
+            throw new Error('Failed to refresh Zoho access token');
+        }
+    }
+
+    // Refresh access token if needed (improved implementation)
+    async refreshAccessToken() {
+        try {
+            const newAccessToken = await EmailService.getZohoAccessToken();
+            this.accessToken = newAccessToken;
+            
+            // Update the authorization header
+            this.apiClient.defaults.headers['Authorization'] = `Zoho-oauthtoken ${this.accessToken}`;
+            
+            console.log('Access token refreshed successfully');
+            return newAccessToken;
+        } catch (error) {
+            console.error('Error refreshing access token:', error.message);
+            throw error;
+        }
+    }
+
+    // Enhanced send method with automatic token refresh on 401 errors
+    async sendEmailWithRetry(emailData) {
+        try {
+            // If we don't have a token yet, get one first
+            if (!this.accessToken) {
+                await this.refreshAccessToken();
+            }
+
+            const response = await this.apiClient.post(`/${this.accountId}/messages`, emailData);
+            return response;
+        } catch (error) {
+            // If we get an unauthorized error, try refreshing the token and retry once
+            if (error.response?.status === 401) {
+                console.log('Access token expired or invalid, refreshing...');
+                await this.refreshAccessToken();
+                
+                // Retry the request with the new token
+                const response = await this.apiClient.post(`/${this.accountId}/messages`, emailData);
+                return response;
+            }
+            throw error;
         }
     }
 
@@ -151,50 +303,6 @@ class EmailService {
         </body>
         </html>
         `;
-    }
-
-    // Test email connection
-    async testConnection() {
-        try {
-            await this.transporter.verify();
-            console.log('Email service connection verified successfully');
-            return true;
-        } catch (error) {
-            console.error('Email service connection failed:', error);
-            return false;
-        }
-    }
-
-    // Send direct message notification email
-    async sendMessageNotificationEmail({
-        to,
-        recipientName,
-        senderName,
-        messageText,
-        conversationUrl
-    }) {
-        try {
-            const emailTemplate = this.generateMessageNotificationTemplate({
-                recipientName,
-                senderName,
-                messageText,
-                conversationUrl
-            });
-
-            const mailOptions = {
-                from: process.env.NODE_MAILER_USERCRED,
-                to: to,
-                subject: `New message from ${senderName}`,
-                html: emailTemplate
-            };
-
-            const result = await this.transporter.sendMail(mailOptions);
-            console.log('Message notification email sent successfully:', result.messageId);
-            return { success: true, messageId: result.messageId };
-        } catch (error) {
-            console.error('Error sending message notification email:', error);
-            throw new Error(`Failed to send email: ${error.message}`);
-        }
     }
 
     // Generate email template for message notifications
