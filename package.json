@@ -21,6 +21,7 @@
   "@pdftron/pdfnet-node": "^11.3.0",
   "@prisma/client": "^6.5.0",
   "@t3-oss/env-core": "^0.12.0",
+  "axios": "^1.10.0",
   "bcryptjs": "^3.0.2",
   "compression": "^1.8.0",
   "cookie-parser": "^1.4.7",
