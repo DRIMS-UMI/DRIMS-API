@@ -1,13 +1,8 @@
 import prisma from "../../../utils/db.mjs";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import nodemailer from "nodemailer";
 import crypto from "crypto";
-
-import fs from "fs/promises";
-import path from "path";
-import os from "os";
-// import PDFNet from '@pdftron/pdfnet-node';
+import emailService from "../../../services/emailService.js";
 import { notificationService } from "../../../services/notificationService.js";
 import mongoose from "mongoose";
 import { conn, gfs } from "../../../utils/db.mjs";
@@ -5721,7 +5716,7 @@ export const requestPasswordReset = async (req, res, next) => {
     const { email } = req.body;
 
     //check if faculty exists
-    const faculty = await prisma.faculty.findUnique({
+    const faculty = await prisma.user.findUnique({
       where: { email },
     });
 
@@ -5754,23 +5749,11 @@ export const requestPasswordReset = async (req, res, next) => {
       },
     });
 
-    // Create nodemailer transporter
-    const transporter = nodemailer.createTransport({
-      // host: process.env.EMAIL_HOST,
-      host: "smtp.gmail.com",
-      // port: process.env.EMAIL_PORT,
-      port: 587,
-      // secure: process.env.EMAIL_SECURE === 'true',
-      secure: true,
-      auth: {
-        user: process.env.NODE_MAILER_USERCRED,
-        pass: process.env.NODE_MAILER_PASSCRED,
-      },
-    });
+    // });
 
     // Frontend URL for password reset
     const frontendUrl =
-      process.env.FACULTY_CLIENT_URL || "https://umifaculty.netlify.app";
+      process.env.FACULTY_CLIENT_URL || "https://umischoolportal.netlify.app";
     // const frontendUrl = process.env.FACULTY_CLIENT_URL || 'http://localhost:5173';
     const resetLink = `${frontendUrl}/reset-password?token=${resetToken}`;
 
@@ -5812,11 +5795,10 @@ export const requestPasswordReset = async (req, res, next) => {
         `;
 
     // Send email
-    await transporter.sendMail({
-      from: `"UMI Research Management" <${process.env.NODE_MAILER_USERCRED}>`,
+    await emailService.sendEmail({
       to: user.email,
       subject: "Password Reset Request",
-      html: emailTemplate,
+      htmlContent: emailTemplate,
     });
 
     res.status(200).json({
@@ -5865,19 +5847,7 @@ export const resetPassword = async (req, res, next) => {
       },
     });
 
-    // Create nodemailer transporter
-    const transporter = nodemailer.createTransport({
-      // host: process.env.EMAIL_HOST,
-      host: "smtp.gmail.com",
-      // port: process.env.EMAIL_PORT,
-      port: 587,
-      // secure: process.env.EMAIL_SECURE === 'true',
-      secure: false,
-      auth: {
-        user: process.env.NODE_MAILER_USERCRED,
-        pass: process.env.NODE_MAILER_PASSCRED,
-      },
-    });
+    // });
 
     // Email template for successful password reset
     const confirmationTemplate = `
@@ -5911,11 +5881,10 @@ export const resetPassword = async (req, res, next) => {
         `;
 
     // Send confirmation email
-    await transporter.sendMail({
-      from: `"UMI Research Management" <${process.env.NODE_MAILER_USERCRED}>`,
+    await emailService.sendEmail({
       to: user.email,
       subject: "Password Reset Successful",
-      html: confirmationTemplate,
+      htmlContent: confirmationTemplate,
     });
 
     res.status(200).json({
