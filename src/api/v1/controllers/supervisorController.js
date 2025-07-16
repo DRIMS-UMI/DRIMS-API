@@ -1,7 +1,6 @@
 import prisma from "../../../utils/db.mjs";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import nodemailer from "nodemailer";
 import crypto from "crypto";
 
 import { notificationService } from "../../../services/notificationService.js";
