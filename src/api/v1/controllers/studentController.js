@@ -958,3 +958,244 @@ export const listAllSupervisorsForMessaging = async (req, res, next) => {
     next(error);
   }
 }; 
+
+// Get available evaluations for student (POST_PROPOSAL_DEFENSE and POST_VIVA)
+export const getAvailableEvaluations = async (req, res, next) => {
+    try {
+        const studentId = req.user.studentId;
+
+        if (!studentId) {
+            const error = new Error('Student ID not found');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Get student with current status and evaluations
+        const student = await prisma.student.findUnique({
+            where: { id: studentId },
+            include: {
+                statuses: {
+                    where: { isCurrent: true },
+                    include: { definition: true }
+                },
+                evaluations: true,
+                proposals: {
+                    include: {
+                        defenses: {
+                            where: { isCurrent: true }
+                        }
+                    }
+                },
+                books: {
+                    include: {
+                        vivaHistory: {
+                            where: { isCurrent: true }
+                        }
+                    }
+                }
+            }
+        });
+
+        if (!student) {
+            const error = new Error('Student not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        const currentStatus = student.statuses[0]?.definition?.name;
+        const availableEvaluations = [];
+
+        // Check if student is eligible for POST_PROPOSAL_DEFENSE evaluation
+        const proposalDefenseStatuses = [
+            'passed-proposal graded',
+            'compliance report submitted',
+            'letter to field issued',
+            'fieldwork',
+            'dissertation submitted'
+        ];
+
+        const hasCompletedProposalDefense = proposalDefenseStatuses.includes(currentStatus) ||
+            student.proposals.some(proposal => 
+                proposal.defenses.some(defense => 
+                    defense.verdict && defense.verdict.includes('PASS')
+                )
+            );
+
+        const hasPostProposalEvaluation = student.evaluations.some(
+            evaluation => evaluation.trigger === 'POST_PROPOSAL_DEFENSE'
+        );
+
+        if (hasCompletedProposalDefense && !hasPostProposalEvaluation) {
+            availableEvaluations.push({
+                trigger: 'POST_PROPOSAL_DEFENSE',
+                title: 'Post-Proposal Defense Evaluation',
+                description: 'Evaluate your satisfaction with research training, supervision, and proposal defense process'
+            });
+        }
+
+        // Check if student is eligible for POST_VIVA evaluation
+        const postVivaStatuses = [
+            'minutes pending',
+            'compliance report submitted',
+            'results approved',
+            'results sent to schools',
+            'results approved by senate',
+            'graduated'
+        ];
+
+        const hasCompletedViva = postVivaStatuses.includes(currentStatus) ||
+            student.books.some(book => 
+                book.vivaHistory.some(viva => 
+                    viva.verdict && (viva.verdict.includes('PASS') || viva.status === 'COMPLETED')
+                )
+            );
+
+        const hasPostVivaEvaluation = student.evaluations.some(
+            evaluation => evaluation.trigger === 'POST_VIVA'
+        );
+
+        if (hasCompletedViva && !hasPostVivaEvaluation) {
+            availableEvaluations.push({
+                trigger: 'POST_VIVA',
+                title: 'Post-Viva Evaluation',
+                description: 'Evaluate your satisfaction with the entire research process including dissertation examination'
+            });
+        }
+
+        res.status(200).json({
+            message: 'Available evaluations retrieved successfully',
+            evaluations: availableEvaluations,
+            currentStatus: currentStatus
+        });
+
+    } catch (error) {
+        console.error('Error in getAvailableEvaluations:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Submit student evaluation
+export const submitStudentEvaluation = async (req, res, next) => {
+    try {
+        const studentId = req.user.studentId;
+        const {
+            trigger,
+            researchTrainingSatisfaction,
+            supervisionSatisfaction,
+            proposalDefenseSatisfaction,
+            dissertationExaminationSatisfaction,
+            researchTrainingComments,
+            supervisionComments,
+            proposalDefenseComments,
+            dissertationExaminationComments,
+            overallComments,
+            suggestions
+        } = req.body;
+
+        if (!studentId) {
+            const error = new Error('Student ID not found');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Validate required fields
+        if (!trigger || !researchTrainingSatisfaction || !supervisionSatisfaction || !proposalDefenseSatisfaction) {
+            const error = new Error('Trigger and basic satisfaction ratings are required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Validate trigger
+        if (!['POST_PROPOSAL_DEFENSE', 'POST_VIVA'].includes(trigger)) {
+            const error = new Error('Invalid evaluation trigger');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // For POST_VIVA evaluations, dissertation examination satisfaction is required
+        if (trigger === 'POST_VIVA' && !dissertationExaminationSatisfaction) {
+            const error = new Error('Dissertation examination satisfaction is required for post-viva evaluations');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if evaluation already exists
+        const existingEvaluation = await prisma.studentEvaluation.findFirst({
+            where: {
+                studentId: studentId,
+                trigger: trigger
+            }
+        });
+
+        if (existingEvaluation) {
+            const error = new Error('Evaluation for this trigger already exists');
+            error.statusCode = 409;
+            throw error;
+        }
+
+        // Create the evaluation
+        const evaluation = await prisma.studentEvaluation.create({
+            data: {
+                student: { connect: { id: studentId } },
+                trigger,
+                researchTrainingSatisfaction,
+                supervisionSatisfaction,
+                proposalDefenseSatisfaction,
+                dissertationExaminationSatisfaction: trigger === 'POST_VIVA' ? dissertationExaminationSatisfaction : null,
+                researchTrainingComments,
+                supervisionComments,
+                proposalDefenseComments,
+                dissertationExaminationComments: trigger === 'POST_VIVA' ? dissertationExaminationComments : null,
+                overallComments,
+                suggestions,
+                isCompleted: true,
+                submittedAt: new Date()
+            }
+        });
+
+        res.status(201).json({
+            message: 'Evaluation submitted successfully',
+            evaluation
+        });
+
+    } catch (error) {
+        console.error('Error in submitStudentEvaluation:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Get student's completed evaluations
+export const getStudentEvaluations = async (req, res, next) => {
+    try {
+        const studentId = req.user.studentId;
+
+        if (!studentId) {
+            const error = new Error('Student ID not found');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        const evaluations = await prisma.studentEvaluation.findMany({
+            where: { studentId: studentId },
+            orderBy: { submittedAt: 'desc' }
+        });
+
+        res.status(200).json({
+            message: 'Evaluations retrieved successfully',
+            evaluations
+        });
+
+    } catch (error) {
+        console.error('Error in getStudentEvaluations:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+}; 

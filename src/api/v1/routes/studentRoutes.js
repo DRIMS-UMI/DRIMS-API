@@ -17,7 +17,10 @@ import {
   getStudentResearchRequests,
   createResearchRequest,
   getResearchRequest,
-  listAllSupervisorsForMessaging
+  listAllSupervisorsForMessaging,
+  getAvailableEvaluations,
+  submitStudentEvaluation,
+  getStudentEvaluations
 } from '../controllers/studentController.js';
 
 const router = express.Router();
@@ -54,6 +57,11 @@ router.get('/books/:studentId', authenticateToken, authorizeRoles('STUDENT'), ge
 router.get('/research-requests', authenticateToken, authorizeRoles('STUDENT'), getStudentResearchRequests);
 router.post('/research-requests', authenticateToken, authorizeRoles('STUDENT'), createResearchRequest);
 router.get('/research-requests/:requestId', authenticateToken, authorizeRoles('STUDENT'), getResearchRequest);
+
+// Evaluation routes
+router.get('/evaluations/available', authenticateToken, authorizeRoles('STUDENT'), getAvailableEvaluations);
+router.post('/evaluations', authenticateToken, authorizeRoles('STUDENT'), submitStudentEvaluation);
+router.get('/evaluations', authenticateToken, authorizeRoles('STUDENT'), getStudentEvaluations);
 
 // Supervisors for messaging routes
 router.get('/supervisors-for-messaging', authenticateToken, authorizeRoles('STUDENT'), listAllSupervisorsForMessaging);
