@@ -5208,7 +5208,7 @@ export const getStatusStatistics = async (req, res, next) => {
               "book writing",
               "dissertation submitted",
               "book under review",
-              "book published",
+              "final dissertation & compliance report received",
             ],
           },
         },
