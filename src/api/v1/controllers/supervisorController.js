@@ -258,8 +258,15 @@ export const getAssignedStudents = async (req, res, next) => {
       include: {
         campus: true,
         statuses: {
+          where: {
+            isCurrent: true 
+          },
           include: {
             definition: true,
+            
+          },
+          orderBy: {
+            startDate: 'desc',
           },
         },
         school: true,
@@ -1082,4 +1089,190 @@ export const listAllStudentsForMessaging = async (req, res, next) => {
     if (!error.statusCode) error.statusCode = 500;
     next(error);
   }
+};
+
+// Controller for getting student status statistics for dashboard charts
+export const getStatusStatistics = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { category = "main" } = req.query;
+
+    // Get supervisor record
+    const supervisor = await prisma.supervisor.findUnique({
+      where: { userId: userId },
+    });
+
+    if (!supervisor) {
+      const error = new Error("Supervisor not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    let whereCondition = {};
+    let stats = [];
+
+    // Define different category filters - only for students assigned to this supervisor
+    if (category === "main") {
+      whereCondition = {
+        isCurrent: true,
+        student: {
+          supervisors: {
+            some: {
+              id: supervisor.id,
+            },
+          },
+        },
+        definition: {
+          name: {
+            in: [
+              "normal progress",
+              "fieldwork",
+              "under examination",
+              "scheduled for viva",
+              "results approved",
+              "results sent to schools",
+              "results approved by senate",
+            ],
+          },
+        },
+      };
+
+      stats = await prisma.studentStatus.groupBy({
+        by: ["definitionId"],
+        _count: true,
+        where: whereCondition,
+      });
+    } else if (category === "proposal") {
+      whereCondition = {
+        isCurrent: true,
+        proposal: {
+          student: {
+            supervisors: {
+              some: {
+                id: supervisor.id,
+              },
+            },
+          },
+        },
+        definition: {
+          name: {
+            in: [
+              "proposal received",
+              "proposal in review",
+              "waiting for proposal defense",
+              "compliance report submitted",
+              "letter to field issued",
+            ],
+          },
+        },
+      };
+
+      stats = await prisma.proposalStatus.groupBy({
+        by: ["definitionId"],
+        _count: true,
+        where: whereCondition,
+      });
+    } else if (category === "book") {
+      whereCondition = {
+        isCurrent: true,
+        book: {
+          student: {
+            supervisors: {
+              some: {
+                id: supervisor.id,
+              },
+            },
+          },
+        },
+        definition: {
+          name: {
+            in: [
+              "book planning",
+              "book writing",
+              "dissertation submitted",
+              "book under review",
+              "final dissertation & compliance report received",
+            ],
+          },
+        },
+      };
+
+      stats = await prisma.bookStatus.groupBy({
+        by: ["definitionId"],
+        _count: true,
+        where: whereCondition,
+      });
+    }
+
+    // Then get the definitions to map names
+    const definitions = await prisma.statusDefinition.findMany({
+      where: {
+        id: {
+          in: stats.map((stat) => stat.definitionId),
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+        color: true,
+      },
+    });
+
+    // Create a map of definition IDs to names and colors
+    const definitionMap = definitions.reduce((acc, def) => {
+      acc[def.id] = {
+        name: def.name,
+        color: def.color || getDefaultColor(def.name),
+      };
+      return acc;
+    }, {});
+
+    // Transform the data into an array with status, students, and fill
+    const statusArray = stats.map((stat) => {
+      const definition = definitionMap[stat.definitionId];
+      return {
+        status: definition.name,
+        students: stat._count,
+        fill: definition.color,
+      };
+    });
+
+    res.json(statusArray);
+  } catch (error) {
+    console.error("Error in getStatusStatistics:", error);
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+// Helper function to get default colors if not provided in the database
+const getDefaultColor = (statusName) => {
+  const colorMap = {
+    // Student status colors
+    "normal progress": "#22C55E",
+    fieldwork: "#3B82F6",
+    "under examination": "#EAB308",
+    "scheduled for viva": "#EC4899",
+    "results approved": "#14B8A6",
+    "results sent to schools": "#8B5CF6",
+    "results approved by senate": "#06B6D4",
+    
+    // Book/Dissertation status colors
+    "book planning": "#F59E0B", // amber
+    "book writing": "#3B82F6", // blue
+    "dissertation submitted": "#23388F", // dark blue
+    "book under review": "#EAB308", // yellow
+    "final dissertation & compliance report received": "#10B981", // emerald
+    
+    // Proposal status colors
+    "proposal received": "#6366F1", // indigo
+    "proposal in review": "#8B5CF6", // violet
+    "waiting for proposal defense": "#EC4899", // pink
+    "compliance report submitted": "#06B6D4", // cyan
+    "letter to field issued": "#10B981", // emerald
+  };
+
+  return colorMap[statusName.toLowerCase()] || "#6B7280"; // Default gray color
 };
