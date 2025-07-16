@@ -18,7 +18,8 @@ import {
   getStudentBooks,
   getSchoolProposals,
   getAllBooks,
-  listAllStudentsForMessaging
+  listAllStudentsForMessaging,
+  getStatusStatistics
 } from '../controllers/supervisorController.js';
 
 const router = express.Router();
@@ -49,6 +50,7 @@ router.get('/student-books/:studentId', authenticateToken, authorizeRoles('SUPER
 router.get('/books', authenticateToken, authorizeRoles('SUPERVISOR'), getAllBooks);
 // Dashboard routes
 router.get('/dashboard/stats', authenticateToken, authorizeRoles('SUPERVISOR'), getDashboardStats);
+router.get('/dashboard/status-statistics', authenticateToken, authorizeRoles('SUPERVISOR'), getStatusStatistics);
 router.get('/notifications', authenticateToken, authorizeRoles('SUPERVISOR'), getNotifications);
 
 export default router; 
