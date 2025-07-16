@@ -167,6 +167,7 @@ model student {
   
   books                book[]         
   researchRequests     researchRequest[] // Research requests made by the student
+  evaluations          studentEvaluation[] // Student satisfaction evaluations
   resultsApprovedDate  DateTime?
   resultsSentDate      DateTime?
   senateApprovalDate   DateTime?
@@ -418,6 +419,14 @@ model examiner {
 
   // Add this relation
   notifications notification[] @relation("ExaminerNotifications")
+  
+  // Back-reference fields (required by Prisma)
+  // For chairperson (one-to-many): just relation name
+  vivasAsChairperson viva[] @relation("VivaChairperson")
+  
+  // For external examiners (many-to-many): need array field + relation
+  vivaIds String[] @db.ObjectId
+  vivasAsExternalExaminer viva[] @relation("VivaExternalExaminers", fields: [vivaIds], references: [id])
 }
 
 model examinerBookAssignment {
@@ -531,12 +540,18 @@ model viva {
   attempt       Int         // To track which attempt this is
   chairperson  facultyMember? @relation(fields: [chairpersonId], references: [id])
   chairpersonId String?   @db.ObjectId
+  // New field for internal examiner as chairperson
+  internalExaminerChairperson examiner? @relation("VivaChairperson", fields: [internalExaminerChairpersonId], references: [id])
+  internalExaminerChairpersonId String? @db.ObjectId
   minutesSecretary      ExternalPerson? @relation("MinutesSecretary", fields: [minutesSecretaryId], references: [id])
   minutesSecretaryId    String?        @db.ObjectId
   panelistIds String[]  @db.ObjectId
   panelists   panelist[] @relation(fields: [panelistIds], references: [id])
   reviewerIds  String[] @db.ObjectId
   reviewers    reviewer[] @relation(fields: [reviewerIds], references: [id])
+  // New field for external examiners as reviewers
+  externalExaminerIds String[] @db.ObjectId
+  externalExaminers examiner[] @relation("VivaExternalExaminers", fields: [externalExaminerIds], references: [id])
   externalMark Float?    // External mark out of 100
   internalMark Float?    // Internal mark out of 100
   finalExternalMark Float? // Final external mark (20% of externalMark)
@@ -798,4 +813,47 @@ model Message {
   readBy          String[]    @db.ObjectId // Array of user IDs who have read the message
 
   lastMessageOfConversation Conversation? @relation("ConversationLastMessage")
+}
+
+enum EvaluationTrigger {
+  POST_PROPOSAL_DEFENSE
+  POST_VIVA
+}
+
+enum SatisfactionLevel {
+  VERY_DISSATISFIED
+  DISSATISFIED  
+  NEUTRAL
+  SATISFIED
+  VERY_SATISFIED
+}
+
+model studentEvaluation {
+  id                     String               @id @default(auto()) @map("_id") @db.ObjectId
+  student                student              @relation(fields: [studentId], references: [id])
+  studentId              String               @db.ObjectId
+  
+  trigger                EvaluationTrigger    // When this evaluation was triggered
+  
+  // Satisfaction ratings (1-5 scale)
+  researchTrainingSatisfaction     SatisfactionLevel
+  supervisionSatisfaction          SatisfactionLevel  
+  proposalDefenseSatisfaction      SatisfactionLevel
+  dissertationExaminationSatisfaction SatisfactionLevel?  // Only for post-viva evaluations
+  
+  // Comments
+  researchTrainingComments         String?
+  supervisionComments              String?
+  proposalDefenseComments          String?
+  dissertationExaminationComments  String?
+  overallComments                  String?
+  
+  // Suggestions for improvement
+  suggestions                      String?
+  
+  isCompleted                      Boolean              @default(false)
+  submittedAt                      DateTime?
+  
+  createdAt                        DateTime             @default(now())
+  updatedAt                        DateTime             @updatedAt
 }
