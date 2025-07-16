@@ -7567,8 +7567,8 @@ export const scheduleViva = async (req, res, next) => {
             scheduledDate,
             location,
             panelistIds,
-            reviewerIds,
-            chairpersonId,
+            reviewerIds,// This will now be external examiner IDs
+            chairpersonId,  // This will now be internal examiner ID
             minutesSecretaryId,
         } = req.body;
 
@@ -7599,6 +7599,14 @@ export const scheduleViva = async (req, res, next) => {
                         definition: true,
                     },
                 },
+                examinerAssignments: {
+                    where: {
+                        isCurrent: true,
+                    },
+                    include: {
+                        examiner: true,
+                    },
+                },
             },
         });
 
@@ -7607,6 +7615,40 @@ export const scheduleViva = async (req, res, next) => {
             error.statusCode = 404;
             throw error;
         }
+
+         // Get current internal and external examiners from assignments
+         const internalExaminers = existingBook.examinerAssignments
+         .filter(assignment => assignment.examiner.type === "Internal")
+         .map(assignment => assignment.examiner);
+     
+     const externalExaminers = existingBook.examinerAssignments
+         .filter(assignment => assignment.examiner.type === "External")
+         .map(assignment => assignment.examiner);
+
+     // Validate chairperson (must be an internal examiner assigned to this book)
+     if (chairpersonId) {
+         const isValidInternalExaminer = internalExaminers.some(
+             examiner => examiner.id === chairpersonId
+         );
+         if (!isValidInternalExaminer) {
+             const error = new Error("Chairperson must be an internal examiner assigned to this book");
+             error.statusCode = 400;
+             throw error;
+         }
+     }
+
+            // Validate reviewers (must be external examiners assigned to this book)
+            if (reviewerIds && reviewerIds.length > 0) {
+                const validExternalExaminerIds = externalExaminers.map(examiner => examiner.id);
+                const invalidReviewers = reviewerIds.filter(
+                    id => !validExternalExaminerIds.includes(id)
+                );
+                if (invalidReviewers.length > 0) {
+                    const error = new Error("All reviewers must be external examiners assigned to this book");
+                    error.statusCode = 400;
+                    throw error;
+                }
+            }
 
         // Check if panelists exist
         const panelists = await prisma.panelist.findMany({
@@ -7654,22 +7696,41 @@ export const scheduleViva = async (req, res, next) => {
                 attempt: attemptNumber,
                 panelists: { connect: panelistIds.map((id) => ({ id })) },
                 isCurrent: true,
+                  // Use internal examiner as chairperson
+                  internalExaminerChairperson: chairpersonId
+                  ? { connect: { id: chairpersonId } }
+                  : undefined,
+              // Use external examiners as reviewers
+              externalExaminers: reviewerIds && reviewerIds.length > 0
+                  ? { connect: reviewerIds.map((id) => ({ id })) }
+                  : undefined,
+              minutesSecretary: minutesSecretaryId
+                  ? { connect: { id: minutesSecretaryId } }
+                  : undefined,
                 chairperson: chairpersonId
                     ? { connect: { id: chairpersonId } }
                     : undefined,
-                minutesSecretary: minutesSecretaryId
-                    ? { connect: { id: minutesSecretaryId } }
-                    : undefined,
+               
                 reviewers: reviewerIds ? { connect: reviewerIds.map((id) => ({ id })) } : undefined,
             },
             include: {
                 panelists: true,
+                internalExaminerChairperson: true,
+                externalExaminers: true,
                 reviewers: true,
                 chairperson: true,
                 minutesSecretary: true,
                 book: {
                     include: {
                         student: true,
+                        examinerAssignments: {
+                            where: {
+                                isCurrent: true,
+                            },
+                            include: {
+                                examiner: true,
+                            },
+                        },
                     },
                 },
             },
@@ -7734,13 +7795,17 @@ export const scheduleViva = async (req, res, next) => {
             }
         }
 
+          // Log activity with examiner information
+          const chairpersonName = viva.internalExaminerChairperson?.name || "No chairperson";
+          const reviewerNames = viva.externalExaminers?.map(examiner => examiner.name).join(", ") || "No reviewers";
+
         // Log activity
         await prisma.userActivity.create({
             data: {
                 userId: req.user.id,
                 action: `Scheduled viva for ${
                     existingBook.student?.firstName || "Unknown Student"
-                } ${existingBook.student?.lastName || ""}`,
+                } ${existingBook.student?.lastName || ""} with chairperson: ${chairpersonName}, reviewers: ${reviewerNames}`,
                 entityId: viva.id,
                 entityType: "Viva",
             },
@@ -7773,6 +7838,24 @@ export const scheduleViva = async (req, res, next) => {
         //         email: supervisor.email,
         //         name: supervisor.name,
         //     })),
+         //     // Add internal examiner chairperson if exists
+        //     ...(viva.internalExaminerChairperson
+        //         ? [
+        //             {
+        //                 category: "EXAMINER",
+        //                 id: viva.internalExaminerChairperson.id,
+        //                 email: viva.internalExaminerChairperson.primaryEmail,
+        //                 name: viva.internalExaminerChairperson.name,
+        //             },
+        //         ]
+        //         : []),
+            //     // Add external examiner reviewers
+        //     ...(viva.externalExaminers ? viva.externalExaminers.map((examiner) => ({
+        //         category: "EXAMINER",
+        //         id: examiner.id,
+        //         email: examiner.primaryEmail,
+        //         name: examiner.name,
+        //     })) : []),
         //     // Add chairperson if exists
         //     ...(viva.chairperson
         //         ? [
@@ -9796,3 +9879,5 @@ export const updateResearchRequest = async (req, res, next) => {
 };
 
 /* ********** END OF RESEARCH REQUEST MANAGEMENT ********** */
+
+
