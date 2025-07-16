@@ -226,9 +226,9 @@ export const sendMessage = async (req, res) => {
           // Determine the conversation URL based on user role
           let conversationUrl = '';
           if (recipient.role === 'STUDENT') {
-            conversationUrl = `${env.STUDENT_CLIENT_URL || 'https://umistudents.netlify.app'}/direct-messages`;
+            conversationUrl = `${env.STUDENT_CLIENT_URL || 'https://umistudentportal.netlify.app'}/direct-messages`;
           } else if (recipient.role === 'SUPERVISOR' || recipient.role === 'FACULTY') {
-            conversationUrl = `${env.SUPERVISOR_CLIENT_URL || 'https://umisupervisor.netlify.app'}/direct-messages`;
+            conversationUrl = `${env.SUPERVISOR_CLIENT_URL || 'https://umisupervisorportal.netlify.app'}/direct-messages`;
           }
 
           // Send email notification
