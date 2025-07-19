@@ -1172,30 +1172,413 @@ export const submitStudentEvaluation = async (req, res, next) => {
 
 // Get student's completed evaluations
 export const getStudentEvaluations = async (req, res, next) => {
-    try {
-        const studentId = req.user.studentId;
+  try {
+    const userId = req.user.id;
 
-        if (!studentId) {
-            const error = new Error('Student ID not found');
-            error.statusCode = 400;
-            throw error;
-        }
+    // Get user with student information
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { student: true }
+    });
 
-        const evaluations = await prisma.studentEvaluation.findMany({
-            where: { studentId: studentId },
-            orderBy: { submittedAt: 'desc' }
-        });
-
-        res.status(200).json({
-            message: 'Evaluations retrieved successfully',
-            evaluations
-        });
-
-    } catch (error) {
-        console.error('Error in getStudentEvaluations:', error);
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
+    if (!user || !user.student) {
+      const error = new Error("Student not found for this user");
+      error.statusCode = 404;
+      throw error;
     }
+
+    const studentId = user.student.id;
+
+    // Get student evaluations
+    const evaluations = await prisma.studentEvaluation.findMany({
+      where: { studentId },
+      include: {
+        evaluation: true
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    res.status(200).json({
+      message: "Student evaluations retrieved successfully",
+      evaluations
+    });
+
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+// ********** DOCUMENT MANAGEMENT CONTROLLERS **********
+
+/**
+ * Upload a document
+ * @route POST /api/v1/student/documents
+ * @access Private (Student)
+ */
+export const uploadDocument = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { documentType, title, description, supervisorId } = req.body;
+    const file = req.file;
+
+    if (!file) {
+      const error = new Error('No file uploaded');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (!documentType || !title || !supervisorId) {
+      const error = new Error('Document type, title, and supervisor are required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // Get user with student information
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { student: true }
+    });
+
+    if (!user || !user.student) {
+      const error = new Error("Student not found for this user");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // Verify that the supervisor is assigned to this student
+    const student = await prisma.student.findUnique({
+      where: { id: user.student.id },
+      include: { supervisors: true }
+    });
+
+    const isSupervisorAssigned = student.supervisors.some(sup => sup.userId === supervisorId);
+    if (!isSupervisorAssigned) {
+      const error = new Error('Selected supervisor is not assigned to you');
+      error.statusCode = 403;
+      throw error;
+    }
+
+    // Create document record
+    const document = await prisma.studentDocument.create({
+      data: {
+        title,
+        description: description || null,
+        type: documentType,
+        fileName: file.originalname,
+        fileType: file.mimetype,
+        fileSize: file.size,
+        fileData: file.buffer,
+        student: {
+          connect: { id: user.student.id }
+        },
+        uploadedBy: {
+          connect: { id: userId }
+        },
+        supervisor: {
+          connect: { id: supervisorId }
+        }
+      },
+      include: {
+        uploadedBy: {
+          select: {
+            id: true,
+            name: true
+          }
+        },
+        supervisor: {
+          select: {
+            id: true,
+            name: true,
+            title: true
+          }
+        }
+      }
+    });
+
+    console.log('Document uploaded successfully:', {
+      id: document.id,
+      title: document.title,
+      fileName: document.fileName,
+      fileType: document.fileType,
+      fileSize: document.fileSize,
+      hasFileData: !!document.fileData,
+      fileDataType: typeof document.fileData,
+      fileDataIsBuffer: Buffer.isBuffer(document.fileData),
+      fileDataLength: document.fileData?.length,
+      fileDataFirstBytes: document.fileData ? Array.from(document.fileData.slice(0, 10)) : null
+    });
+
+    // Emit socket event to notify supervisor in real-time
+    const io = req.app.get('io');
+    console.log('Socket IO instance available:', !!io);
+    if (io) {
+      const documentData = {
+        id: document.id,
+        title: document.title,
+        description: document.description,
+        type: document.type,
+        fileName: document.fileName,
+        fileType: document.fileType,
+        fileSize: document.fileSize,
+        uploadedAt: document.createdAt,
+        uploadedBy: document.uploadedBy,
+        supervisor: document.supervisor,
+        studentId: user.student.id,
+        studentName: `${user.student.firstName} ${user.student.lastName}`
+      };
+
+      console.log('Emitting socket events for document upload...');
+      console.log('Emitting to supervisor:', supervisorId);
+      console.log('Emitting to student:', userId);
+
+      // Emit to the supervisor
+      const supervisorEmitted = io.emitToUser(supervisorId, 'new_document_uploaded', {
+        type: 'new_document_uploaded',
+        document: documentData
+      });
+      console.log('Supervisor event emitted:', supervisorEmitted);
+
+      // Also emit to the student for immediate UI update
+      const studentEmitted = io.emitToUser(userId, 'document_upload_success', {
+        type: 'document_upload_success',
+        document: documentData
+      });
+      console.log('Student event emitted:', studentEmitted);
+    } else {
+      console.log('Socket IO instance not available');
+    }
+
+    res.status(201).json({
+      message: 'Document uploaded successfully',
+      document: {
+        id: document.id,
+        title: document.title,
+        type: document.type,
+        fileName: document.fileName,
+        uploadedAt: document.createdAt
+      }
+    });
+
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+/**
+ * Get student documents
+ * @route GET /api/v1/student/documents
+ * @access Private (Student)
+ */
+export const getStudentDocuments = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+
+    // Get user with student information
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { student: true }
+    });
+
+    if (!user || !user.student) {
+      const error = new Error("Student not found for this user");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const studentId = user.student.id;
+
+    // Get student documents
+    const documents = await prisma.studentDocument.findMany({
+      where: { studentId },
+      include: {
+        uploadedBy: {
+          select: {
+            id: true,
+            name: true
+          }
+        },
+        reviewedBy: {
+          select: {
+            id: true,
+            name: true
+          }
+        },
+        supervisor: {
+          select: {
+            id: true,
+            name: true,
+            title: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    // Transform documents to include review status and supervisor info
+    const transformedDocuments = documents.map(doc => ({
+      id: doc.id,
+      title: doc.title,
+      description: doc.description,
+      type: doc.type,
+      fileName: doc.fileName,
+      fileType: doc.fileType,
+      fileSize: doc.fileSize,
+      uploadedAt: doc.createdAt,
+      uploadedBy: doc.uploadedBy,
+      isReviewed: !!doc.reviewedAt,
+      reviewedAt: doc.reviewedAt,
+      reviewedBy: doc.reviewedBy,
+      reviewComments: doc.reviewComments,
+      supervisor: doc.supervisor
+    }));
+
+    res.status(200).json({
+      message: "Student documents retrieved successfully",
+      documents: transformedDocuments
+    });
+
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+/**
+ * Download a document
+ * @route GET /api/v1/student/documents/:documentId/download
+ * @access Private (Student)
+ */
+export const downloadDocument = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { documentId } = req.params;
+
+    // Get user with student information
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { student: true }
+    });
+
+    if (!user || !user.student) {
+      const error = new Error("Student not found for this user");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const studentId = user.student.id;
+
+    // Get document
+    const document = await prisma.studentDocument.findFirst({
+      where: {
+        id: documentId,
+        studentId
+      }
+    });
+
+    if (!document) {
+      const error = new Error("Document not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // Set response headers
+    res.setHeader('Content-Type', document.fileType);
+    res.setHeader('Content-Disposition', `attachment; filename="${document.fileName}"`);
+    res.setHeader('Content-Length', document.fileSize);
+
+    console.log('Download file data info:', {
+      fileName: document.fileName,
+      fileType: document.fileType,
+      fileSize: document.fileSize,
+      dataType: typeof document.fileData,
+      dataIsBuffer: Buffer.isBuffer(document.fileData),
+      dataIsUint8Array: document.fileData instanceof Uint8Array,
+      dataLength: document.fileData?.length,
+      dataFirstBytes: document.fileData ? Array.from(document.fileData.slice(0, 10)) : null
+    });
+
+    // Send file buffer - handle different data types
+    if (Buffer.isBuffer(document.fileData)) {
+      // If it's already a Buffer, send it directly
+      console.log('Sending as Buffer');
+      res.send(document.fileData);
+    } else if (document.fileData instanceof Uint8Array) {
+      // If it's a Uint8Array, convert to Buffer
+      console.log('Converting Uint8Array to Buffer');
+      res.send(Buffer.from(document.fileData));
+    } else {
+      // For other types, try to convert to Buffer
+      console.log('Converting to Buffer');
+      res.send(Buffer.from(document.fileData));
+    }
+
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+/**
+ * Delete a document
+ * @route DELETE /api/v1/student/documents/:documentId
+ * @access Private (Student)
+ */
+export const deleteDocument = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { documentId } = req.params;
+
+    // Get user with student information
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { student: true }
+    });
+
+    if (!user || !user.student) {
+      const error = new Error("Student not found for this user");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const studentId = user.student.id;
+
+    // Check if document exists and belongs to student
+    const document = await prisma.studentDocument.findFirst({
+      where: {
+        id: documentId,
+        studentId
+      }
+    });
+
+    if (!document) {
+      const error = new Error("Document not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // Delete document
+    await prisma.studentDocument.delete({
+      where: { id: documentId }
+    });
+
+    res.status(200).json({
+      message: "Document deleted successfully"
+    });
+
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
 }; 

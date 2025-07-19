@@ -1275,3 +1275,257 @@ const getDefaultColor = (statusName) => {
 
   return colorMap[statusName.toLowerCase()] || "#6B7280"; // Default gray color
 };
+
+// ********** DOCUMENT MANAGEMENT CONTROLLERS **********
+
+/**
+ * Get student documents
+ * @route GET /api/v1/supervisor/students/:studentId/documents
+ * @access Private (Supervisor)
+ */
+export const getStudentDocuments = async (req, res, next) => {
+  try {
+    const supervisorId = req.user.id;
+    const { studentId } = req.params;
+
+    // Get student documents that are assigned to this supervisor
+    const documents = await prisma.studentDocument.findMany({
+      where: { 
+        studentId,
+        supervisorId: supervisorId
+      },
+      include: {
+        uploadedBy: {
+          select: {
+            id: true,
+            name: true
+          }
+        },
+        reviewedBy: {
+          select: {
+            id: true,
+            name: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    // Transform documents to include review status
+    const transformedDocuments = documents.map(doc => ({
+      id: doc.id,
+      title: doc.title,
+      description: doc.description,
+      type: doc.type,
+      fileName: doc.fileName,
+      fileType: doc.fileType,
+      fileSize: doc.fileSize,
+      uploadedAt: doc.createdAt,
+      uploadedBy: doc.uploadedBy,
+      isReviewed: !!doc.reviewedAt,
+      reviewedAt: doc.reviewedAt,
+      reviewedBy: doc.reviewedBy,
+      reviewComments: doc.reviewComments
+    }));
+
+    res.status(200).json({
+      message: "Student documents retrieved successfully",
+      documents: transformedDocuments
+    });
+
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+/**
+ * Download a student document
+ * @route GET /api/v1/supervisor/documents/:documentId/download
+ * @access Private (Supervisor)
+ */
+export const downloadStudentDocument = async (req, res, next) => {
+  try {
+    const supervisorId = req.user.id;
+    const { documentId } = req.params;
+
+    console.log('Download request for document:', documentId);
+
+    // Get document with student info
+    const document = await prisma.studentDocument.findUnique({
+      where: { id: documentId },
+      include: {
+        student: true
+      }
+    });
+
+    if (!document) {
+      const error = new Error("Document not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    console.log('Document found:', {
+      id: document.id,
+      title: document.title,
+      fileName: document.fileName,
+      fileType: document.fileType,
+      fileSize: document.fileSize,
+      hasFileData: !!document.fileData,
+      fileDataType: typeof document.fileData,
+      fileDataIsBuffer: Buffer.isBuffer(document.fileData),
+      fileDataLength: document.fileData?.length,
+      fileDataFirstBytes: document.fileData ? Array.from(document.fileData.slice(0, 10)) : null
+    });
+
+    // Verify supervisor has access to this document
+    if (document.supervisorId !== supervisorId) {
+      const error = new Error("Access denied - document not assigned to supervisor");
+      error.statusCode = 403;
+      throw error;
+    }
+
+    // Set response headers
+    res.setHeader('Content-Type', document.fileType);
+    res.setHeader('Content-Disposition', `attachment; filename="${document.fileName}"`);
+    res.setHeader('Content-Length', document.fileSize);
+
+    console.log('Sending file with headers:', {
+      'Content-Type': document.fileType,
+      'Content-Disposition': `attachment; filename="${document.fileName}"`,
+      'Content-Length': document.fileSize
+    });
+
+    console.log('Download file data info:', {
+      fileName: document.fileName,
+      fileType: document.fileType,
+      fileSize: document.fileSize,
+      dataType: typeof document.fileData,
+      dataIsBuffer: Buffer.isBuffer(document.fileData),
+      dataIsUint8Array: document.fileData instanceof Uint8Array,
+      dataLength: document.fileData?.length,
+      dataFirstBytes: document.fileData ? Array.from(document.fileData.slice(0, 10)) : null
+    });
+
+    // Send file buffer - handle different data types
+    if (Buffer.isBuffer(document.fileData)) {
+      // If it's already a Buffer, send it directly
+      console.log('Sending as Buffer');
+      res.send(document.fileData);
+    } else if (document.fileData instanceof Uint8Array) {
+      // If it's a Uint8Array, convert to Buffer
+      console.log('Converting Uint8Array to Buffer');
+      res.send(Buffer.from(document.fileData));
+    } else {
+      // For other types, try to convert to Buffer
+      console.log('Converting to Buffer');
+      res.send(Buffer.from(document.fileData));
+    }
+
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+/**
+ * Upload reviewed document
+ * @route POST /api/v1/supervisor/documents/:documentId/review
+ * @access Private (Supervisor)
+ */
+export const uploadReviewedDocument = async (req, res, next) => {
+  try {
+    const supervisorId = req.user.id;
+    const { documentId } = req.params;
+    const { reviewComments } = req.body;
+    const file = req.file;
+
+    if (!file) {
+      const error = new Error('No reviewed document uploaded');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // Get original document with student info
+    const originalDocument = await prisma.studentDocument.findUnique({
+      where: { id: documentId },
+      include: {
+        student: true
+      }
+    });
+
+    if (!originalDocument) {
+      const error = new Error("Original document not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // Verify supervisor has access to this document
+    if (originalDocument.supervisorId !== supervisorId) {
+      const error = new Error("Access denied - document not assigned to supervisor");
+      error.statusCode = 403;
+      throw error;
+    }
+
+    // Create reviewed document
+    const reviewedDocument = await prisma.studentDocument.create({
+      data: {
+        title: `Reviewed: ${originalDocument.title}`,
+        description: reviewComments || `Reviewed version of ${originalDocument.title}`,
+        type: 'REVIEWED',
+        fileName: file.originalname,
+        fileType: file.mimetype,
+        fileSize: file.size,
+        fileData: file.buffer,
+        student: {
+          connect: { id: originalDocument.studentId }
+        },
+        supervisor: {
+          connect: { id: supervisorId }
+        },
+        uploadedBy: {
+          connect: { id: supervisorId }
+        },
+        reviewedBy: {
+          connect: { id: supervisorId }
+        },
+        reviewedAt: new Date(),
+        reviewComments: reviewComments
+      }
+    });
+
+    // Update original document to mark as reviewed
+    await prisma.studentDocument.update({
+      where: { id: documentId },
+      data: {
+        reviewedAt: new Date(),
+        reviewedBy: {
+          connect: { id: supervisorId }
+        },
+        reviewComments: reviewComments
+      }
+    });
+
+    res.status(201).json({
+      message: 'Reviewed document uploaded successfully',
+      document: {
+        id: reviewedDocument.id,
+        title: reviewedDocument.title,
+        type: reviewedDocument.type,
+        fileName: reviewedDocument.fileName,
+        uploadedAt: reviewedDocument.createdAt,
+        reviewedAt: reviewedDocument.reviewedAt
+      }
+    });
+
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};

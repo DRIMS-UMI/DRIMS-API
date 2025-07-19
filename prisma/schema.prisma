@@ -78,6 +78,11 @@ model user {
   updatedDefenseGrades proposalDefenseGrade[] @relation("updatedDefenseGrades")
   updatedReviewGrades  proposalReviewGrade[]  @relation("updatedReviewGrades")
   
+  // Student document relations
+  uploadedStudentDocuments studentDocument[] @relation("uploadedStudentDocuments")
+  reviewedStudentDocuments studentDocument[] @relation("reviewedStudentDocuments")
+  supervisorDocuments studentDocument[] @relation("supervisorDocuments")
+  
   // Add campus relation
   campus    campus?   @relation(fields: [campusId], references: [id])
   campusId  String?   @db.ObjectId
@@ -168,6 +173,7 @@ model student {
   books                book[]         
   researchRequests     researchRequest[] // Research requests made by the student
   evaluations          studentEvaluation[] // Student satisfaction evaluations
+  documents            studentDocument[] // Student uploaded documents
   resultsApprovedDate  DateTime?
   resultsSentDate      DateTime?
   senateApprovalDate   DateTime?
@@ -280,6 +286,31 @@ model letterDocument {
   proposal    proposal @relation(fields: [proposalId], references: [id])
   uploadedBy  user     @relation(fields: [uploadedById], references: [id])
   
+}
+
+model studentDocument {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  title           String
+  description     String?
+  type            String   // PROPOSAL, DISSERTATION, CHAPTER, OTHER
+  fileName        String
+  fileType        String
+  fileSize        Int
+  fileData        Bytes
+  studentId       String   @db.ObjectId
+  uploadedById    String   @db.ObjectId
+  reviewedById    String?  @db.ObjectId
+  supervisorId    String?  @db.ObjectId  // ID of the supervisor the document is intended for
+  reviewedAt      DateTime?
+  reviewComments  String?
+  
+  student         student  @relation(fields: [studentId], references: [id])
+  uploadedBy      user     @relation("uploadedStudentDocuments", fields: [uploadedById], references: [id])
+  reviewedBy      user?    @relation("reviewedStudentDocuments", fields: [reviewedById], references: [id])
+  supervisor      user?    @relation("supervisorDocuments", fields: [supervisorId], references: [id])
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 model proposalDefenseGrade {

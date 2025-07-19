@@ -1,4 +1,5 @@
 import express from 'express';
+import multer from 'multer';
 import authenticateToken from '../middleware/authentication.js';
 import authorizeRoles from '../middleware/roleAuthorization.js';
 import { 
@@ -20,8 +21,50 @@ import {
   listAllSupervisorsForMessaging,
   getAvailableEvaluations,
   submitStudentEvaluation,
-  getStudentEvaluations
+  getStudentEvaluations,
+  uploadDocument,
+  getStudentDocuments,
+  downloadDocument,
+  deleteDocument
 } from '../controllers/studentController.js';
+
+// Configure multer for file uploads
+const memoryStorage = multer.memoryStorage();
+const upload = multer({ 
+  storage: memoryStorage,
+  fileFilter: (req, file, cb) => {
+    // Accept PDF, DOC, DOCX files
+    const allowedTypes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ];
+    
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF, DOC, and DOCX files are allowed!'), false);
+    }
+  },
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB limit
+  }
+});
+
+// Error handling middleware for multer
+const handleMulterError = (error, req, res, next) => {
+  if (error instanceof multer.MulterError) {
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        message: 'File size too large. Maximum size is 10MB'
+      });
+    }
+    return res.status(400).json({
+      message: error.message
+    });
+  }
+  next(error);
+};
 
 const router = express.Router();
 
@@ -65,5 +108,11 @@ router.get('/evaluations', authenticateToken, authorizeRoles('STUDENT'), getStud
 
 // Supervisors for messaging routes
 router.get('/supervisors-for-messaging', authenticateToken, authorizeRoles('STUDENT'), listAllSupervisorsForMessaging);
+
+// Document management routes
+router.post('/documents', authenticateToken, authorizeRoles('STUDENT'), upload.single('file'), handleMulterError, uploadDocument);
+router.get('/documents', authenticateToken, authorizeRoles('STUDENT'), getStudentDocuments);
+router.get('/documents/:documentId/download', authenticateToken, authorizeRoles('STUDENT'), downloadDocument);
+router.delete('/documents/:documentId', authenticateToken, authorizeRoles('STUDENT'), deleteDocument);
 
 export default router; 

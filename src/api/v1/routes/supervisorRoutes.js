@@ -1,4 +1,5 @@
 import express from 'express';
+import multer from 'multer';
 import authenticateToken from '../middleware/authentication.js';
 import authorizeRoles from '../middleware/roleAuthorization.js';
 import { 
@@ -19,8 +20,49 @@ import {
   getSchoolProposals,
   getAllBooks,
   listAllStudentsForMessaging,
-  getStatusStatistics
+  getStatusStatistics,
+  getStudentDocuments,
+  downloadStudentDocument,
+  uploadReviewedDocument
 } from '../controllers/supervisorController.js';
+
+// Configure multer for file uploads
+const memoryStorage = multer.memoryStorage();
+const upload = multer({ 
+  storage: memoryStorage,
+  fileFilter: (req, file, cb) => {
+    // Accept PDF, DOC, DOCX files
+    const allowedTypes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ];
+    
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF, DOC, and DOCX files are allowed!'), false);
+    }
+  },
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB limit
+  }
+});
+
+// Error handling middleware for multer
+const handleMulterError = (error, req, res, next) => {
+  if (error instanceof multer.MulterError) {
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        message: 'File size too large. Maximum size is 10MB'
+      });
+    }
+    return res.status(400).json({
+      message: error.message
+    });
+  }
+  next(error);
+};
 
 const router = express.Router();
 
@@ -48,6 +90,12 @@ router.get('/proposals', authenticateToken, authorizeRoles('SUPERVISOR'), getSch
 // dissertation /book management routes
 router.get('/student-books/:studentId', authenticateToken, authorizeRoles('SUPERVISOR'), getStudentBooks);
 router.get('/books', authenticateToken, authorizeRoles('SUPERVISOR'), getAllBooks);
+
+// Document management routes
+router.get('/students/:studentId/documents', authenticateToken, authorizeRoles('SUPERVISOR'), getStudentDocuments);
+router.get('/documents/:documentId/download', authenticateToken, authorizeRoles('SUPERVISOR'), downloadStudentDocument);
+router.post('/documents/:documentId/review', authenticateToken, authorizeRoles('SUPERVISOR'), upload.single('file'), handleMulterError, uploadReviewedDocument);
+
 // Dashboard routes
 router.get('/dashboard/stats', authenticateToken, authorizeRoles('SUPERVISOR'), getDashboardStats);
 router.get('/dashboard/status-statistics', authenticateToken, authorizeRoles('SUPERVISOR'), getStatusStatistics);
