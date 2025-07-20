@@ -15,6 +15,9 @@ const router = express.Router();
 // List all conversations for the authenticated user
 router.get('/conversations', authenticateToken, listConversations);
 
+// Start or get a conversation with another user
+router.post('/conversations', authenticateToken, startConversation);
+
 // Get online users
 router.get('/online-users', authenticateToken, getOnlineUsers);
 
@@ -26,9 +29,6 @@ router.post('/:conversationId', authenticateToken, sendMessage);
 
 // Get messages from a conversation
 router.get('/:conversationId', authenticateToken, getMessages);
-
-// Start or get a conversation with another user
-router.post('/conversations', authenticateToken, startConversation);
 
 // Mark messages as read in a conversation
 router.put('/:conversationId/read', authenticateToken, markMessagesAsRead);

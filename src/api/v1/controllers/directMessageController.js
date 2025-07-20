@@ -12,9 +12,6 @@ export const listConversations = async (req, res) => {
       where: {
         participants: { has: userId }
       },
-      include: {
-        lastMessage: true
-      },
       orderBy: { updatedAt: 'desc' }
     });
 
@@ -34,6 +31,20 @@ export const listConversations = async (req, res) => {
     });
     const userMap = Object.fromEntries(users.map(u => [u.id, u]));
 
+    // Get last messages for all conversations
+    const conversationIds = conversations.map(c => c.id);
+    const lastMessages = await prisma.message.findMany({
+      where: {
+        conversationId: { in: conversationIds }
+      },
+      orderBy: { createdAt: 'desc' },
+      distinct: ['conversationId']
+    });
+
+    const lastMessageMap = Object.fromEntries(
+      lastMessages.map(msg => [msg.conversationId, msg])
+    );
+
     // Format response
     const result = conversations.map(conv => {
       const otherId = conv.participants.find(pid => pid !== userId);
@@ -41,7 +52,7 @@ export const listConversations = async (req, res) => {
         id: conv.id,
         participants: conv.participants,
         otherParticipant: userMap[otherId] || null,
-        lastMessage: conv.lastMessage,
+        lastMessage: lastMessageMap[conv.id] || null,
         updatedAt: conv.updatedAt,
         createdAt: conv.createdAt
       };
@@ -134,19 +145,23 @@ export const getMessages = async (req, res) => {
       where: { conversationId }
     });
 
-    // Get paginated messages
+    // Get paginated messages in reverse chronological order (newest first)
     const messages = await prisma.message.findMany({
       where: { conversationId },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: 'desc' }, // Newest first
       skip,
       take: pageSize
     });
+
+    // Reverse the messages back to chronological order for display
+    const messagesInOrder = messages.reverse();
 
     res.json({
       total,
       page,
       pageSize,
-      messages
+      hasMore: skip + pageSize < total,
+      messages: messagesInOrder
     });
   } catch (err) {
     console.error('getMessages error:', err);
@@ -188,7 +203,7 @@ export const sendMessage = async (req, res) => {
     await prisma.conversation.update({
       where: { id: conversationId },
       data: {
-        lastMessageId: message.id,
+        lastMessageId: [message.id],
         updatedAt: new Date(),
       }
     });
@@ -259,35 +274,68 @@ export const sendMessage = async (req, res) => {
 export const startConversation = async (req, res) => {
   try {
     const userId = req.user?.id;
+    console.log('startConversation - userId:', userId);
+    console.log('startConversation - req.body:', req.body);
+    console.log('startConversation - participantId:', req.body.participantId);
+    
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
     const { participantId } = req.body;
     if (!participantId || typeof participantId !== 'string') {
+      console.log('startConversation - Invalid participantId:', participantId);
       return res.status(400).json({ error: 'participantId is required.' });
     }
     if (participantId === userId) {
+      console.log('startConversation - Cannot start conversation with yourself');
       return res.status(400).json({ error: 'Cannot start a conversation with yourself.' });
     }
 
+    // Verify the participant exists
+    const participant = await prisma.user.findUnique({
+      where: { id: participantId },
+      select: { id: true, name: true, email: true, role: true }
+    });
+    
+    if (!participant) {
+      console.log('startConversation - Participant not found:', participantId);
+      return res.status(400).json({ error: 'Participant not found.' });
+    }
+    
+    console.log('startConversation - Participant found:', participant);
+
     // Find all conversations with both participants
+    console.log('startConversation - Searching for existing conversations...');
     const conversations = await prisma.conversation.findMany({
       where: {
         participants: {
           hasEvery: [userId, participantId]
         }
-      },
-      include: { lastMessage: true }
+      }
     });
+    console.log('startConversation - Found conversations:', conversations);
+    
     // Find the one with exactly 2 participants
     let conversation = conversations.find(c => c.participants.length === 2);
+    console.log('startConversation - Conversation with 2 participants:', conversation);
 
     // If not, create it
     if (!conversation) {
-      conversation = await prisma.conversation.create({
-        data: {
-          participants: [userId, participantId],
-        },
-        include: { lastMessage: true }
-      });
+      console.log('startConversation - Creating new conversation...');
+      try {
+        // Create conversation with empty lastMessageId array
+        conversation = await prisma.conversation.create({
+          data: {
+            participants: [userId, participantId],
+            lastMessageId: [] // Empty array instead of system message
+          }
+        });
+
+        console.log('startConversation - New conversation created:', conversation);
+      } catch (createError) {
+        console.error('startConversation - Error creating conversation:', createError);
+        throw createError;
+      }
+    } else {
+      console.log('startConversation - Using existing conversation:', conversation.id);
     }
 
     // Fetch the other participant's info
@@ -296,18 +344,28 @@ export const startConversation = async (req, res) => {
       select: { id: true, name: true, email: true, role: true }
     });
 
-    res.json({
+    // Get the last message for this conversation
+    const lastMessage = await prisma.message.findFirst({
+      where: { conversationId: conversation.id },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const response = {
       conversation: {
         id: conversation.id,
         participants: conversation.participants,
         otherParticipant: otherUser,
-        lastMessage: conversation.lastMessage,
+        lastMessage: lastMessage,
         updatedAt: conversation.updatedAt,
         createdAt: conversation.createdAt
       }
-    });
+    };
+    
+    console.log('startConversation - Sending response:', response);
+    res.json(response);
   } catch (err) {
     console.error('startConversation error:', err);
+    console.error('startConversation error stack:', err.stack);
     res.status(500).json({ error: 'Failed to start conversation' });
   }
 };
