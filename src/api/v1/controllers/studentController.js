@@ -1192,9 +1192,6 @@ export const getStudentEvaluations = async (req, res, next) => {
     // Get student evaluations
     const evaluations = await prisma.studentEvaluation.findMany({
       where: { studentId },
-      include: {
-        evaluation: true
-      },
       orderBy: { createdAt: 'desc' }
     });
 
