@@ -827,8 +827,7 @@ model Conversation {
   id            String    @id @default(auto()) @map("_id") @db.ObjectId
   participants  String[]  @db.ObjectId // Array of user IDs (student and supervisor)
   messages      Message[] @relation("ConversationMessages") // Relation to messages
-  lastMessage   Message?  @relation("ConversationLastMessage", fields: [lastMessageId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  lastMessageId String?   @unique @db.ObjectId
+  lastMessageId String[]  @db.ObjectId
   updatedAt     DateTime  @updatedAt
   createdAt     DateTime  @default(now())
 }
@@ -842,8 +841,6 @@ model Message {
   formatting      Json?       // For bold, italic, lists, etc.
   createdAt       DateTime    @default(now())
   readBy          String[]    @db.ObjectId // Array of user IDs who have read the message
-
-  lastMessageOfConversation Conversation? @relation("ConversationLastMessage")
 }
 
 enum EvaluationTrigger {
