@@ -2,7 +2,116 @@ import express from 'express';
 import multer from 'multer';
 import authenticateToken from '../middleware/authentication.js';
 import authorizeRoles from '../middleware/roleAuthorization.js';
-import { registerSuperAdmin, accessManagementPortal, loginSuperAdmin, loginResearchCentreAdmin, getLoggedInUserDetails, addSchool, addSchoolMembers, getAllSchools, getSchool, updateSchool, deleteSchool, createCampus, getAllCampuses, getCampus, updateCampus, deleteCampus, addDepartment, getAllDepartments, getDepartment, updateDepartment, deleteDepartment, updateSchoolMembers, createFacultyMember, getAllFacultyMembers, getFacultyMember, updateFacultyMember, deleteFacultyMember, createSupervisor, createStudent, updateStudent, deleteStudent, getStudent, getAllStudents, changeStudentPassword, createStatusDefinition, getAllStatusDefinitions, getStatusDefinition, updateStatusDefinition, deleteStatusDefinition, changeFacultyPassword, getAllSupervisors, getSupervisor, updateSupervisor, deleteSupervisor, assignStudentsToSupervisor, getAssignedStudents, getStudentStatuses, getAllProposals, getProposal, getStudentProposals, submitStudentBook, getStudentBooks, getAllBooks, getBook, createExaminer, getAllExaminers, getExaminer, updateExaminer, deleteExaminer, assignExaminersToBook, updateExternalExaminerMark, getAllUsers, createUser, updateUser, deleteUser, updateUserPassword, deactivateUser, reactivateUser, getUser, addPanelistsToBook,           getReviewers, scheduleProposalDefense, recordProposalDefenseVerdict, getProposalDefenses,   updateUserProfile, changePassword,   assignSupervisorsToStudent, changeStudentSupervisor, updateFieldLetterDate, updateEthicsCommitteeDate, getChairpersons, getExternalPersons, getExternalPersonsByRole, createExternalPerson, updateExternalPerson, deleteExternalPerson, generateDefenseReport, downloadDefenseReport, getProposalDefenseReports, changeSupervisorPassword,    } from '../controllers/managementController.js';
+import {
+    registerSuperAdmin,
+    loginSuperAdmin,
+    loginResearchCentreAdmin,
+    getLoggedInUserDetails,
+    updateLoggedInUser,
+    updateUserProfile,
+    changePassword,
+    createCampus,
+    getAllCampuses,
+    getCampus,
+    updateCampus,
+    deleteCampus,
+    addSchool,
+    addSchoolMembers,
+    updateSchoolMembers,
+    addDepartment,
+    getAllDepartments,
+    getDepartment,
+    updateDepartment,
+    deleteDepartment,
+    getAllSchools,
+    getSchool,
+    updateSchool,
+    deleteSchool,
+    createFacultyMember,
+    getAllFacultyMembers,
+    getFacultyMember,
+    updateFacultyMember,
+    changeFacultyPassword,
+    deleteFacultyMember,
+  
+    getAllSupervisors,
+    getSupervisor,
+    updateSupervisor,
+    deleteSupervisor,
+    changeSupervisorPassword,
+    assignSupervisorsToStudent,
+    assignStudentsToSupervisor,
+    changeStudentSupervisor,
+    getAssignedStudents,
+    createStudent,
+    updateStudent,
+    changeStudentPassword,
+    deleteStudent,
+    getStudent,
+    getAllStudents,
+    getStudentStatuses,
+    createStatusDefinition,
+    getAllStatusDefinitions,
+    getStatusDefinition,
+    updateStatusDefinition,
+    deleteStatusDefinition,
+    getStudentProposals,
+    getAllProposals,
+    getProposal,
+    getReviewers,
+    addReviewerMark,
+    deleteReviewer,
+    getPanelists,
+    addPanelists,
+    addPanelistMark,
+    deletePanelist,
+    getChairpersons,
+    getExternalPersons,
+    getExternalPersonsByRole,
+    createExternalPerson,
+    updateExternalPerson,
+    deleteExternalPerson,
+    addDefenseDate,
+    addComplianceReportDate,
+    generateFieldLetter,
+    updateFieldLetterDate,
+    updateEthicsCommitteeDate,
+    generateDefenseReport,
+    getProposalDefenseReports,
+    downloadDefenseReport,
+    submitStudentBook,
+    getStudentBooks,
+    getAllBooks,
+    getBook,
+    createExaminer,
+    getAllExaminers,
+    assignExaminersToBook,
+    getExaminer,
+    updateExternalExaminerMark,
+    updateExaminer,
+    deleteExaminer,
+    createUser,
+    getAllUsers,
+    deactivateUser,
+    reactivateUser,
+    updateUser,
+    getUser,
+    deleteUser,
+    updateUserPassword,
+    addPanelistsToBook,
+    accessManagementPortal,
+    scheduleProposalDefense,
+    recordProposalDefenseVerdict,
+    getProposalDefenses,
+    createStaffMember,
+    getAllStaffMembers,
+    getStaffMember,
+    updateStaffMember,
+    deleteStaffMember,
+    getStaffMembersByRole,
+    getStaffMembersForSupervisor,
+    createSupervisorFromStaff,
+} from '../controllers/managementController.js';
 import {getEvaluationAnalytics, getDetailedEvaluations, updateResearchRequest, getAllResearchRequests, addStudentToGraduation, resetPassword, requestPasswordReset, getNotifications, getAllStudentsStatusReport, getStudentStatusReport, getProgressTrends, getStatusStatistics, getDashboardStats, updateSenateApprovalDate, updateResultsSentDate, updateResultsApprovalDate, updateComplianceReportDate, updateMinutesSentDate, getBookVivas, getAllPanelists, addNewPanelist, scheduleViva, recordVivaVerdict, getGraduationStatistics } from "../controllers/managementEvaluationController.js"
 
 const memoryStorage = multer.memoryStorage();
@@ -69,7 +178,8 @@ router.delete('/faculty/:facultyId', authenticateToken, authorizeRoles('SUPERADM
 router.put('/faculty/:facultyId/password', authenticateToken, authorizeRoles('SUPERADMIN'), changeFacultyPassword);
 
 // Supervisor management routes
-router.post('/supervisor', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), createSupervisor);
+
+router.post('/supervisor/from-staff/:staffMemberId', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), createSupervisorFromStaff);
 router.get('/supervisor', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getAllSupervisors);
 router.get('/supervisor/:supervisorId', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getSupervisor);
 router.put('/supervisor/:supervisorId', authenticateToken, authorizeRoles('SUPERADMIN'), updateSupervisor);
@@ -237,5 +347,14 @@ router.put('/research-requests/:id', authenticateToken, authorizeRoles('SUPERADM
 // Student Evaluation Analytics routes
 router.get('/evaluations/analytics', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getEvaluationAnalytics);
 router.get('/evaluations/detailed', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getDetailedEvaluations);
+
+// Staff Management routes
+router.get('/staff', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getAllStaffMembers);
+router.get('/staff/for-supervisor', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getStaffMembersForSupervisor);
+router.post('/staff', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), createStaffMember);
+router.get('/staff/:id', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getStaffMember);
+router.put('/staff/:id', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), updateStaffMember);
+router.delete('/staff/:id', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), deleteStaffMember);
+router.get('/staff/role/:role', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getStaffMembersByRole);
 
 export default router;  

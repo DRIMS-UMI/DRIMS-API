@@ -1499,77 +1499,7 @@ export const deleteFacultyMember = async (req, res, next) => {
     }
 };
 
-// Controller for creating a supervisor
-export const createSupervisor = async (req, res, next) => {
-    try {
-        const {
-            name,
-            title,
-            workEmail,
-            personalEmail,
-            primaryPhone,
-            secondaryPhone,
-            designation,
-            schoolId,
-            campusId,
-            departmentId,
-            facultyType,
-            employeeId,
-            password
-        } = req.body;
 
-        // Hash password
-        const hashedPassword = await bcrypt.hash(password, 12);
-
-        // Set role based on faculty type
-        let role = 'SUPERVISOR';
-
-        
-
-        // Create user first
-        const user = await prisma.user.create({
-            data: {
-                name,
-                title,
-                email: workEmail,
-                designation,
-                password: hashedPassword,
-                role,
-                phone: primaryPhone
-            }
-        });
-
-        // Create supervisor and link user
-        const supervisor = await prisma.supervisor.create({
-            data: {
-                title,
-                name,
-                workEmail,
-                personalEmail,
-                primaryPhone,
-                secondaryPhone,
-                designation,
-                school: { connect: { id: schoolId } },
-                campus: { connect: { id: campusId } },
-                department: { connect: { id: departmentId } },
-                facultyType,
-                role,
-                employeeId,
-                user: { connect: { id: user.id } }
-            }
-        });
-
-        res.status(201).json({
-            message: 'Supervisor created successfully',
-            supervisor
-        });
-    } catch (error) {
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
-    }
-};
 
 // Controller for getting all supervisors
 export const getAllSupervisors = async (req, res, next) => {
@@ -1813,11 +1743,12 @@ export const changeSupervisorPassword = async (req, res, next) => {
     }
 };
 // Controller for assigning Supervisors to Students
-// Controller for assigning supervisors to students
+
+
 export const assignSupervisorsToStudent = async (req, res, next) => {
     try {
         const { studentId } = req.params;
-        const { supervisorIds } = req.body;
+        const { supervisorIds } = req.body; // These are actually staff member IDs
 
         // Check if student exists
         const student = await prisma.student.findUnique({
@@ -1833,30 +1764,214 @@ export const assignSupervisorsToStudent = async (req, res, next) => {
             throw error;
         }
 
-        // Check if all supervisors exist
-        const supervisors = await prisma.supervisor.findMany({
-            where: {
-                id: {
-                    in: supervisorIds
-                }
-            },
-            include: {
-                user: true
-            }
-        });
+        // Process each staff member ID to create or get supervisor records
+        const finalSupervisorIds = [];
+        const processedSupervisors = [];
 
-        if (supervisors.length !== supervisorIds.length) {
-            const error = new Error('One or more supervisors not found');
-            error.statusCode = 404;
-            throw error;
+        console.log('Processing staff member IDs:', supervisorIds);
+
+        for (const staffMemberId of supervisorIds) {
+            console.log(`Processing staff member ID: ${staffMemberId}`);
+            
+            // Check if it's a staff member
+            const staffMember = await prisma.staffMember.findUnique({
+                where: { id: staffMemberId },
+               
+            });
+
+            if (!staffMember) {
+                const error = new Error(`Staff member with ID ${staffMemberId} not found`);
+                error.statusCode = 404;
+                throw error;
+            }
+
+            console.log(`Found staff member:`, staffMember.name);
+
+            // Check if staff member already has a supervisor record
+            if (staffMember.supervisorId) {
+                console.log(`Staff member ${staffMember.name} already has supervisor ID: ${staffMember.supervisorId}`);
+                // Staff member already has a supervisor record, check if it exists
+                const supervisor = await prisma.supervisor.findUnique({
+                    where: { id: staffMember.supervisorId },
+                    include: { user: true }
+                });
+                
+                if (supervisor) {
+                    console.log(`Found existing supervisor:`, supervisor.name);
+                    finalSupervisorIds.push(supervisor.id);
+                    processedSupervisors.push(supervisor);
+                } else {
+                    const error = new Error(`Supervisor record for staff member ${staffMember.name} not found`);
+                    error.statusCode = 404;
+                    throw error;
+                }
+            } else {
+                console.log(`Staff member ${staffMember.name} does not have supervisorId, creating new supervisor record`);
+                // Staff member doesn't have a supervisor record, create one
+
+                // Generate a random password
+                const randomPassword = crypto.randomBytes(10).toString('base64');
+                // Hash the password
+                const hashedPassword = await bcrypt.hash(randomPassword, 12);
+
+                // Create a new user for the supervisor
+                const newUser = await prisma.user.create({
+                    data: {
+                        name: staffMember.name,
+                        title: staffMember.title,
+                        email: staffMember.email,
+                        designation: staffMember.designation,
+                        password: hashedPassword,
+                        role: 'SUPERVISOR',
+                        phone: staffMember.phone
+                    }
+                });
+
+                // Create the supervisor and attach the user
+                const newSupervisor = await prisma.supervisor.create({
+                    data: {
+                        name: staffMember.name,
+                        title: staffMember.title,
+                        designation: staffMember.designation,
+                        role: 'SUPERVISOR',
+                        workEmail: staffMember.email,
+                        primaryPhone: staffMember.phone,
+                        facultyType: 'supervisor',
+                        school: { connect: { id: staffMember.schoolId } },
+                        campus: { connect: { id: staffMember.campusId } },
+                        department: { connect: { id: staffMember.departmentId } },
+                        user: { connect: { id: newUser.id } }
+                    },
+                    include: { user: true }
+                });
+
+                console.log(`Created new supervisor:`, newSupervisor.name, `with ID:`, newSupervisor.id);
+
+                // Connect the supervisor to the staff member
+                await prisma.staffMember.update({
+                    where: { id: staffMember.id },
+                    data: { supervisorId: newSupervisor.id }
+                });
+
+                console.log(`Connected staff member ${staffMember.name} to supervisor ID: ${newSupervisor.id}`);
+
+                // Send email notification to the new supervisor
+                try {
+                    const supervisorEmailTemplate = `
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                            <meta charset="utf-8">
+                            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                            <title>Supervisor Account Created</title>
+                            <style>
+                                body { 
+                                    font-family: Arial, sans-serif; 
+                                    line-height: 1.6; 
+                                    color: #333; 
+                                    margin: 0;
+                                    padding: 0;
+                                }
+                                .container { 
+                                    max-width: 600px; 
+                                    margin: 0 auto; 
+                                    background-color: #ffffff;
+                                }
+                                .header { 
+                                    background-color: #003366; 
+                                    color: white; 
+                                    padding: 20px; 
+                                    text-align: center;
+                                }
+                                .header h1 {
+                                    margin: 0;
+                                    font-size: 24px;
+                                }
+                                .content { 
+                                    padding: 30px 20px; 
+                                    background-color: #f9f9f9; 
+                                }
+                                .credentials-box {
+                                    background-color: #e8f4fd;
+                                    border-left: 4px solid #003366;
+                                    padding: 15px;
+                                    margin: 20px 0;
+                                }
+                                .credentials-box strong {
+                                    color: #003366;
+                                }
+                                .footer { 
+                                    font-size: 12px; 
+                                    color: #666; 
+                                    padding: 20px; 
+                                    text-align: center; 
+                                    background-color: #f0f0f0;
+                                }
+                            </style>
+                        </head>
+                        <body>
+                            <div class="container">
+                                <div class="header">
+                                    <h1>UGANDA MANAGEMENT INSTITUTE</h1>
+                                </div>
+                                <div class="content">
+                                    <h2>Welcome to UMI Supervisor Portal</h2>
+                                    <p>Dear ${staffMember.name},</p>
+                                    <p>Your supervisor account has been created successfully. You can now access the UMI Supervisor Portal to manage your assigned students and their research projects.</p>
+                                    
+                                    <div class="credentials-box">
+                                        <h3>Login Credentials</h3>
+                                        <p><strong>Email:</strong> ${staffMember.email}</p>
+                                        <p><strong>Temporary Password:</strong> ${randomPassword}</p>
+                                        <p><em>Please change your password after your first login for security purposes.</em></p>
+                                    </div>
+                                    
+                                    <p><strong>Next Steps:</strong></p>
+                                    <ul>
+                                        <li>Visit the UMI Supervisor Portal</li>
+                                        <li>Log in with your credentials</li>
+                                        <li>Change your password immediately</li>
+                                        <li>Review your assigned students</li>
+                                        <li>Start managing research projects</li>
+                                    </ul>
+                                    
+                                    <p>If you have any questions or need assistance, please contact the UMI Management Team.</p>
+                                </div>
+                                <div class="footer">
+                                    <p>This is an automated message from the UMI Research Management System.</p>
+                                    <p>Please do not reply to this email.</p>
+                                    <p>&copy; ${new Date().getFullYear()} Uganda Management Institute</p>
+                                </div>
+                            </div>
+                        </body>
+                        </html>
+                    `;
+
+                    await emailService.sendEmail({
+                        to: staffMember.email,
+                        subject: 'Supervisor Account Created - UMI Research Management System',
+                        htmlContent: supervisorEmailTemplate
+                    });
+
+                    console.log(`Email sent to new supervisor: ${staffMember.email}`);
+                } catch (emailError) {
+                    console.error('Error sending supervisor creation email:', emailError);
+                    // Don't fail the request if email fails
+                }
+
+                finalSupervisorIds.push(newSupervisor.id);
+                processedSupervisors.push(newSupervisor);
+            }
         }
 
-        // Update student with new supervisors
+        console.log('Final supervisor IDs:', finalSupervisorIds);
+
+        // Connect supervisors to the student
         const updatedStudent = await prisma.student.update({
             where: { id: studentId },
             data: {
                 supervisors: {
-                    connect: supervisorIds.map(id => ({ id }))
+                    connect: finalSupervisorIds.map(id => ({ id }))
                 }
             },
             include: {
@@ -1869,7 +1984,7 @@ export const assignSupervisorsToStudent = async (req, res, next) => {
         });
 
         // Send notification to each supervisor
-        // for (const supervisor of supervisors) {
+        // for (const supervisor of processedSupervisors) {
         //     await notificationService.createNotification({
         //         userId: supervisor.user.id,
         //         title: 'New Student Assignment',
@@ -1877,6 +1992,248 @@ export const assignSupervisorsToStudent = async (req, res, next) => {
         //         type: 'ASSIGNMENT'
         //     });
         // }
+
+        // Send email notifications to supervisors about student assignment
+        for (const supervisor of processedSupervisors) {
+            try {
+                const assignmentEmailTemplate = `
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <meta charset="utf-8">
+                        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                        <title>New Student Assignment</title>
+                        <style>
+                            body { 
+                                font-family: Arial, sans-serif; 
+                                line-height: 1.6; 
+                                color: #333; 
+                                margin: 0;
+                                padding: 0;
+                            }
+                            .container { 
+                                max-width: 600px; 
+                                margin: 0 auto; 
+                                background-color: #ffffff;
+                            }
+                            .header { 
+                                background-color: #003366; 
+                                color: white; 
+                                padding: 20px; 
+                                text-align: center;
+                            }
+                            .header h1 {
+                                margin: 0;
+                                font-size: 24px;
+                            }
+                            .content { 
+                                padding: 30px 20px; 
+                                background-color: #f9f9f9; 
+                            }
+                            .student-info {
+                                background-color: #e8f4fd;
+                                border-left: 4px solid #003366;
+                                padding: 15px;
+                                margin: 20px 0;
+                            }
+                            .student-info strong {
+                                color: #003366;
+                            }
+                            .footer { 
+                                font-size: 12px; 
+                                color: #666; 
+                                padding: 20px; 
+                                text-align: center; 
+                                background-color: #f0f0f0;
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="container">
+                            <div class="header">
+                                <h1>UGANDA MANAGEMENT INSTITUTE</h1>
+                            </div>
+                            <div class="content">
+                                <h2>New Student Assignment</h2>
+                                <p>Dear ${supervisor.user.name},</p>
+                                <p>You have been assigned as a supervisor to a new student in the UMI Research Management System.</p>
+                                
+                                <div class="student-info">
+                                    <h3>Student Information</h3>
+                                    <p><strong>Name:</strong> ${student.firstName} ${student.lastName}</p>
+                                    <p><strong>Registration Number:</strong> ${student.registrationNumber}</p>
+                                    <p><strong>Course:</strong> ${student.course}</p>
+                                    <p><strong>Email:</strong> ${student.email}</p>
+                                    <p><strong>Program Level:</strong> ${student.programLevel}</p>
+                                    <p><strong>Specialization:</strong> ${student.specialization || 'Not specified'}</p>
+                                </div>
+                                
+                                <p><strong>Your Responsibilities:</strong></p>
+                                <ul>
+                                    <li>Review and approve student proposals</li>
+                                    <li>Monitor research progress</li>
+                                    <li>Provide guidance and feedback</li>
+                                    <li>Evaluate research submissions</li>
+                                    <li>Support student throughout their research journey</li>
+                                </ul>
+                                
+                                <p><strong>Next Steps:</strong></p>
+                                <ul>
+                                    <li>Log in to the UMI Supervisor Portal</li>
+                                    <li>Review the student's profile and current status</li>
+                                    <li>Contact the student to establish communication</li>
+                                    <li>Begin supervising their research project</li>
+                                </ul>
+                                
+                                <p>If you have any questions or need assistance, please contact the UMI Management Team.</p>
+                            </div>
+                            <div class="footer">
+                                <p>This is an automated message from the UMI Research Management System.</p>
+                                <p>Please do not reply to this email.</p>
+                                <p>&copy; ${new Date().getFullYear()} Uganda Management Institute</p>
+                            </div>
+                        </div>
+                    </body>
+                    </html>
+                `;
+
+                await emailService.sendEmail({
+                    to: supervisor.user.email,
+                    subject: `New Student Assignment - ${student.firstName} ${student.lastName}`,
+                    htmlContent: assignmentEmailTemplate
+                });
+
+                console.log(`Assignment email sent to supervisor: ${supervisor.user.email}`);
+            } catch (emailError) {
+                console.error(`Error sending assignment email to supervisor ${supervisor.user.email}:`, emailError);
+                // Don't fail the request if email fails
+            }
+        }
+
+        // Send email notification to the student about supervisor assignment
+        try {
+            const studentEmailTemplate = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="utf-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>Supervisors Assigned</title>
+                    <style>
+                        body { 
+                            font-family: Arial, sans-serif; 
+                            line-height: 1.6; 
+                            color: #333; 
+                            margin: 0;
+                            padding: 0;
+                        }
+                        .container { 
+                            max-width: 600px; 
+                            margin: 0 auto; 
+                            background-color: #ffffff;
+                        }
+                        .header { 
+                            background-color: #003366; 
+                            color: white; 
+                            padding: 20px; 
+                            text-align: center;
+                        }
+                        .header h1 {
+                            margin: 0;
+                            font-size: 24px;
+                        }
+                        .content { 
+                            padding: 30px 20px; 
+                            background-color: #f9f9f9; 
+                        }
+                        .supervisor-info {
+                            background-color: #e8f4fd;
+                            border-left: 4px solid #003366;
+                            padding: 15px;
+                            margin: 20px 0;
+                        }
+                        .supervisor-info strong {
+                            color: #003366;
+                        }
+                        .footer { 
+                            font-size: 12px; 
+                            color: #666; 
+                            padding: 20px; 
+                            text-align: center; 
+                            background-color: #f0f0f0;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="header">
+                            <h1>UGANDA MANAGEMENT INSTITUTE</h1>
+                        </div>
+                        <div class="content">
+                            <h2>Supervisors Assigned to Your Research Project</h2>
+                            <p>Dear ${student.firstName} ${student.lastName},</p>
+                            <p>Great news! Your research project supervisors have been assigned. You can now begin working with your supervisors to develop and complete your research project.</p>
+                            
+                            <div class="supervisor-info">
+                                <h3>Your Assigned Supervisors</h3>
+                                ${processedSupervisors.map(supervisor => `
+                                    <div style="margin-bottom: 15px; padding: 10px; background-color: white; border-radius: 4px;">
+                                        <p><strong>Name:</strong> ${supervisor.user.name}</p>
+                                        <p><strong>Title:</strong> ${supervisor.title || 'Not specified'}</p>
+                                        <p><strong>Email:</strong> ${supervisor.user.email}</p>
+                                        <p><strong>Designation:</strong> ${supervisor.designation || 'Not specified'}</p>
+                                    </div>
+                                `).join('')}
+                            </div>
+                            
+                            <p><strong>What This Means:</strong></p>
+                            <ul>
+                                <li>Your supervisors will guide you through your research journey</li>
+                                <li>They will review and approve your research proposals</li>
+                                <li>They will provide feedback on your progress</li>
+                                <li>They will support you throughout your research project</li>
+                            </ul>
+                            
+                            <p><strong>Next Steps:</strong></p>
+                            <ul>
+                                <li>Log in to your student portal</li>
+                                <li>Review your assigned supervisors' contact information</li>
+                                <li>Reach out to your supervisors to introduce yourself</li>
+                                <li>Begin working on your research proposal</li>
+                                <li>Schedule initial meetings with your supervisors</li>
+                            </ul>
+                            
+                            <p><strong>Important Reminders:</strong></p>
+                            <ul>
+                                <li>Maintain regular communication with your supervisors</li>
+                                <li>Submit your work on time</li>
+                                <li>Follow the research guidelines and deadlines</li>
+                                <li>Keep your supervisors updated on your progress</li>
+                            </ul>
+                            
+                            <p>If you have any questions or need assistance, please contact the UMI Management Team.</p>
+                        </div>
+                        <div class="footer">
+                            <p>This is an automated message from the UMI Research Management System.</p>
+                            <p>Please do not reply to this email.</p>
+                            <p>&copy; ${new Date().getFullYear()} Uganda Management Institute</p>
+                        </div>
+                    </div>
+                </body>
+                </html>
+            `;
+
+            await emailService.sendEmail({
+                to: student.email,
+                subject: 'Supervisors Assigned to Your Research Project - UMI',
+                htmlContent: studentEmailTemplate
+            });
+
+            console.log(`Student notification email sent to: ${student.email}`);
+        } catch (emailError) {
+            console.error(`Error sending student notification email to ${student.email}:`, emailError);
+            // Don't fail the request if email fails
+        }
 
         // Track this activity
         await prisma.userActivity.create({
@@ -1887,8 +2244,9 @@ export const assignSupervisorsToStudent = async (req, res, next) => {
                 entityId: studentId,
                 details: JSON.stringify({
                     studentId,
-                    supervisorIds,
-                    description: `Assigned ${supervisorIds.length} supervisor(s) to student ${student.firstName} ${student.lastName}`
+                    supervisorIds: finalSupervisorIds,
+                    staffMemberIds: supervisorIds,
+                    description: `Assigned ${finalSupervisorIds.length} supervisor(s) to student ${student.firstName} ${student.lastName}`
                 })
             }
         });
@@ -6959,9 +7317,9 @@ export const addPanelistsToBook = async (req, res, next) => {
 
 
 
-// Controller for accessing the management portal
+// Controller for accessing the research centre portal
 export const accessManagementPortal = (req, res) => {
-    res.send('Welcome to the Management Portal');
+    res.send('Welcome to the Research Centre Portal');
 }; 
 /** PROPOSAL DEFENSE CONTROLLERS */
 // Controller for scheduling a proposal defense
@@ -7324,6 +7682,805 @@ export const getProposalDefenses = async (req, res, next) => {
 
     } catch (error) {
         console.error('Error in getProposalDefenses:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Staff Management Controllers
+
+// Create a new staff member
+export const createStaffMember = async (req, res, next) => {
+    try {
+        const {
+            name,
+            title,
+            email,
+            phone,
+            designation,
+            specialization,
+            qualifications,
+            experience,
+            bio,
+            profileImage,
+            // Institutional affiliations
+            schoolId,
+            departmentId,
+            campusId,
+            // External institution information
+            externalInstitution,
+            externalDepartment,
+            externalLocation,
+            isExternal,
+          
+        } = req.body;
+
+        // Check if staff member with email already exists
+        const existingStaffMember = await prisma.staffMember.findUnique({
+            where: { email }
+        });
+
+        if (existingStaffMember) {
+            const error = new Error('Staff member with this email already exists.');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Prepare institutional connections
+        const institutionalConnections = {};
+        if (!isExternal) {
+            // Internal staff member - use institutional relations
+            if (schoolId) {
+                institutionalConnections.school = { connect: { id: schoolId } };
+            }
+            if (departmentId) {
+                institutionalConnections.department = { connect: { id: departmentId } };
+            }
+            if (campusId) {
+                institutionalConnections.campus = { connect: { id: campusId } };
+            }
+        } else {
+            // External staff member - use external institution fields
+            institutionalConnections.externalInstitution = externalInstitution;
+            institutionalConnections.externalDepartment = externalDepartment;
+            institutionalConnections.externalLocation = externalLocation;
+            institutionalConnections.isExternal = true;
+        }
+
+    
+
+        // Create staff member
+        const staffMember = await prisma.staffMember.create({
+            data: {
+                name,
+                title,
+                email,
+                phone,
+                designation,
+                specialization,
+                qualifications,
+                experience,
+                bio,
+                profileImage,
+                isActive: true,
+                createdBy: { connect: { id: req.user.id } },
+                ...institutionalConnections,
+                
+            },
+            include: {
+                supervisor: true,
+                examiner: true,
+                reviewer: true,
+                panelist: true,
+                school: true,
+                department: true,
+                campus: true,
+              
+                createdBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                }
+            }
+        });
+
+        res.status(201).json({
+            message: 'Staff member created successfully',
+            staffMember
+        });
+
+    } catch (error) {
+        console.error('Error in createStaffMember:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Get all staff members
+export const getAllStaffMembers = async (req, res, next) => {
+    try {
+        const { role, isActive, search, isExternal, schoolId, departmentId, campusId } = req.query;
+
+        const where = {};
+
+        // Filter by role if specified (check if staff member has any of the specified roles)
+        if (role && role !== 'all') {
+            where.OR = [
+                { supervisorId: { not: null } },
+                { examinerId: { not: null } },
+                { reviewerId: { not: null } },
+                { panelistId: { not: null } }
+            ];
+        }
+
+        if (isActive !== undefined) {
+            where.isActive = isActive === 'true';
+        }
+
+        // Filter by internal/external status
+        if (isExternal !== undefined) {
+            where.isExternal = isExternal === 'true';
+        }
+
+        // Filter by institutional affiliations
+        if (schoolId) {
+            where.schoolId = schoolId;
+        }
+        if (departmentId) {
+            where.departmentId = departmentId;
+        }
+        if (campusId) {
+            where.campusId = campusId;
+        }
+
+        if (search) {
+            where.OR = [
+                { name: { contains: search, mode: 'insensitive' } },
+                { email: { contains: search, mode: 'insensitive' } },
+                { designation: { contains: search, mode: 'insensitive' } },
+                { specialization: { contains: search, mode: 'insensitive' } },
+                { externalInstitution: { contains: search, mode: 'insensitive' } },
+                { externalDepartment: { contains: search, mode: 'insensitive' } }
+            ];
+        }
+
+        const staffMembers = await prisma.staffMember.findMany({
+            where,
+            include: {
+                supervisor: true,
+                examiner: true,
+                reviewer: true,
+                panelist: true,
+                school: true,
+                department: true,
+                campus: true,
+               
+                createdBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                },
+                updatedBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                }
+            },
+            orderBy: {
+                createdAt: 'desc'
+            }
+        });
+
+        res.status(200).json({
+            message: 'Staff members retrieved successfully',
+            staffMembers
+        });
+
+    } catch (error) {
+        console.error('Error in getAllStaffMembers:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Get a single staff member
+export const getStaffMember = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+
+        const staffMember = await prisma.staffMember.findUnique({
+            where: { id },
+            include: {
+                supervisor: true,
+                examiner: true,
+                reviewer: true,
+                panelist: true,
+                school: true,
+                department: true,
+                campus: true,
+               
+                createdBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                },
+                updatedBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                }
+            }
+        });
+
+        if (!staffMember) {
+            const error = new Error('Staff member not found.');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        res.status(200).json({
+            message: 'Staff member retrieved successfully',
+            staffMember
+        });
+
+    } catch (error) {
+        console.error('Error in getStaffMember:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Update a staff member
+export const updateStaffMember = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const {
+            name,
+            title,
+            email,
+            phone,
+            designation,
+            specialization,
+            qualifications,
+            experience,
+            bio,
+            profileImage,
+            isActive,
+            // Institutional affiliations
+            schoolId,
+            departmentId,
+            campusId,
+            // External institution information
+            externalInstitution,
+            externalDepartment,
+            externalLocation,
+            isExternal,
+      
+        } = req.body;
+
+        // Check if staff member exists
+        const existingStaffMember = await prisma.staffMember.findUnique({
+            where: { id }
+        });
+
+        if (!existingStaffMember) {
+            const error = new Error('Staff member not found.');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Check if email is being changed and if it's already taken
+        if (email && email !== existingStaffMember.email) {
+            const emailExists = await prisma.staffMember.findUnique({
+                where: { email }
+            });
+
+            if (emailExists) {
+                const error = new Error('Email already exists.');
+                error.statusCode = 400;
+                throw error;
+            }
+        }
+
+        // Prepare institutional connections
+        const institutionalConnections = {};
+        if (!isExternal) {
+            // Internal staff member - use institutional relations
+            institutionalConnections.isExternal = false;
+            institutionalConnections.externalInstitution = null;
+            institutionalConnections.externalDepartment = null;
+            institutionalConnections.externalLocation = null;
+            
+            if (schoolId !== undefined) {
+                institutionalConnections.school = schoolId ? { connect: { id: schoolId } } : { disconnect: true };
+            }
+            if (departmentId !== undefined) {
+                institutionalConnections.department = departmentId ? { connect: { id: departmentId } } : { disconnect: true };
+            }
+            if (campusId !== undefined) {
+                institutionalConnections.campus = campusId ? { connect: { id: campusId } } : { disconnect: true };
+            }
+        } else {
+            // External staff member - use external institution fields
+            institutionalConnections.isExternal = true;
+            institutionalConnections.externalInstitution = externalInstitution;
+            institutionalConnections.externalDepartment = externalDepartment;
+            institutionalConnections.externalLocation = externalLocation;
+            institutionalConnections.school = { disconnect: true };
+            institutionalConnections.department = { disconnect: true };
+            institutionalConnections.campus = { disconnect: true };
+        }
+
+
+
+        // Update staff member
+        const updatedStaffMember = await prisma.staffMember.update({
+            where: { id },
+            data: {
+                name,
+                title,
+                email,
+                phone,
+                designation,
+                specialization,
+                qualifications,
+                experience,
+                bio,
+                profileImage,
+                isActive,
+                updatedBy: { connect: { id: req.user.id } },
+                ...institutionalConnections,
+               
+            },
+            include: {
+                supervisor: true,
+                examiner: true,
+                reviewer: true,
+                panelist: true,
+              
+                createdBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                },
+                updatedBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                }
+            }
+        });
+
+        res.status(200).json({
+            message: 'Staff member updated successfully',
+            staffMember: updatedStaffMember
+        });
+
+    } catch (error) {
+        console.error('Error in updateStaffMember:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Delete a staff member
+export const deleteStaffMember = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+
+        // Check if staff member exists
+        const existingStaffMember = await prisma.staffMember.findUnique({
+            where: { id }
+        });
+
+        if (!existingStaffMember) {
+            const error = new Error('Staff member not found.');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Delete staff member
+        await prisma.staffMember.delete({
+            where: { id }
+        });
+
+        res.status(200).json({
+            message: 'Staff member deleted successfully'
+        });
+
+    } catch (error) {
+        console.error('Error in deleteStaffMember:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Get staff members by role
+export const getStaffMembersByRole = async (req, res, next) => {
+    try {
+        const { role } = req.params;
+
+        // Build where clause based on role
+        let whereClause = { isActive: true };
+        
+        switch (role) {
+            case 'supervisor':
+                whereClause.supervisorId = { not: null };
+                break;
+            case 'examiner':
+                whereClause.examinerId = { not: null };
+                break;
+            case 'reviewer':
+                whereClause.reviewerId = { not: null };
+                break;
+            case 'panelist':
+                whereClause.panelistId = { not: null };
+                break;
+            default:
+                // If no specific role, return all staff members with any role
+                whereClause.OR = [
+                    { supervisorId: { not: null } },
+                    { examinerId: { not: null } },
+                    { reviewerId: { not: null } },
+                    { panelistId: { not: null } }
+                ];
+        }
+
+        const staffMembers = await prisma.staffMember.findMany({
+            where: whereClause,
+            include: {
+                supervisor: true,
+                examiner: true,
+                reviewer: true,
+                panelist: true,
+                
+            },
+            orderBy: {
+                name: 'asc'
+            }
+        });
+
+        res.status(200).json({
+            message: `Staff members with role ${role} retrieved successfully`,
+            staffMembers
+        });
+
+    } catch (error) {
+        console.error('Error in getStaffMembersByRole:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Get staff members for supervisor creation (those without supervisorId and internal)
+export const getStaffMembersForSupervisor = async (req, res, next) => {
+    try {
+        // First, let's get all staff members to see what we're working with
+        const allStaffMembers = await prisma.staffMember.findMany({
+            where: {
+                isExternal: false,   // Internal staff only
+                isActive: true       // Active staff only
+            },
+            select: {
+                id: true,
+                name: true,
+                supervisorId: true,
+                isExternal: true,
+                isActive: true
+            }
+        });
+
+        console.log("All internal active staff members:", allStaffMembers);
+
+        // Now filter for those without supervisorId
+        const staffMembersForSupervisor = allStaffMembers.filter(sm => !sm.supervisorId);
+
+        console.log("Staff members without supervisorId:", staffMembersForSupervisor);
+
+        // Get the full data for these staff members
+        const staffMembers = await prisma.staffMember.findMany({
+            where: {
+                id: { in: staffMembersForSupervisor.map(sm => sm.id) }
+            },
+            include: {
+                school: true,
+                department: true,
+                campus: true,
+                createdBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                },
+                updatedBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                }
+            },
+            orderBy: {
+                name: 'asc'
+            }
+        });
+
+        console.log("Found staff members for supervisor creation:", staffMembers.length);
+        console.log("Staff members:", staffMembers.map(sm => ({ id: sm.id, name: sm.name, supervisorId: sm.supervisorId })));
+
+        res.status(200).json({
+            message: 'Staff members for supervisor creation retrieved successfully',
+            staffMembers
+        });
+
+    } catch (error) {
+        console.error('Error in getStaffMembersForSupervisor:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Create supervisor from staff member
+export const createSupervisorFromStaff = async (req, res, next) => {
+    try {
+        const { staffMemberId } = req.params;
+
+        // Find the staff member
+        const staffMember = await prisma.staffMember.findUnique({
+            where: { id: staffMemberId },
+            include: {
+                school: true,
+                department: true,
+                campus: true
+            }
+        });
+
+        if (!staffMember) {
+            const error = new Error('Staff member not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Check if staff member already has supervisor role
+        if (staffMember.supervisorId) {
+            const error = new Error('Staff member already has supervisor role');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if staff member is external
+        if (staffMember.isExternal) {
+            const error = new Error('External staff members cannot be supervisors');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Generate a random password
+        const randomPassword = crypto.randomBytes(10).toString('base64');
+        // Hash the password
+        const hashedPassword = await bcrypt.hash(randomPassword, 12);
+
+        // Create a new user for the supervisor
+        const newUser = await prisma.user.create({
+            data: {
+                name: staffMember.name,
+                title: staffMember.title,
+                email: staffMember.email,
+                designation: staffMember.designation,
+                password: hashedPassword,
+                role: 'SUPERVISOR',
+                phone: staffMember.phone
+            }
+        });
+
+        // Create the supervisor and attach the user
+        const newSupervisor = await prisma.supervisor.create({
+            data: {
+                name: staffMember.name,
+                title: staffMember.title,
+                designation: staffMember.designation,
+                role: 'SUPERVISOR',
+                workEmail: staffMember.email,
+                primaryPhone: staffMember.phone,
+                facultyType: 'supervisor',
+                school: { connect: { id: staffMember.schoolId } },
+                campus: { connect: { id: staffMember.campusId } },
+                department: { connect: { id: staffMember.departmentId } },
+                user: { connect: { id: newUser.id } }
+            },
+            include: { 
+                user: true,
+                school: true,
+                campus: true,
+                department: true
+            }
+        });
+
+        // Update the staff member to link to the supervisor
+        await prisma.staffMember.update({
+            where: { id: staffMemberId },
+            data: {
+                supervisorId: newSupervisor.id
+            }
+        });
+
+        // Send email notification to the new supervisor
+        try {
+            const emailTemplate = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="utf-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>Supervisor Account Created</title>
+                    <style>
+                        body { 
+                            font-family: Arial, sans-serif; 
+                            line-height: 1.6; 
+                            color: #333; 
+                            margin: 0;
+                            padding: 0;
+                        }
+                        .container { 
+                            max-width: 600px; 
+                            margin: 0 auto; 
+                            background-color: #ffffff;
+                        }
+                        .header { 
+                            background-color: #003366; 
+                            color: white; 
+                            padding: 20px; 
+                            text-align: center;
+                        }
+                        .header h1 {
+                            margin: 0;
+                            font-size: 24px;
+                        }
+                        .content { 
+                            padding: 30px 20px; 
+                            background-color: #f9f9f9; 
+                        }
+                        .credentials {
+                            background-color: #e8f4fd;
+                            border-left: 4px solid #003366;
+                            padding: 15px;
+                            margin: 20px 0;
+                        }
+                        .credentials strong {
+                            color: #003366;
+                        }
+                        .footer { 
+                            font-size: 12px; 
+                            color: #666; 
+                            padding: 20px; 
+                            text-align: center; 
+                            background-color: #f0f0f0;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="header">
+                            <h1>UGANDA MANAGEMENT INSTITUTE</h1>
+                        </div>
+                        <div class="content">
+                            <h2>Welcome to UMI Supervisor Portal</h2>
+                            <p>Dear ${staffMember.name},</p>
+                            <p>Your supervisor account has been created successfully.</p>
+                            <div class="credentials">
+                                <h3>Login Credentials</h3>
+                                <p><strong>Email:</strong> ${staffMember.email}</p>
+                                <p><strong>Temporary Password:</strong> ${randomPassword}</p>
+                            </div>
+                            <p>Please change your password after your first login.</p>
+                            <p><strong>Next Steps:</strong></p>
+                            <ul>
+                                <li>Log in to your supervisor portal</li>
+                                <li>Review your account details</li>
+                                <li>Update your profile if necessary</li>
+                                <li>Change your password</li>
+                                <li>Start managing your assigned students</li>
+                            </ul>
+                            <p><strong>Important Reminders:</strong></p>
+                            <ul>
+                                <li>Maintain regular communication with your students</li>
+                                <li>Submit your work on time</li>
+                                <li>Follow the research guidelines and deadlines</li>
+                                <li>Keep your students updated on their progress</li>
+                            </ul>
+                            <p>If you have any questions or need assistance, please contact the UMI Management Team.</p>
+                        </div>
+                        <div class="footer">
+                            <p>This is an automated message from the UMI Research Management System.</p>
+                            <p>Please do not reply to this email.</p>
+                            <p>&copy; ${new Date().getFullYear()} Uganda Management Institute</p>
+                        </div>
+                    </div>
+                </body>
+                </html>
+            `;
+
+            await emailService.sendEmail({
+                to: staffMember.email,
+                subject: 'Supervisor Account Created',
+                htmlContent: emailTemplate
+            });
+
+            console.log(`Supervisor creation email sent to: ${staffMember.email}`);
+        } catch (emailError) {
+            console.error('Error sending email notification:', emailError);
+            // Don't fail the request if email fails
+        }
+
+        res.status(201).json({
+            message: 'Supervisor created successfully from staff member',
+            supervisor: newSupervisor,
+            temporaryPassword: randomPassword
+        });
+
+    } catch (error) {
+        console.error('Error in createSupervisorFromStaff:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Test endpoint to check staff member data
+export const testStaffMembers = async (req, res, next) => {
+    try {
+        const allStaffMembers = await prisma.staffMember.findMany({
+            select: {
+                id: true,
+                name: true,
+                email: true,
+                supervisorId: true,
+                isExternal: true,
+                isActive: true
+            }
+        });
+
+        console.log("All staff members:", allStaffMembers);
+
+        res.status(200).json({
+            message: 'Staff member test data',
+            staffMembers: allStaffMembers
+        });
+
+    } catch (error) {
+        console.error('Error in testStaffMembers:', error);
         if (!error.statusCode) {
             error.statusCode = 500;
         }
