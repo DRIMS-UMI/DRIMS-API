@@ -62,6 +62,7 @@ model user {
   student     student? 
   facultyMember facultyMember?
   supervisor   supervisor?
+ 
   updatedStatuses studentStatus[]  // Add this line
 
   submittedProposals proposal[]        @relation("submittedProposals")
@@ -90,6 +91,10 @@ model user {
   // Add this relation
   notifications notification[] @relation("UserNotifications")
    generatedDefenseReports proposalDefenseReport[] 
+   
+   // Staff member audit relations
+   createdStaffMembers staffMember[] @relation("StaffCreatedBy")
+   updatedStaffMembers staffMember[] @relation("StaffUpdatedBy")
 }
 
 enum Role {
@@ -458,6 +463,9 @@ model examiner {
   // For external examiners (many-to-many): need array field + relation
   vivaIds String[] @db.ObjectId
   vivasAsExternalExaminer viva[] @relation("VivaExternalExaminers", fields: [vivaIds], references: [id])
+  
+  // Staff member relations (one-to-many)
+  staffMembers   staffMember[]
 }
 
 model examinerBookAssignment {
@@ -499,6 +507,9 @@ model supervisor {
   campusId       String?     @db.ObjectId
   department     department? @relation(fields: [departmentId], references: [id])
   departmentId   String?     @db.ObjectId
+  
+  // Staff member relations (one-to-many)
+  staffMembers   staffMember[]
 }
 
 model fieldWork {
@@ -530,6 +541,9 @@ model reviewer {
   proposalDefenses proposalDefense[] @relation(fields: [proposalDefenseIds], references: [id])
   vivaIds       String[] @db.ObjectId
   vivas       viva[]  @relation(fields: [vivaIds], references: [id])
+  
+  // Staff member relations (one-to-many)
+  staffMembers   staffMember[]
 }
 
 model panelist {
@@ -549,6 +563,9 @@ model panelist {
   updatedAt   DateTime?  @updatedAt
   proposalDefenseIds String[] @db.ObjectId
   proposalDefenses proposalDefense[] @relation(fields: [proposalDefenseIds], references: [id])
+  
+  // Staff member relations (one-to-many)
+  staffMembers   staffMember[]
 }
 
 enum VivaVerdict {
@@ -706,6 +723,7 @@ model school {
   supervisors supervisor[]
   students    student[]
   examiners   examiner[]
+  staffMembers staffMember[]
 }
 
 model campus {
@@ -720,6 +738,7 @@ model campus {
   panelists   panelist[]
   examiners   examiner[]
   users       user[]   // Add this relation field
+  staffMembers staffMember[]
 }
 
 model schoolMember {
@@ -745,6 +764,7 @@ model department {
   supervisors supervisor[]
   students    student[]
   examiners   examiner[]
+  staffMembers staffMember[]
 }
 
 model facultyMember {
@@ -884,4 +904,57 @@ model studentEvaluation {
   
   createdAt                        DateTime             @default(now())
   updatedAt                        DateTime             @updatedAt
+}
+
+model staffMember {
+  id                    String    @id @default(auto()) @map("_id") @db.ObjectId
+  name                  String
+  title                 String?
+  email                 String    @unique
+  phone                 String?
+  designation           String?
+  specialization        String?
+  qualifications        String?
+  experience           String?
+  bio                   String?
+  isActive              Boolean   @default(true)
+  profileImage          String?
+  
+  // Institutional affiliations (for internal staff)
+  school                school?   @relation(fields: [schoolId], references: [id])
+  schoolId              String?   @db.ObjectId
+  department            department? @relation(fields: [departmentId], references: [id])
+  departmentId          String?   @db.ObjectId
+  campus                campus?   @relation(fields: [campusId], references: [id])
+  campusId              String?   @db.ObjectId
+  
+  // External institution information (for external staff)
+  externalInstitution   String?   // Name of external institution
+  externalDepartment    String?   // Department at external institution
+  externalLocation      String?   // Location of external institution
+  isExternal            Boolean   @default(false)  // Flag to distinguish internal vs external
+  
+  // One-to-many relationships with role models (allows multiple staff members per role)
+  supervisor            supervisor? @relation(fields: [supervisorId], references: [id])
+  supervisorId          String?   @db.ObjectId
+  
+  examiner              examiner? @relation(fields: [examinerId], references: [id])
+  examinerId            String?   @db.ObjectId
+  
+  reviewer              reviewer? @relation(fields: [reviewerId], references: [id])
+  reviewerId            String?   @db.ObjectId
+  
+  panelist              panelist? @relation(fields: [panelistId], references: [id])
+  panelistId            String?   @db.ObjectId
+  
+ 
+  
+  // Audit fields
+  createdBy             user?     @relation("StaffCreatedBy", fields: [createdById], references: [id])
+  createdById           String?   @db.ObjectId
+  updatedBy             user?     @relation("StaffUpdatedBy", fields: [updatedById], references: [id])
+  updatedById           String?   @db.ObjectId
+  
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 }
