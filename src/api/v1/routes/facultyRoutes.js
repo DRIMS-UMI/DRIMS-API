@@ -84,7 +84,7 @@ export const handleMulterError = (error, req, res, next) => {
 const router = express.Router();
 
 // Import faculty controllers
-import { loginFaculty, getFacultyProfile, updateFacultyPassword, getStudent, getAllStudents, getStudentStatuses, submitProposal, getProposal, gradeProposal, getStudentProposals, addReviewers, getReviewers, addPanelists, getPanelists, getSchoolProposals, deleteReviewer, deletePanelist, addReviewerMark, addPanelistMark, addDefenseDate, addComplianceReportDate, updateFieldLetterDate, getAllBooks, getBook, getStudentBooks, createExaminer, getAllExaminers, getExaminer, updateExaminer, deleteExaminer, assignExaminersToBook, updateInternalExaminerMark, getProposalDefenses, recordProposalDefenseVerdict, scheduleProposalDefense, getProgressTrends, getStatusStatistics, getDashboardStats, getNotifications, getAllStudentsStatusReport, getStudentStatusReport, addNewPanelist, getAllSupervisors, requestPasswordReset, resetPassword, updateFacultyProfile, addNewReviewer, getChairpersons, getExternalPersons, getExternalPersonsByRole, createExternalPerson, updateExternalPerson, deleteExternalPerson, updateEthicsCommitteeDate, generateDefenseReport, getProposalDefenseReports, downloadDefenseReport, getAllFacultyMembers, getAllCampuses, getAllDepartments, getAllSchools, createSupervisor, getAssignedStudents, deleteSupervisor, updateSupervisor, getSupervisor, assignStudentsToSupervisor, changeStudentSupervisor } from '../controllers/facultyController.js';
+import { loginFaculty, getFacultyProfile, updateFacultyPassword, getStudent, getAllStudents, getStudentStatuses, submitProposal, getProposal, gradeProposal, getStudentProposals, addReviewers, getReviewers, addPanelists, getPanelists, getSchoolProposals, deleteReviewer, deletePanelist, addReviewerMark, addPanelistMark, addDefenseDate, addComplianceReportDate, updateFieldLetterDate, getAllBooks, getBook, getStudentBooks, createExaminer, getAllExaminers, getExaminer, updateExaminer, deleteExaminer, assignExaminersToBook, updateInternalExaminerMark, getProposalDefenses, recordProposalDefenseVerdict, scheduleProposalDefense, getProgressTrends, getStatusStatistics, getDashboardStats, getNotifications, getAllStudentsStatusReport, getStudentStatusReport, addNewPanelist, getAllSupervisors, requestPasswordReset, resetPassword, updateFacultyProfile, getChairpersons, getExternalPersons, getExternalPersonsByRole, createExternalPerson, updateExternalPerson, deleteExternalPerson, updateEthicsCommitteeDate, generateDefenseReport, getProposalDefenseReports, downloadDefenseReport, getAllFacultyMembers, getAllCampuses, getAllDepartments, getAllSchools, createSupervisor, getAssignedStudents, deleteSupervisor, updateSupervisor, getSupervisor, assignStudentsToSupervisor, changeStudentSupervisor, getStaffMembers, createReviewerFromStaff, createPanelistFromStaff, createStaffMember } from '../controllers/facultyController.js';
 
 // Faculty authentication routes
 router.post('/login', loginFaculty);
@@ -107,8 +107,6 @@ router.post('/proposals/:proposalId/compliance-report-date', authenticateToken, 
 
 // Reviewer management routes
 router.post('/reviewers/:proposalId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), addReviewers);
-// Add new reviewer route
-router.post('/reviewer', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), addNewReviewer);
 
 router.get('/reviewers', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), getReviewers);
 router.delete('/reviewers/:proposalId/:reviewerId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), deleteReviewer);
@@ -236,5 +234,14 @@ router.post('/supervisor/:supervisorId/assign-students', authenticateToken, auth
 
 // Change supervisor route
 router.put('/students/:studentId/change-supervisor', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), changeStudentSupervisor);
+
+// Staff and reviewer management routes
+router.get('/staff', authenticateToken, authorizeRoles('FACULTY', 'SCHOOL_ADMIN', 'DEAN'), getStaffMembers);
+router.post('/staff/:staffMemberId/convert-to-reviewer', authenticateToken, authorizeRoles('FACULTY', 'SCHOOL_ADMIN', 'DEAN'), createReviewerFromStaff);
+router.post('/staff/:staffMemberId/convert-to-panelist', authenticateToken, authorizeRoles('FACULTY', 'SCHOOL_ADMIN', 'DEAN'), createPanelistFromStaff);
+router.post('/staff', authenticateToken, authorizeRoles('FACULTY', 'SCHOOL_ADMIN', 'DEAN'), createStaffMember);
+// router.get('/staff/for-reviewer', authenticateToken, authorizeRoles('FACULTY', 'SCHOOL_ADMIN', 'DEAN'), getStaffMembersForReviewer);
+// router.post('/reviewer/from-staff/:staffMemberId', authenticateToken, authorizeRoles('FACULTY', 'SCHOOL_ADMIN', 'DEAN'), createReviewerFromStaff);
+
 export { gfs }; // Export gfs for use in controllers
 export default router;

@@ -8487,3 +8487,78 @@ export const testStaffMembers = async (req, res, next) => {
         next(error);
     }
 };
+
+// Create panelist from staff member
+export const createPanelistFromStaff = async (req, res, next) => {
+    try {
+        const { staffMemberId } = req.params;
+
+        // Find the staff member
+        const staffMember = await prisma.staffMember.findUnique({
+            where: { id: staffMemberId },
+            include: {
+                school: true,
+                department: true,
+                campus: true
+            }
+        });
+
+        if (!staffMember) {
+            const error = new Error('Staff member not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Check if staff member already has a panelist role
+        if (staffMember.panelistId) {
+            const error = new Error('Staff member already has a panelist role');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if staff member is internal
+        if (staffMember.isExternal) {
+            const error = new Error('External staff members cannot be assigned as panelists');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Create the panelist without user account
+        const newPanelist = await prisma.panelist.create({
+            data: {
+                name: staffMember.name,
+                email: staffMember.email,
+                // primaryPhone: staffMember.phone,
+                institution: staffMember.isExternal ? staffMember.externalInstitution : 'Uganda Management Institute',
+                // specialization: staffMember.specialization,
+                campus: staffMember.campusId ? { connect: { id: staffMember.campusId } } : undefined
+            }
+        });
+
+        // Connect the panelist to the staff member
+        await prisma.staffMember.update({
+            where: { id: staffMember.id },
+            data: { panelistId: newPanelist.id }
+        });
+
+        res.status(201).json({
+            message: 'Panelist created successfully from staff member',
+            panelist: {
+                id: newPanelist.id,
+                name: newPanelist.name,
+                email: newPanelist.email,
+                specialization: newPanelist.specialization,
+                institution: newPanelist.institution
+            }
+        });
+
+    } catch (error) {
+        console.error('Error in createPanelistFromStaff:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+

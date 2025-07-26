@@ -111,6 +111,7 @@ import {
     getStaffMembersByRole,
     getStaffMembersForSupervisor,
     createSupervisorFromStaff,
+    createPanelistFromStaff,
 } from '../controllers/managementController.js';
 import {getEvaluationAnalytics, getDetailedEvaluations, updateResearchRequest, getAllResearchRequests, addStudentToGraduation, resetPassword, requestPasswordReset, getNotifications, getAllStudentsStatusReport, getStudentStatusReport, getProgressTrends, getStatusStatistics, getDashboardStats, updateSenateApprovalDate, updateResultsSentDate, updateResultsApprovalDate, updateComplianceReportDate, updateMinutesSentDate, getBookVivas, getAllPanelists, addNewPanelist, scheduleViva, recordVivaVerdict, getGraduationStatistics } from "../controllers/managementEvaluationController.js"
 
@@ -356,5 +357,7 @@ router.get('/staff/:id', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEAR
 router.put('/staff/:id', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), updateStaffMember);
 router.delete('/staff/:id', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), deleteStaffMember);
 router.get('/staff/role/:role', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getStaffMembersByRole);
+router.post('/staff/:staffMemberId/convert-to-supervisor', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), createSupervisorFromStaff);
+router.post('/staff/:staffMemberId/convert-to-panelist', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), createPanelistFromStaff);
 
 export default router;  
