@@ -5899,56 +5899,7 @@ export const getBook = async (req, res, next) => {
     }
 };
 
-// Controller for creating a new examiner
-export const createExaminer = async (req, res, next) => {
-    try {
-        const { name, primaryEmail, secondaryEmail, primaryPhone, secondaryPhone, institution, type } = req.body;
 
-        // Validate required fields
-        if (!name || !primaryEmail || !institution || !type) {
-            const error = new Error('Name, primary email, institution, and type are required fields');
-            error.statusCode = 400;
-            throw error;
-        }
-
-        // Check if examiner with the same primary email already exists
-        const existingExaminer = await prisma.examiner.findUnique({
-            where: {
-                primaryEmail
-            }
-        });
-
-        if (existingExaminer) {
-            const error = new Error('An examiner with this primary email already exists');
-            error.statusCode = 409;
-            throw error;
-        }
-
-        // Create new examiner
-        const newExaminer = await prisma.examiner.create({
-            data: {
-                name,
-                primaryEmail,
-                secondaryEmail,
-                primaryPhone,
-                secondaryPhone,
-                institution,
-                type
-            }
-        });
-
-        res.status(201).json({
-            message: 'Examiner created successfully',
-            examiner: newExaminer
-        });
-
-    } catch (error) {
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
-    }
-};
 
 // Controller for getting all examiners
 export const getAllExaminers = async (req, res, next) => {
@@ -5982,13 +5933,14 @@ export const getAllExaminers = async (req, res, next) => {
 export const assignExaminersToBook = async (req, res, next) => {
     try {
         const { bookId } = req.params;
-        const { examinerIds } = req.body;
+        const { examinerIds, staffMemberIds } = req.body;
 
-        if (!bookId || !examinerIds || !Array.isArray(examinerIds) || examinerIds.length === 0) {
-            const error = new Error('Book ID and at least one examiner ID are required');
+        if (!bookId || (!examinerIds && !staffMemberIds)) {
+            const error = new Error('Book ID and at least one examiner ID or staff member ID are required');
             error.statusCode = 400;
             throw error;
         }
+
         console.log("Assigning Assignment")
 
         // Check if book exists
@@ -5996,7 +5948,7 @@ export const assignExaminersToBook = async (req, res, next) => {
             where: {
                 id: bookId
             },
-           include: {
+            include: {
                 student: true,
                 statuses: {
                     where: {
@@ -6015,16 +5967,79 @@ export const assignExaminersToBook = async (req, res, next) => {
             throw error;
         }
 
+        let finalExaminerIds = [];
+
+        // Process staff member IDs if provided
+        if (staffMemberIds && Array.isArray(staffMemberIds) && staffMemberIds.length > 0) {
+            for (const staffMemberId of staffMemberIds) {
+                // Find the staff member
+                const staffMember = await prisma.staffMember.findUnique({
+                    where: { id: staffMemberId },
+                    include: {
+                        examiner: true
+                    }
+                });
+
+                if (!staffMember) {
+                    const error = new Error(`Staff member with ID ${staffMemberId} not found`);
+                    error.statusCode = 404;
+                    throw error;
+                }
+
+                // Check if staff member already has an examiner role
+                if (staffMember.examinerId) {
+                    // Staff member already has an examiner, use the existing examiner ID
+                    finalExaminerIds.push(staffMember.examinerId);
+                } else {
+                    // Create examiner from staff member
+                    const examinerType = staffMember.isExternal ? 'External' : 'Internal';
+
+                    const newExaminer = await prisma.examiner.create({
+                        data: {
+                            name: staffMember.name,
+                            primaryEmail: staffMember.email,
+                            primaryPhone: staffMember.phone,
+                            type: examinerType,
+                            institution: staffMember.isExternal ? staffMember.externalInstitution : 'Uganda Management Institute',
+                            specialization: staffMember.specialization,
+                            campus: staffMember.campusId ? { connect: { id: staffMember.campusId } } : undefined,
+                            school: staffMember.schoolId ? { connect: { id: staffMember.schoolId } } : undefined,
+                            department: staffMember.departmentId ? { connect: { id: staffMember.departmentId } } : undefined
+                        }
+                    });
+
+                    // Connect the examiner to the staff member
+                    await prisma.staffMember.update({
+                        where: { id: staffMember.id },
+                        data: { examinerId: newExaminer.id }
+                    });
+
+                    finalExaminerIds.push(newExaminer.id);
+                }
+            }
+        }
+
+        // Add direct examiner IDs if provided
+        if (examinerIds && Array.isArray(examinerIds)) {
+            finalExaminerIds = [...finalExaminerIds, ...examinerIds];
+        }
+
+        if (finalExaminerIds.length === 0) {
+            const error = new Error('No valid examiner IDs to assign');
+            error.statusCode = 400;
+            throw error;
+        }
+
         // Check if all examiners exist
         const examiners = await prisma.examiner.findMany({
             where: {
                 id: {
-                    in: examinerIds
+                    in: finalExaminerIds
                 }
             }
         });
 
-        if (examiners.length !== examinerIds.length) {
+        if (examiners.length !== finalExaminerIds.length) {
             const error = new Error('One or more examiners not found');
             error.statusCode = 404;
             throw error;
@@ -6043,6 +6058,15 @@ export const assignExaminersToBook = async (req, res, next) => {
             throw error;
         }
 
+        // Check if the current status is already "Under Examination"
+        const isAlreadyUnderExamination = book.statuses.some(
+            (status) =>
+                status.isCurrent &&
+                status.definition &&
+                status.definition.name &&
+                status.definition.name.toLowerCase() === "under examination"
+        );
+
         // Get current date for assignment tracking
         const assignmentDate = new Date();
 
@@ -6052,11 +6076,9 @@ export const assignExaminersToBook = async (req, res, next) => {
                 id: bookId
             },
             data: {
-                // examinerIds: examinerIds,
                 examiners: {
-                    connect: examinerIds.map(id => ({ id }))
-                },
-                // examinerAssignmentDate: assignmentDate // Add assignment date
+                    connect: finalExaminerIds.map(id => ({ id }))
+                }
             },
             include: {
                 examiners: true,
@@ -6064,33 +6086,35 @@ export const assignExaminersToBook = async (req, res, next) => {
             }
         });
 
-        // Update all current book statuses to not current
-        await prisma.bookStatus.updateMany({
-            where: {
-                bookId: bookId,
-                isCurrent: true
-            },
-            data: {
-                isCurrent: false,
-                isActive: false,
-                endDate: new Date()
-            }
-        });
+        // Only update statuses if not already under examination
+        if (!isAlreadyUnderExamination) {
+            // Update all current book statuses to not current
+            await prisma.bookStatus.updateMany({
+                where: {
+                    bookId: bookId,
+                    isCurrent: true
+                },
+                data: {
+                    isCurrent: false,
+                    isActive: false,
+                    endDate: new Date()
+                }
+            });
 
-        // Create new book status "Under Examination"
-        await prisma.bookStatus.create({
-            data: {
-                book: { connect: { id: bookId } },
-                definition: { connect: { id: underExaminationStatus.id } },
-                isActive: true,
-                isCurrent: true,
-                startDate: new Date(),
-                
-            }
-        });
+            // Create new book status "Under Examination"
+            await prisma.bookStatus.create({
+                data: {
+                    book: { connect: { id: bookId } },
+                    definition: { connect: { id: underExaminationStatus.id } },
+                    isActive: true,
+                    isCurrent: true,
+                    startDate: new Date(),
+                }
+            });
+        }
 
         // If student exists, update their status as well
-        if (book.student) {
+        if (book.student && !isAlreadyUnderExamination) {
             // Update all current student statuses to not current
             await prisma.studentStatus.updateMany({
                 where: {
@@ -6117,53 +6141,53 @@ export const assignExaminersToBook = async (req, res, next) => {
             });
         }
 
-          // Checkassignment if existing is external examiner
-          // Check if there's an existing external examiner assignment
-          const existingAssignment = await prisma.examinerBookAssignment.findFirst({
+        // Check if there's an existing external examiner assignment
+        const existingAssignment = await prisma.examinerBookAssignment.findFirst({
             where: {
-              examiner: { type: "External" },
-              bookId,
-              isCurrent: true
+                examiner: { type: "External" },
+                bookId,
+                isCurrent: true
             }
-          });
+        });
 
-          // Create assignments for each examiner
-          for (const examinerId of examinerIds) {
+        // Create assignments for each examiner
+        for (const examinerId of finalExaminerIds) {
             if (existingAssignment) {
-              // Deactivate existing external examiner assignment
-              await prisma.examinerBookAssignment.update({
-                where: { id: existingAssignment.id },
-                data: {
-                  isCurrent: false,
-                
-                }
-              });
+                // Deactivate existing external examiner assignment
+                // If the existing assignment status is "Pending", set it to "Canceled"
+                await prisma.examinerBookAssignment.update({
+                    where: { id: existingAssignment.id },
+                    data: {
+                        isCurrent: false,
+                        status: existingAssignment.status === "Pending" ? "Canceled" : existingAssignment.status
+                    }
+                });
 
-              // Create new resubmission assignment
-              await prisma.examinerBookAssignment.create({
-                data: {
-                  examiner: { connect: { id: examinerId } },
-                  book: { connect: { id: bookId } },
-                  assignedAt: assignmentDate,
-                  submissionType: "Resubmission",
-                  status: "Pending",
-                  isCurrent: true
-                }
-              });
+                // Create new resubmission assignment
+                await prisma.examinerBookAssignment.create({
+                    data: {
+                        examiner: { connect: { id: examinerId } },
+                        book: { connect: { id: bookId } },
+                        assignedAt: assignmentDate,
+                        submissionType: "Resubmission",
+                        status: "Pending",
+                        isCurrent: true
+                    }
+                });
             } else {
-              // Create new normal assignment
-              await prisma.examinerBookAssignment.create({
-                data: {
-                  examiner: { connect: { id: examinerId } },
-                  book: { connect: { id: bookId } },
-                  assignedAt: assignmentDate,
-                  submissionType: "Normal", 
-                  status: "Pending",
-                  isCurrent: true
-                }
-              });
+                // Create new normal assignment
+                await prisma.examinerBookAssignment.create({
+                    data: {
+                        examiner: { connect: { id: examinerId } },
+                        book: { connect: { id: bookId } },
+                        assignedAt: assignmentDate,
+                        submissionType: "Normal",
+                        status: "Pending",
+                        isCurrent: true
+                    }
+                });
             }
-          }
+        }
 
         res.status(200).json({
             message: 'Examiners assigned to book successfully and status updated to Under Examination',
@@ -8554,6 +8578,72 @@ export const createPanelistFromStaff = async (req, res, next) => {
 
     } catch (error) {
         console.error('Error in createPanelistFromStaff:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Create examiner from staff member
+export const createExaminerFromStaff = async (req, res, next) => {
+    try {
+        const { staffMemberId } = req.params;
+
+        // Find the staff member
+        const staffMember = await prisma.staffMember.findUnique({
+            where: { id: staffMemberId },
+            include: {
+                school: true,
+                department: true,
+                campus: true
+            }
+        });
+
+        if (!staffMember) {
+            const error = new Error('Staff member not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Check if staff member already has an examiner role
+        if (staffMember.examinerId) {
+            const error = new Error('Staff member already has an examiner role');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Determine examiner type based on staff member type
+        const examinerType = staffMember.isExternal ? 'External' : 'Internal';
+
+        // Create the examiner
+        const newExaminer = await prisma.examiner.create({
+            data: {
+                name: staffMember.name,
+                primaryEmail: staffMember.email,
+                primaryPhone: staffMember.phone,
+                type: examinerType,
+                institution: staffMember.isExternal ? staffMember.externalInstitution : 'Uganda Management Institute',
+                specialization: staffMember.specialization,
+                campus: staffMember.campusId ? { connect: { id: staffMember.campusId } } : undefined,
+                school: staffMember.schoolId ? { connect: { id: staffMember.schoolId } } : undefined,
+                department: staffMember.departmentId ? { connect: { id: staffMember.departmentId } } : undefined
+            }
+        });
+
+        // Connect the examiner to the staff member
+        await prisma.staffMember.update({
+            where: { id: staffMember.id },
+            data: { examinerId: newExaminer.id }
+        });
+
+        res.status(201).json({
+            message: 'Staff member converted to examiner successfully',
+            examiner: newExaminer
+        });
+
+    } catch (error) {
+        console.error('Error in createExaminerFromStaff:', error);
         if (!error.statusCode) {
             error.statusCode = 500;
         }
