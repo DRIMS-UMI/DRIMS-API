@@ -394,8 +394,7 @@ model book {
   examiners                    examiner[]  @relation(fields: [examinerIds], references: [id])
   examinerIds                 String[]    @db.ObjectId
  
-  externalMarks              Int?
-  internalMarks              Int?
+  
   finalGrade                 Float?       // Average of external and internal marks
   statuses                   bookStatus[]
   averageExamMark           Float?
