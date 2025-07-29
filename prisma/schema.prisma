@@ -95,6 +95,12 @@ model user {
    // Staff member audit relations
    createdStaffMembers staffMember[] @relation("StaffCreatedBy")
    updatedStaffMembers staffMember[] @relation("StaffUpdatedBy")
+  
+  // Research clinic relations
+  createdClinicDays researchClinicDay[] @relation("ClinicDayCreatedBy")
+  updatedClinicDays researchClinicDay[] @relation("ClinicDayUpdatedBy")
+  createdClinicBookings researchClinicBooking[] @relation("ClinicBookingCreatedBy")
+  updatedClinicBookings researchClinicBooking[] @relation("ClinicBookingUpdatedBy")
 }
 
 enum Role {
@@ -186,6 +192,9 @@ model student {
   // Timestamps
   createdAt           DateTime?       @default(now())
   updatedAt           DateTime?       @updatedAt
+
+  // Add research clinic bookings
+  clinicBookings researchClinicBooking[]
 }
 
 model statusDefinition {
@@ -836,9 +845,24 @@ model researchRequest {
 
 enum RequestStatus {
   PENDING
-  IN_REVIEW
-  BEING_PROCESSED
-  CONCLUDED
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum ResearchClinicBookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+enum ResearchClinicDayStatus {
+  ACTIVE
+  INACTIVE
+  FULL
+  CANCELLED
 }
 
 // Direct Messaging Models
@@ -956,4 +980,54 @@ model staffMember {
   
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
+}
+
+model researchClinicDay {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  date        DateTime
+  startTime   String
+  endTime     String
+  maxBookings Int      @default(10)
+  currentBookings Int  @default(0)
+  zoomLink    String?
+  status      ResearchClinicDayStatus @default(ACTIVE)
+  description String?
+  isActive    Boolean  @default(true)
+  
+  // Week-based clinic day fields
+  isWeekBased Boolean  @default(false)
+  selectedDaysOfWeek Int[] // Array of days (0-6) selected for the week
+  weekStartDate DateTime? // Start date of the week
+  numberOfWeeks Int? // Number of weeks to create sessions for
+  parentClinicDayId String? @db.ObjectId // Reference to the parent clinic day that generated this session
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  bookings    researchClinicBooking[]
+  createdBy   user     @relation("ClinicDayCreatedBy", fields: [createdById], references: [id])
+  createdById String   @db.ObjectId
+  updatedBy   user?    @relation("ClinicDayUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?  @db.ObjectId
+}
+
+model researchClinicBooking {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  student     student  @relation(fields: [studentId], references: [id])
+  studentId   String   @db.ObjectId
+  clinicDay   researchClinicDay @relation(fields: [clinicDayId], references: [id])
+  clinicDayId String   @db.ObjectId
+  status      ResearchClinicBookingStatus @default(PENDING)
+  notes       String?
+  attendedAt  DateTime?
+  feedback    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  createdBy   user     @relation("ClinicBookingCreatedBy", fields: [createdById], references: [id])
+  createdById String   @db.ObjectId
+  updatedBy   user?    @relation("ClinicBookingUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?  @db.ObjectId
 }
