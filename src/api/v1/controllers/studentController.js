@@ -1579,3 +1579,354 @@ export const deleteDocument = async (req, res, next) => {
     next(error);
   }
 }; 
+
+/* ********** RESEARCH CLINIC STUDENT CONTROLLERS ********** */
+
+// Get available research clinic days for students
+export const getAvailableResearchClinicDays = async (req, res, next) => {
+    try {
+        const studentId = req.user.studentId;
+
+        if (!studentId) {
+            const error = new Error('Student ID not found in user session');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Verify student exists
+        const student = await prisma.student.findUnique({
+            where: { id: studentId }
+        });
+
+        if (!student) {
+            const error = new Error('Student not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Get active clinic days that are in the future
+        const clinicDays = await prisma.researchClinicDay.findMany({
+            where: {
+                status: 'ACTIVE',
+                date: {
+                    gte: new Date()
+                },
+                isActive: true
+            },
+            include: {
+                _count: {
+                    select: {
+                        bookings: true
+                    }
+                }
+            },
+            orderBy: {
+                date: 'asc'
+            }
+        });
+
+        // Filter out full days and add availability info
+        const availableDays = clinicDays.map(day => ({
+            ...day,
+            availableSlots: Math.max(0, day.maxBookings - day._count.bookings),
+            isFull: day._count.bookings >= day.maxBookings
+        })).filter(day => !day.isFull);
+
+        res.status(200).json({
+            message: 'Available research clinic days retrieved successfully',
+            clinicDays: availableDays
+        });
+
+    } catch (error) {
+        console.error('Error in getAvailableResearchClinicDays:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Book a research clinic session
+export const bookResearchClinicSession = async (req, res, next) => {
+    try {
+        const studentId = req.user.studentId;
+        const { clinicDayId, notes } = req.body;
+
+        if (!studentId) {
+            const error = new Error('Student ID not found in user session');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        if (!clinicDayId) {
+            const error = new Error('Clinic day ID is required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Verify student exists
+        const student = await prisma.student.findUnique({
+            where: { id: studentId }
+        });
+
+        if (!student) {
+            const error = new Error('Student not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Get clinic day
+        const clinicDay = await prisma.researchClinicDay.findUnique({
+            where: { id: clinicDayId },
+            include: {
+                _count: {
+                    select: {
+                        bookings: true
+                    }
+                }
+            }
+        });
+
+        if (!clinicDay) {
+            const error = new Error('Clinic day not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Check if clinic day is active and in the future
+        if (clinicDay.status !== 'ACTIVE' || clinicDay.date <= new Date()) {
+            const error = new Error('Clinic day is not available for booking');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if clinic day is full
+        if (clinicDay._count.bookings >= clinicDay.maxBookings) {
+            const error = new Error('Clinic day is full');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if student already has a booking for this day
+        const existingBooking = await prisma.researchClinicBooking.findFirst({
+            where: {
+                studentId,
+                clinicDayId
+            }
+        });
+
+        if (existingBooking) {
+            const error = new Error('You already have a booking for this clinic day');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Create booking
+        const booking = await prisma.researchClinicBooking.create({
+            data: {
+                studentId,
+                clinicDayId,
+                notes,
+                status: 'PENDING',
+                createdById: req.user.id
+            },
+            include: {
+                student: {
+                    include: {
+                        user: {
+                            select: {
+                                id: true,
+                                name: true,
+                                email: true
+                            }
+                        }
+                    }
+                },
+                clinicDay: true,
+                createdBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                }
+            }
+        });
+
+        // Update clinic day booking count
+        await prisma.researchClinicDay.update({
+            where: { id: clinicDayId },
+            data: {
+                currentBookings: clinicDay._count.bookings + 1
+            }
+        });
+
+        res.status(201).json({
+            message: 'Research clinic session booked successfully',
+            booking
+        });
+
+    } catch (error) {
+        console.error('Error in bookResearchClinicSession:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Get student's research clinic bookings
+export const getStudentResearchClinicBookings = async (req, res, next) => {
+    try {
+        const studentId = req.user.studentId;
+
+        if (!studentId) {
+            const error = new Error('Student ID not found in user session');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Verify student exists
+        const student = await prisma.student.findUnique({
+            where: { id: studentId }
+        });
+
+        if (!student) {
+            const error = new Error('Student not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        const bookings = await prisma.researchClinicBooking.findMany({
+            where: {
+                studentId
+            },
+            include: {
+                clinicDay: true,
+                createdBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                },
+                updatedBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                }
+            },
+            orderBy: {
+                createdAt: 'desc'
+            }
+        });
+
+        res.status(200).json({
+            message: 'Student research clinic bookings retrieved successfully',
+            bookings
+        });
+
+    } catch (error) {
+        console.error('Error in getStudentResearchClinicBookings:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Cancel a research clinic booking
+export const cancelResearchClinicBooking = async (req, res, next) => {
+    try {
+        const studentId = req.user.studentId;
+        const { bookingId } = req.params;
+
+        if (!studentId) {
+            const error = new Error('Student ID not found in user session');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Verify student exists
+        const student = await prisma.student.findUnique({
+            where: { id: studentId }
+        });
+
+        if (!student) {
+            const error = new Error('Student not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Get booking
+        const booking = await prisma.researchClinicBooking.findUnique({
+            where: { id: bookingId },
+            include: {
+                clinicDay: true
+            }
+        });
+
+        if (!booking) {
+            const error = new Error('Booking not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Verify booking belongs to student
+        if (booking.studentId !== studentId) {
+            const error = new Error('Unauthorized to cancel this booking');
+            error.statusCode = 403;
+            throw error;
+        }
+
+        // Check if booking can be cancelled
+        if (booking.status === 'COMPLETED' || booking.status === 'CANCELLED') {
+            const error = new Error('Booking cannot be cancelled');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Update booking status
+        const updatedBooking = await prisma.researchClinicBooking.update({
+            where: { id: bookingId },
+            data: {
+                status: 'CANCELLED',
+                updatedById: req.user.id
+            },
+            include: {
+                clinicDay: true,
+                updatedBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                }
+            }
+        });
+
+        // Update clinic day booking count
+        await prisma.researchClinicDay.update({
+            where: { id: booking.clinicDayId },
+            data: {
+                currentBookings: {
+                    decrement: 1
+                }
+            }
+        });
+
+        res.status(200).json({
+            message: 'Research clinic booking cancelled successfully',
+            booking: updatedBooking
+        });
+
+    } catch (error) {
+        console.error('Error in cancelResearchClinicBooking:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+}; 
