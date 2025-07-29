@@ -25,7 +25,11 @@ import {
   uploadDocument,
   getStudentDocuments,
   downloadDocument,
-  deleteDocument
+  deleteDocument,
+  getStudentResearchClinicBookings,
+  cancelResearchClinicBooking,
+  getAvailableResearchClinicDays,
+  bookResearchClinicSession,
 } from '../controllers/studentController.js';
 
 // Configure multer for file uploads
@@ -114,5 +118,17 @@ router.post('/documents', authenticateToken, authorizeRoles('STUDENT'), upload.s
 router.get('/documents', authenticateToken, authorizeRoles('STUDENT'), getStudentDocuments);
 router.get('/documents/:documentId/download', authenticateToken, authorizeRoles('STUDENT'), downloadDocument);
 router.delete('/documents/:documentId', authenticateToken, authorizeRoles('STUDENT'), deleteDocument);
+
+// Document routes
+router.get('/students/:studentId/documents', authenticateToken, getStudentDocuments);
+router.post('/students/:studentId/documents', authenticateToken, uploadDocument);
+router.get('/students/:studentId/documents/:documentId/download', authenticateToken, downloadDocument);
+router.delete('/students/:studentId/documents/:documentId', authenticateToken, deleteDocument);
+
+// Research Clinic routes
+router.get('/research-clinic-days', authenticateToken, authorizeRoles('STUDENT'), getAvailableResearchClinicDays);
+router.post('/research-clinic-bookings', authenticateToken, authorizeRoles('STUDENT'), bookResearchClinicSession);
+router.get('/research-clinic-bookings', authenticateToken, authorizeRoles('STUDENT'), getStudentResearchClinicBookings);
+router.put('/research-clinic-bookings/:bookingId/cancel', authenticateToken, authorizeRoles('STUDENT'), cancelResearchClinicBooking);
 
 export default router; 
