@@ -113,6 +113,17 @@ import {
     createSupervisorFromStaff,
     createPanelistFromStaff,
     createExaminerFromStaff,
+    createResearchClinicDay,
+    getAllResearchClinicDays,
+    getClinicDaysByParent,
+    updateResearchClinicDay,
+  
+    getResearchClinicBookings,
+    updateBookingStatus,
+    getResearchClinicStatistics,
+    generateRecurringSessions,
+    deleteResearchClinicDay,
+    getReallocationStatistics
 } from '../controllers/managementController.js';
 import {getEvaluationAnalytics, getDetailedEvaluations, updateResearchRequest, getAllResearchRequests, addStudentToGraduation, resetPassword, requestPasswordReset, getNotifications, getAllStudentsStatusReport, getStudentStatusReport, getProgressTrends, getStatusStatistics, getDashboardStats, updateSenateApprovalDate, updateResultsSentDate, updateResultsApprovalDate, updateComplianceReportDate, updateMinutesSentDate, getBookVivas, getAllPanelists, addNewPanelist, scheduleViva, recordVivaVerdict, getGraduationStatistics } from "../controllers/managementEvaluationController.js"
 
@@ -193,6 +204,8 @@ router.get('/supervisor/:supervisorId/students', authenticateToken, authorizeRol
 // Change supervisor route
 router.put('/students/:studentId/change-supervisor', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), changeStudentSupervisor);
 
+// Reallocation statistics route
+router.get('/reallocation-statistics', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getReallocationStatistics);
 
 // Student management routes
 router.post('/students', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), createStudent);
@@ -361,5 +374,15 @@ router.get('/staff/role/:role', authenticateToken, authorizeRoles('SUPERADMIN', 
 router.post('/staff/:staffMemberId/convert-to-supervisor', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), createSupervisorFromStaff);
 router.post('/staff/:staffMemberId/convert-to-panelist', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), createPanelistFromStaff);
 router.post('/staff/:staffMemberId/convert-to-examiner', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), createExaminerFromStaff);
+
+// Research Clinic routes
+router.post('/research-clinic-days', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), createResearchClinicDay);
+router.get('/research-clinic-days', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getAllResearchClinicDays);
+router.get('/research-clinic-days/:parentId', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getClinicDaysByParent);
+router.put('/research-clinic-days/:id', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), updateResearchClinicDay);
+router.delete('/research-clinic-days/:id', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), deleteResearchClinicDay);
+router.get('/research-clinic-bookings', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getResearchClinicBookings);
+router.put('/research-clinic-bookings/:bookingId/status', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), updateBookingStatus);
+router.get('/research-clinic-statistics', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getResearchClinicStatistics);
 
 export default router;  
