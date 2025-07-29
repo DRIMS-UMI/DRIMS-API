@@ -2672,6 +2672,8 @@ export const getAssignedStudents = async (req, res, next) => {
 
 
 // Controller for creating a new student
+
+
 export const createStudent = async (req, res, next) => {
     let createdUser = null;
     try {
@@ -2720,12 +2722,15 @@ export const createStudent = async (req, res, next) => {
             throw error;
         }
 
+        // Hash the password before saving
+        const hashedPassword = await bcrypt.hash(password, 10);
+
         // Create user first
         const user = await prisma.user.create({
             data: {
                 name: `${firstName} ${lastName}`,
                 email,
-                password,
+                password: hashedPassword,
                 phone: phoneNumber,
                 role: "STUDENT"
             }
@@ -5948,7 +5953,7 @@ export const assignExaminersToBook = async (req, res, next) => {
             where: {
                 id: bookId
             },
-            include: {
+           include: {
                 student: true,
                 statuses: {
                     where: {
@@ -6088,29 +6093,29 @@ export const assignExaminersToBook = async (req, res, next) => {
 
         // Only update statuses if not already under examination
         if (!isAlreadyUnderExamination) {
-            // Update all current book statuses to not current
-            await prisma.bookStatus.updateMany({
-                where: {
-                    bookId: bookId,
-                    isCurrent: true
-                },
-                data: {
-                    isCurrent: false,
-                    isActive: false,
-                    endDate: new Date()
-                }
-            });
+        // Update all current book statuses to not current
+        await prisma.bookStatus.updateMany({
+            where: {
+                bookId: bookId,
+                isCurrent: true
+            },
+            data: {
+                isCurrent: false,
+                isActive: false,
+                endDate: new Date()
+            }
+        });
 
-            // Create new book status "Under Examination"
-            await prisma.bookStatus.create({
-                data: {
-                    book: { connect: { id: bookId } },
-                    definition: { connect: { id: underExaminationStatus.id } },
-                    isActive: true,
-                    isCurrent: true,
-                    startDate: new Date(),
-                }
-            });
+        // Create new book status "Under Examination"
+        await prisma.bookStatus.create({
+            data: {
+                book: { connect: { id: bookId } },
+                definition: { connect: { id: underExaminationStatus.id } },
+                isActive: true,
+                isCurrent: true,
+                startDate: new Date(),
+            }
+        });
         }
 
         // If student exists, update their status as well
@@ -6141,53 +6146,53 @@ export const assignExaminersToBook = async (req, res, next) => {
             });
         }
 
-        // Check if there's an existing external examiner assignment
-        const existingAssignment = await prisma.examinerBookAssignment.findFirst({
+          // Check if there's an existing external examiner assignment
+          const existingAssignment = await prisma.examinerBookAssignment.findFirst({
             where: {
-                examiner: { type: "External" },
-                bookId,
-                isCurrent: true
+              examiner: { type: "External" },
+              bookId,
+              isCurrent: true
             }
-        });
+          });
 
-        // Create assignments for each examiner
+          // Create assignments for each examiner
         for (const examinerId of finalExaminerIds) {
             if (existingAssignment) {
-                // Deactivate existing external examiner assignment
+              // Deactivate existing external examiner assignment
                 // If the existing assignment status is "Pending", set it to "Canceled"
-                await prisma.examinerBookAssignment.update({
-                    where: { id: existingAssignment.id },
-                    data: {
-                        isCurrent: false,
+              await prisma.examinerBookAssignment.update({
+                where: { id: existingAssignment.id },
+                data: {
+                  isCurrent: false,
                         status: existingAssignment.status === "Pending" ? "Canceled" : existingAssignment.status
-                    }
-                });
+                }
+              });
 
-                // Create new resubmission assignment
-                await prisma.examinerBookAssignment.create({
-                    data: {
-                        examiner: { connect: { id: examinerId } },
-                        book: { connect: { id: bookId } },
-                        assignedAt: assignmentDate,
-                        submissionType: "Resubmission",
-                        status: "Pending",
-                        isCurrent: true
-                    }
-                });
+              // Create new resubmission assignment
+              await prisma.examinerBookAssignment.create({
+                data: {
+                  examiner: { connect: { id: examinerId } },
+                  book: { connect: { id: bookId } },
+                  assignedAt: assignmentDate,
+                  submissionType: "Resubmission",
+                  status: "Pending",
+                  isCurrent: true
+                }
+              });
             } else {
-                // Create new normal assignment
-                await prisma.examinerBookAssignment.create({
-                    data: {
-                        examiner: { connect: { id: examinerId } },
-                        book: { connect: { id: bookId } },
-                        assignedAt: assignmentDate,
-                        submissionType: "Normal",
-                        status: "Pending",
-                        isCurrent: true
-                    }
-                });
+              // Create new normal assignment
+              await prisma.examinerBookAssignment.create({
+                data: {
+                  examiner: { connect: { id: examinerId } },
+                  book: { connect: { id: bookId } },
+                  assignedAt: assignmentDate,
+                  submissionType: "Normal", 
+                  status: "Pending",
+                  isCurrent: true
+                }
+              });
             }
-        }
+          }
 
         res.status(200).json({
             message: 'Examiners assigned to book successfully and status updated to Under Examination',
@@ -8651,4 +8656,926 @@ export const createExaminerFromStaff = async (req, res, next) => {
     }
 };
 
+/* ********** RESEARCH CLINIC MANAGEMENT ********** */
 
+// Create a new research clinic day
+export const createResearchClinicDay = async (req, res, next) => {
+    try {
+        const { 
+            startTime, 
+            endTime, 
+            maxBookings, 
+            zoomLink, 
+            description,
+            selectedDaysOfWeek,
+            weekStartDate,
+            numberOfWeeks
+        } = req.body;
+
+        // Validate required fields for week-based clinic days
+        if (!startTime || !endTime || !maxBookings) {
+            const error = new Error('Start time, end time, and max bookings are required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        if (!selectedDaysOfWeek || selectedDaysOfWeek.length === 0) {
+            const error = new Error('At least one day of the week must be selected');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        if (!weekStartDate) {
+            const error = new Error('Week start date is required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        if (!numberOfWeeks || numberOfWeeks < 1) {
+            const error = new Error('Number of weeks must be at least 1');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Create the parent clinic day (week-based configuration)
+        const clinicDay = await prisma.researchClinicDay.create({
+            data: {
+                date: new Date(weekStartDate), // Use week start date as the parent date
+                startTime,
+                endTime,
+                maxBookings: parseInt(maxBookings),
+                zoomLink,
+                description,
+                isWeekBased: true,
+                selectedDaysOfWeek,
+                weekStartDate: new Date(weekStartDate),
+                numberOfWeeks,
+                createdById: req.user.id
+            },
+            include: {
+                createdBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                }
+            }
+        });
+
+        // Generate the individual clinic days based on the week configuration
+        await generateWeekBasedClinicDays(clinicDay, req.user.id);
+
+        res.status(201).json({
+            message: 'Weekly clinic schedule created successfully',
+            clinicDay
+        });
+
+    } catch (error) {
+        console.error('Error in createResearchClinicDay:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Generate week-based clinic days
+const generateWeekBasedClinicDays = async (originalClinicDay, createdById) => {
+    try {
+        const startDate = new Date(originalClinicDay.weekStartDate);
+        const selectedDays = originalClinicDay.selectedDaysOfWeek;
+        const numberOfWeeks = originalClinicDay.numberOfWeeks;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0); // Reset time to start of day for comparison
+
+        const clinicDays = [];
+
+        for (let week = 0; week < numberOfWeeks; week++) {
+            const weekStart = new Date(startDate);
+            weekStart.setDate(weekStart.getDate() + (week * 7));
+
+            for (const dayOfWeek of selectedDays) {
+                const clinicDate = new Date(weekStart);
+                // Calculate the target day of the week
+                const currentDayOfWeek = clinicDate.getDay();
+                const daysToAdd = (dayOfWeek - currentDayOfWeek + 7) % 7;
+                clinicDate.setDate(clinicDate.getDate() + daysToAdd);
+
+                // Only create if the date is in the future (including today)
+                if (clinicDate >= today) {
+                    clinicDays.push({
+                        date: clinicDate,
+                        startTime: originalClinicDay.startTime,
+                        endTime: originalClinicDay.endTime,
+                        maxBookings: originalClinicDay.maxBookings,
+                        zoomLink: originalClinicDay.zoomLink,
+                        description: originalClinicDay.description,
+                        isWeekBased: false, // Generated days are not week-based
+                        selectedDaysOfWeek: [],
+                        weekStartDate: null,
+                        numberOfWeeks: null,
+                        parentClinicDayId: originalClinicDay.id, // Reference to parent
+                        createdById
+                    });
+                }
+            }
+        }
+
+        if (clinicDays.length > 0) {
+            await prisma.researchClinicDay.createMany({
+                data: clinicDays
+            });
+        }
+
+    } catch (error) {
+        console.error('Error generating week-based clinic days:', error);
+        throw error;
+    }
+};
+
+
+
+// Get all research clinic days
+export const getAllResearchClinicDays = async (req, res, next) => {
+    try {
+        const { status, date } = req.query;
+
+        let whereClause = {};
+
+        if (status) {
+            whereClause.status = status;
+        }
+
+        if (date) {
+            whereClause.date = {
+                gte: new Date(date)
+            };
+        }
+
+        const clinicDays = await prisma.researchClinicDay.findMany({
+            where: whereClause,
+            include: {
+                _count: {
+                    select: {
+                        bookings: true
+                    }
+                },
+                createdBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                }
+            },
+            orderBy: {
+                date: 'asc'
+            }
+        });
+
+        // Get all generated sessions for week-based clinic days
+        const parentClinicDayIds = clinicDays
+            .filter(day => day.isWeekBased && !day.parentClinicDayId)
+            .map(day => day.id);
+
+        let generatedSessions = [];
+        if (parentClinicDayIds.length > 0) {
+            generatedSessions = await prisma.researchClinicDay.findMany({
+                where: {
+                    parentClinicDayId: {
+                        in: parentClinicDayIds
+                    }
+                },
+                include: {
+                    _count: {
+                        select: {
+                            bookings: true
+                        }
+                    },
+                    createdBy: {
+                        select: {
+                            id: true,
+                            name: true,
+                            email: true
+                        }
+                    }
+                },
+                orderBy: {
+                    date: 'asc'
+                }
+            });
+        }
+
+        // Group generated sessions by parent
+        const generatedSessionsByParent = generatedSessions.reduce((acc, session) => {
+            if (!acc[session.parentClinicDayId]) {
+                acc[session.parentClinicDayId] = [];
+            }
+            acc[session.parentClinicDayId].push(session);
+            return acc;
+        }, {});
+
+        // Combine parent clinic days with their generated sessions
+        const clinicDaysWithGeneratedSessions = clinicDays.map(day => {
+            if (day.isWeekBased && !day.parentClinicDayId) {
+                return {
+                    ...day,
+                    generatedSessions: generatedSessionsByParent[day.id] || []
+                };
+            }
+            return day;
+        });
+
+        res.status(200).json({
+            message: 'Research clinic days retrieved successfully',
+            clinicDays: clinicDaysWithGeneratedSessions
+        });
+
+    } catch (error) {
+        console.error('Error in getAllResearchClinicDays:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Get clinic days by parent
+export const getClinicDaysByParent = async (req, res, next) => {
+    try {
+        const { parentId } = req.params;
+
+        const clinicDays = await prisma.researchClinicDay.findMany({
+            where: {
+                parentClinicDayId: parentId
+            },
+            include: {
+                _count: {
+                    select: {
+                        bookings: true
+                    }
+                },
+                createdBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                }
+            },
+            orderBy: {
+                date: 'asc'
+            }
+        });
+
+        res.status(200).json({
+            message: 'Clinic days by parent retrieved successfully',
+            clinicDays
+        });
+
+    } catch (error) {
+        console.error('Error in getClinicDaysByParent:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Update research clinic day
+export const updateResearchClinicDay = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { startTime, endTime, maxBookings, zoomLink, description, status, selectedDaysOfWeek, weekStartDate, numberOfWeeks } = req.body;
+
+        const clinicDay = await prisma.researchClinicDay.findUnique({
+            where: { id },
+            include: {
+                bookings: true
+            }
+        });
+
+        if (!clinicDay) {
+            const error = new Error('Research clinic day not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // If reducing max bookings, check if current bookings exceed new limit
+        if (maxBookings && clinicDay.bookings.length > parseInt(maxBookings)) {
+            const error = new Error(`Cannot reduce max bookings. Current bookings (${clinicDay.bookings.length}) exceed new limit (${maxBookings})`);
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Prepare update data
+        const updateData = {
+            startTime,
+            endTime,
+            maxBookings: maxBookings ? parseInt(maxBookings) : undefined,
+            zoomLink,
+            description,
+            status,
+            updatedById: req.user.id
+        };
+
+        // Add week-based fields if they are provided
+        if (selectedDaysOfWeek !== undefined) {
+            updateData.selectedDaysOfWeek = selectedDaysOfWeek;
+        }
+        if (weekStartDate !== undefined) {
+            updateData.weekStartDate = new Date(weekStartDate);
+        }
+        if (numberOfWeeks !== undefined) {
+            updateData.numberOfWeeks = numberOfWeeks;
+        }
+
+        const updatedClinicDay = await prisma.researchClinicDay.update({
+            where: { id },
+            data: updateData,
+            include: {
+                createdBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                },
+                updatedBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                }
+            }
+        });
+
+        // Check if this is a parent clinic day (week-based and no parent itself)
+        const isParentClinicDay = clinicDay.isWeekBased && !clinicDay.parentClinicDayId;
+        
+        // If this is a parent clinic day and week-based fields were updated, regenerate sessions
+        if (isParentClinicDay && (selectedDaysOfWeek !== undefined || weekStartDate !== undefined || numberOfWeeks !== undefined)) {
+            console.log('Regenerating sessions for parent clinic day:', id);
+            
+            // Delete existing generated sessions
+            await prisma.researchClinicDay.deleteMany({
+                where: {
+                    parentClinicDayId: id
+                }
+            });
+
+            // Regenerate sessions with updated configuration
+            await generateWeekBasedClinicDays(updatedClinicDay, req.user.id);
+        }
+
+        res.status(200).json({
+            message: 'Research clinic day updated successfully',
+            clinicDay: updatedClinicDay
+        });
+
+    } catch (error) {
+        console.error('Error in updateResearchClinicDay:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Get research clinic bookings
+export const getResearchClinicBookings = async (req, res, next) => {
+    try {
+        const { status, clinicDayId, studentId } = req.query;
+
+        const where = {};
+
+        if (status && status !== 'all') {
+            where.status = status;
+        }
+
+        if (clinicDayId) {
+            where.clinicDayId = clinicDayId;
+        }
+
+        if (studentId) {
+            where.studentId = studentId;
+        }
+
+        const bookings = await prisma.researchClinicBooking.findMany({
+            where,
+            include: {
+                student: {
+                    include: {
+                        user: {
+                            select: {
+                                id: true,
+                                name: true,
+                                email: true
+                            }
+                        }
+                    }
+                },
+                clinicDay: true,
+                createdBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                },
+                updatedBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                }
+            },
+            orderBy: {
+                createdAt: 'desc'
+            }
+        });
+
+        res.status(200).json({
+            message: 'Research clinic bookings retrieved successfully',
+            bookings
+        });
+
+    } catch (error) {
+        console.error('Error in getResearchClinicBookings:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Update booking status
+export const updateBookingStatus = async (req, res, next) => {
+    try {
+        const { bookingId } = req.params;
+        const { status, notes, feedback } = req.body;
+
+        const booking = await prisma.researchClinicBooking.findUnique({
+            where: { id: bookingId },
+            include: {
+                student: true,
+                clinicDay: true
+            }
+        });
+
+        if (!booking) {
+            const error = new Error('Booking not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        const updateData = {
+            status,
+            notes,
+            feedback,
+            updatedById: req.user.id
+        };
+
+        // If marking as completed, set attendedAt
+        if (status === 'COMPLETED' && !booking.attendedAt) {
+            updateData.attendedAt = new Date();
+        }
+
+        const updatedBooking = await prisma.researchClinicBooking.update({
+            where: { id: bookingId },
+            data: updateData,
+            include: {
+                student: {
+                    include: {
+                        user: {
+                            select: {
+                                id: true,
+                                name: true,
+                                email: true
+                            }
+                        }
+                    }
+                },
+                clinicDay: true,
+                updatedBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                }
+            }
+        });
+
+        res.status(200).json({
+            message: 'Booking status updated successfully',
+            booking: updatedBooking
+        });
+
+    } catch (error) {
+        console.error('Error in updateBookingStatus:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Get research clinic statistics
+export const getResearchClinicStatistics = async (req, res, next) => {
+    try {
+        const { startDate, endDate } = req.query;
+
+        const where = {};
+
+        if (startDate && endDate) {
+            where.createdAt = {
+                gte: new Date(startDate),
+                lte: new Date(endDate)
+            };
+        }
+
+        // Get total bookings
+        const totalBookings = await prisma.researchClinicBooking.count({ where });
+
+        // Get bookings by status
+        const bookingsByStatus = await prisma.researchClinicBooking.groupBy({
+            by: ['status'],
+            where,
+            _count: {
+                status: true
+            }
+        });
+
+        // Get total clinic days
+        const totalClinicDays = await prisma.researchClinicDay.count();
+
+        // Get attendance rate
+        const completedBookings = await prisma.researchClinicBooking.count({
+            where: {
+                ...where,
+                status: 'COMPLETED'
+            }
+        });
+
+        const confirmedBookings = await prisma.researchClinicBooking.count({
+            where: {
+                ...where,
+                status: {
+                    in: ['CONFIRMED', 'COMPLETED']
+                }
+            }
+        });
+
+        const attendanceRate = confirmedBookings > 0 ? (completedBookings / confirmedBookings) * 100 : 0;
+
+        const statistics = {
+            totalBookings,
+            totalClinicDays,
+            bookingsByStatus: bookingsByStatus.reduce((acc, item) => {
+                acc[item.status] = item._count.status;
+                return acc;
+            }, {}),
+            attendanceRate: Math.round(attendanceRate * 100) / 100,
+            completedBookings,
+            confirmedBookings
+        };
+
+        res.status(200).json({
+            message: 'Research clinic statistics retrieved successfully',
+            statistics
+        });
+
+    } catch (error) {
+        console.error('Error in getResearchClinicStatistics:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Generate recurring clinic days
+const generateRecurringClinicDays = async (originalClinicDay, createdById) => {
+    try {
+        const startDate = new Date(originalClinicDay.date);
+        const endDate = new Date(originalClinicDay.endDate);
+        const dayOfWeek = originalClinicDay.dayOfWeek;
+        const pattern = originalClinicDay.recurringPattern;
+
+        let currentDate = new Date(startDate);
+        currentDate.setDate(currentDate.getDate() + 1); // Start from next occurrence
+
+        const clinicDays = [];
+
+        while (currentDate <= endDate) {
+            let shouldCreate = false;
+
+            if (pattern === 'weekly') {
+                // Create every week on the specified day
+                if (currentDate.getDay() === dayOfWeek) {
+                    shouldCreate = true;
+                }
+            } else if (pattern === 'biweekly') {
+                // Create every other week on the specified day
+                if (currentDate.getDay() === dayOfWeek) {
+                    const weeksDiff = Math.floor((currentDate - startDate) / (7 * 24 * 60 * 60 * 1000));
+                    if (weeksDiff % 2 === 1) {
+                        shouldCreate = true;
+                    }
+                }
+            } else if (pattern === 'monthly') {
+                // Create monthly on the specified week and day
+                if (currentDate.getDay() === dayOfWeek) {
+                    const weekOfMonth = Math.ceil(currentDate.getDate() / 7);
+                    if (weekOfMonth === originalClinicDay.weekOfMonth) {
+                        shouldCreate = true;
+                    }
+                }
+            }
+
+            if (shouldCreate) {
+                clinicDays.push({
+                    date: new Date(currentDate),
+                    startTime: originalClinicDay.startTime,
+                    endTime: originalClinicDay.endTime,
+                    maxBookings: originalClinicDay.maxBookings,
+                    zoomLink: originalClinicDay.zoomLink,
+                    description: originalClinicDay.description,
+                    isRecurring: false, // Generated days are not recurring
+                    dayOfWeek: null,
+                    weekOfMonth: null,
+                    endDate: null,
+                    recurringPattern: null,
+                    createdById
+                });
+            }
+
+            currentDate.setDate(currentDate.getDate() + 1);
+        }
+
+        if (clinicDays.length > 0) {
+            await prisma.researchClinicDay.createMany({
+                data: clinicDays
+            });
+        }
+
+    } catch (error) {
+        console.error('Error generating recurring clinic days:', error);
+        throw error;
+    }
+};
+
+// Manually generate recurring sessions for existing recurring clinic days
+export const generateRecurringSessions = async (req, res, next) => {
+    try {
+        const { clinicDayId } = req.params;
+
+        const clinicDay = await prisma.researchClinicDay.findUnique({
+            where: { id: clinicDayId }
+        });
+
+        if (!clinicDay) {
+            const error = new Error('Clinic day not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        if (!clinicDay.isRecurring) {
+            const error = new Error('This clinic day is not a recurring session');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        await generateRecurringClinicDays(clinicDay, req.user.id);
+
+        res.status(200).json({
+            message: 'Recurring sessions generated successfully'
+        });
+
+    } catch (error) {
+        console.error('Error in generateRecurringSessions:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Delete a research clinic day and its generated sessions
+export const deleteResearchClinicDay = async (req, res, next) => {
+    try {
+        const { clinicDayId } = req.params;
+
+        // Check if clinic day exists
+        const clinicDay = await prisma.researchClinicDay.findUnique({
+            where: { id: clinicDayId },
+            include: {
+                bookings: true,
+                generatedSessions: true
+            }
+        });
+
+        if (!clinicDay) {
+            const error = new Error('Clinic day not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Check if there are any bookings
+        if (clinicDay.bookings.length > 0) {
+            const error = new Error('Cannot delete clinic day with existing bookings');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Delete generated sessions first
+        if (clinicDay.generatedSessions.length > 0) {
+            await prisma.researchClinicDay.deleteMany({
+                where: {
+                    parentClinicDayId: clinicDayId
+                }
+            });
+        }
+
+        // Delete the main clinic day
+        await prisma.researchClinicDay.delete({
+            where: { id: clinicDayId }
+        });
+
+        res.status(200).json({
+            success: true,
+            message: 'Clinic day deleted successfully'
+        });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Get reallocation statistics and details
+export const getReallocationStatistics = async (req, res, next) => {
+    try {
+        const { startDate, endDate, supervisorId } = req.query;
+        
+        // Build date filter
+        const dateFilter = {};
+        if (startDate && endDate) {
+            dateFilter.timestamp = {
+                gte: new Date(startDate),
+                lte: new Date(endDate)
+            };
+        }
+
+        // Get all supervisor change activities
+        const reallocationActivities = await prisma.userActivity.findMany({
+            where: {
+                action: 'CHANGE_SUPERVISOR',
+                ...dateFilter
+            },
+            include: {
+                user: {
+                    select: {
+                        name: true,
+                        email: true
+                    }
+                }
+            },
+            orderBy: {
+                timestamp: 'desc'
+            }
+        });
+
+        // Parse details for each activity
+        const parsedActivities = reallocationActivities.map(activity => {
+            const details = JSON.parse(activity.details || '{}');
+            return {
+                id: activity.id,
+                timestamp: activity.timestamp,
+                changedBy: activity.user?.name || 'Unknown',
+                changedByEmail: activity.user?.email,
+                studentId: details.studentId,
+                studentName: details.description?.split(' for student ')[1]?.split(' from ')[0] || 'Unknown',
+                oldSupervisorId: details.oldSupervisorId,
+                oldSupervisorName: details.oldSupervisorName,
+                newSupervisorId: details.newSupervisorId,
+                newSupervisorName: details.newSupervisorName,
+                reason: details.reason,
+                description: details.description
+            };
+        });
+
+        // Filter by specific supervisor if provided
+        let filteredActivities = parsedActivities;
+        if (supervisorId) {
+            filteredActivities = parsedActivities.filter(activity => 
+                activity.oldSupervisorId === supervisorId || activity.newSupervisorId === supervisorId
+            );
+        }
+
+        // Calculate statistics
+        const totalReallocations = filteredActivities.length;
+        const uniqueStudentsReallocated = new Set(filteredActivities.map(a => a.studentId)).size;
+        
+        // Count supervisors who lost students
+        const supervisorsWhoLostStudents = new Set(filteredActivities.map(a => a.oldSupervisorId)).size;
+        
+        // Count supervisors who gained students
+        const supervisorsWhoGainedStudents = new Set(filteredActivities.map(a => a.newSupervisorId)).size;
+
+        // Get top supervisors by reallocation activity
+        const supervisorStats = {};
+        filteredActivities.forEach(activity => {
+            // Count students lost
+            if (!supervisorStats[activity.oldSupervisorId]) {
+                supervisorStats[activity.oldSupervisorId] = {
+                    id: activity.oldSupervisorId,
+                    name: activity.oldSupervisorName,
+                    studentsLost: 0,
+                    studentsGained: 0,
+                    netChange: 0
+                };
+            }
+            supervisorStats[activity.oldSupervisorId].studentsLost++;
+
+            // Count students gained
+            if (!supervisorStats[activity.newSupervisorId]) {
+                supervisorStats[activity.newSupervisorId] = {
+                    id: activity.newSupervisorId,
+                    name: activity.newSupervisorName,
+                    studentsLost: 0,
+                    studentsGained: 0,
+                    netChange: 0
+                };
+            }
+            supervisorStats[activity.newSupervisorId].studentsGained++;
+        });
+
+        // Calculate net changes
+        Object.values(supervisorStats).forEach(supervisor => {
+            supervisor.netChange = supervisor.studentsGained - supervisor.studentsLost;
+        });
+
+        // Sort supervisors by net change (most negative first, then most positive)
+        const sortedSupervisors = Object.values(supervisorStats).sort((a, b) => a.netChange - b.netChange);
+
+        // Get monthly trends
+        const monthlyTrends = {};
+        filteredActivities.forEach(activity => {
+            const monthKey = activity.timestamp.toISOString().substring(0, 7); // YYYY-MM
+            if (!monthlyTrends[monthKey]) {
+                monthlyTrends[monthKey] = 0;
+            }
+            monthlyTrends[monthKey]++;
+        });
+
+        // Convert to array and sort
+        const monthlyTrendsArray = Object.entries(monthlyTrends)
+            .map(([month, count]) => ({ month, count }))
+            .sort((a, b) => a.month.localeCompare(b.month));
+
+        // Get common reasons
+        const reasonCounts = {};
+        filteredActivities.forEach(activity => {
+            const reason = activity.reason || 'No reason provided';
+            reasonCounts[reason] = (reasonCounts[reason] || 0) + 1;
+        });
+
+        const commonReasons = Object.entries(reasonCounts)
+            .map(([reason, count]) => ({ reason, count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 10); // Top 10 reasons
+
+        res.status(200).json({
+            success: true,
+            statistics: {
+                totalReallocations,
+                uniqueStudentsReallocated,
+                supervisorsWhoLostStudents,
+                supervisorsWhoGainedStudents,
+                averageReallocationsPerStudent: uniqueStudentsReallocated > 0 ? 
+                    (totalReallocations / uniqueStudentsReallocated).toFixed(2) : 0
+            },
+            supervisorStats: sortedSupervisors,
+            monthlyTrends: monthlyTrendsArray,
+            commonReasons,
+            activities: filteredActivities,
+            dateRange: {
+                startDate: startDate || null,
+                endDate: endDate || null
+            }
+        });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
