@@ -214,6 +214,16 @@ class NotificationService {
                     };
                 }
                 break;
+            case 'REVIEWER':
+                recipient = await prisma.reviewer.findUnique({ where: { id } });
+                if (recipient) {
+                    return {
+                        id: recipient.id,
+                        email: recipient.email,
+                        name: recipient.name
+                    };
+                }
+                break;
             case 'CHAIRPERSON':
                 // Assuming chairperson is a facultyMember
                 recipient = await prisma.facultyMember.findUnique({ where: { id } });
