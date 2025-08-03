@@ -1142,7 +1142,7 @@ export const addReviewerMark = async (req, res, next) => {
     const submittedById = req.user.id;
 
     // Validate input
-    if (!proposalId || !reviewerId || verdict === undefined || !feedback) {
+    if (!proposalId || !reviewerId || verdict === undefined ) {
       const error = new Error("Invalid input data");
       error.statusCode = 400;
       throw error;
@@ -1311,6 +1311,7 @@ export const addReviewerMark = async (req, res, next) => {
       grade: updatedOrNewGrade,
     });
   } catch (error) {
+    
     if (!error.statusCode) {
       error.statusCode = 500;
     }
