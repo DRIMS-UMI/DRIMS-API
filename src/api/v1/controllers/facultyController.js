@@ -4234,7 +4234,7 @@ export const scheduleProposalDefense = async (req, res, next) => {
       ...existingProposal.student.supervisors.map((supervisor) => ({
         category: "SUPERVISOR",
         id: supervisor.id,
-        email: supervisor.email,
+        email: supervisor.workEmail,
         name: supervisor.name,
       })),
       // Add chairperson if exists
