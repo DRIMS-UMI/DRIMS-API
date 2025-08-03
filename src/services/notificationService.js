@@ -220,7 +220,7 @@ class NotificationService {
                 if (recipient) {
                     return {
                         id: recipient.id,
-                        email: recipient.email,
+                        email: recipient.workEmail,
                         name: recipient.name
                     };
                 }
