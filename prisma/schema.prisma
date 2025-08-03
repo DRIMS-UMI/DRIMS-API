@@ -848,6 +848,7 @@ enum RequestStatus {
   APPROVED
   REJECTED
   CANCELLED
+  CONCLUDED
 }
 
 enum ResearchClinicBookingStatus {
