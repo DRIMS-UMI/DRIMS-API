@@ -7880,7 +7880,7 @@ export const getAllStaffMembers = async (req, res, next) => {
         }
 
         const staffMembers = await prisma.staffMember.findMany({
-            where,
+            
             include: {
                 supervisor: true,
                 examiner: true,
