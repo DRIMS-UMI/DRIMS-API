@@ -124,6 +124,16 @@ class NotificationService {
                 notificationData.student = { connect: { id: recipientDetails.id } };
             } else if (recipientCategory === 'EXAMINER' && recipientDetails.id) {
                 notificationData.examiner = { connect: { id: recipientDetails.id } };
+            } else if (recipientCategory === 'CHAIRPERSON' && recipientDetails.id) {
+                notificationData.chairperson = { connect: { id: recipientDetails.id } };
+            } else if (recipientCategory === 'MINUTES_SECRETARY' && recipientDetails.id) {
+                notificationData.minutesSecretary = { connect: { id: recipientDetails.id } };
+            } else if (recipientCategory === 'REVIEWER' && recipientDetails.id) {
+                notificationData.reviewer = { connect: { id: recipientDetails.id } };
+            } else if (recipientCategory === 'PANELIST' && recipientDetails.id) {
+                notificationData.panelist = { connect: { id: recipientDetails.id } };
+            } else if (recipientCategory === 'SUPERVISOR' && recipientDetails.id) {
+                notificationData.supervisor = { connect: { id: recipientDetails.id } };
             }
 
             // Add studentStatus connection if provided
@@ -196,6 +206,28 @@ class NotificationService {
                 break;
             case 'PANELIST':
                 recipient = await prisma.panelist.findUnique({ where: { id } });
+                if (recipient) {
+                    return {
+                        id: recipient.id,
+                        email: recipient.email,
+                        name: recipient.name
+                    };
+                }
+                break;
+            case 'CHAIRPERSON':
+                // Assuming chairperson is a facultyMember
+                recipient = await prisma.facultyMember.findUnique({ where: { id } });
+                if (recipient) {
+                    return {
+                        id: recipient.id,
+                        email: recipient.email,
+                        name: recipient.name
+                    };
+                }
+                break;
+            case 'MINUTES_SECRETARY':
+                // Assuming minutes secretary is an ExternalPerson
+                recipient = await prisma.externalPerson.findUnique({ where: { id } });
                 if (recipient) {
                     return {
                         id: recipient.id,

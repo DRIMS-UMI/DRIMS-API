@@ -34,6 +34,9 @@ enum NotificationRecipientType {  // Renamed to avoid conflicts
   SUPERVISOR
   PANELIST
   EXTERNAL
+  CHAIRPERSON
+  MINUTES_SECRETARY
+  REVIEWER
 }
 
 model user {
@@ -518,6 +521,9 @@ model supervisor {
   
   // Staff member relations (one-to-many)
   staffMembers   staffMember[]
+  
+  // Add this relation
+  notifications notification[] @relation("SupervisorNotifications")
 }
 
 model fieldWork {
@@ -552,6 +558,9 @@ model reviewer {
   
   // Staff member relations (one-to-many)
   staffMembers   staffMember[]
+  
+  // Add this relation
+  notifications notification[] @relation("ReviewerNotifications")
 }
 
 model panelist {
@@ -574,6 +583,9 @@ model panelist {
   
   // Staff member relations (one-to-many)
   staffMembers   staffMember[]
+  
+  // Add this relation
+  notifications notification[] @relation("PanelistNotifications")
 }
 
 enum VivaVerdict {
@@ -707,6 +719,21 @@ model notification {
   examiner         examiner?              @relation("ExaminerNotifications", fields: [examinerId], references: [id])
   examinerId       String?                @db.ObjectId
 
+  supervisor       supervisor?            @relation("SupervisorNotifications", fields: [supervisorId], references: [id])
+  supervisorId     String?                @db.ObjectId
+
+  panelist         panelist?              @relation("PanelistNotifications", fields: [panelistId], references: [id])
+  panelistId       String?                @db.ObjectId
+
+  reviewer         reviewer?              @relation("ReviewerNotifications", fields: [reviewerId], references: [id])
+  reviewerId       String?                @db.ObjectId
+
+  chairperson      facultyMember?         @relation("ChairpersonNotifications", fields: [chairpersonId], references: [id])
+  chairpersonId    String?                @db.ObjectId
+
+  minutesSecretary ExternalPerson?        @relation("MinutesSecretaryNotifications", fields: [minutesSecretaryId], references: [id])
+  minutesSecretaryId String?              @db.ObjectId
+
   studentStatus    studentStatus?         @relation("StatusNotifications", fields: [studentStatusId], references: [id])
   studentStatusId  String?                @db.ObjectId
 
@@ -715,6 +742,11 @@ model notification {
   @@index([userId])
   @@index([studentId])
   @@index([examinerId])
+  @@index([supervisorId])
+  @@index([panelistId])
+  @@index([reviewerId])
+  @@index([chairpersonId])
+  @@index([minutesSecretaryId])
   @@index([studentStatusId])
 }
 
@@ -797,6 +829,9 @@ model facultyMember {
   updatedAt   DateTime @updatedAt
   chairedDefenses     proposalDefense[]
   chairedVivas  viva[]
+  
+  // Add this relation
+  notifications notification[] @relation("ChairpersonNotifications")
 }
 
 model ExternalPerson {
@@ -807,7 +842,9 @@ model ExternalPerson {
   actingChairedDefenses proposalDefense[] @relation("ActingChairperson")
   minutesSecretaryDefenses proposalDefense[] @relation("MinutesSecretary")
   minutesSecretaryVivas viva[] @relation("MinutesSecretary")
-
+  
+  // Add this relation
+  notifications notification[] @relation("MinutesSecretaryNotifications")
 }
 
 model graduation {

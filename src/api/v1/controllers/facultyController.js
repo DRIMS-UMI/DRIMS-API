@@ -4029,10 +4029,10 @@ export const scheduleProposalDefense = async (req, res, next) => {
       !proposalId ||
       !scheduledDate ||
       !Array.isArray(panelistIds) ||
-      panelistIds.length === 0
+      panelistIds.length === 0 || !chairpersonId
     ) {
       throw new Error(
-        "Proposal ID, scheduled date, and at least one panelist are required",
+        "Proposal ID, scheduled date, chairperson and at least one panelist are required",
         { statusCode: 400 }
       );
     }
