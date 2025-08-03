@@ -4243,7 +4243,7 @@ export const scheduleProposalDefense = async (req, res, next) => {
             {
               category: "CHAIRPERSON",
               id: proposalDefense.chairperson.id,
-              email: proposalDefense.chairperson.email,
+              email: proposalDefense.chairperson.workEmail,
               name: proposalDefense.chairperson.name,
             },
           ]
