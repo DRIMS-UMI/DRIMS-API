@@ -50,6 +50,10 @@ export const corsOptions = {
         'https://umircportal.netlify.app',
         'https://umistudentportal.netlify.app',
         'https://umisupervisorportal.netlify.app',
+        'https://drimstudents.netlify.app',
+        'https://drimsupervisor.netlify.app',
+        'https://drimrc.netlify.app',
+        'https://drimschool.netlify.app'
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
