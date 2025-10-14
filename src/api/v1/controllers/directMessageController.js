@@ -1,5 +1,5 @@
 import prisma from "../../../utils/db.mjs";
-import emailService from "../../../services/emailService.js";
+import emailService from "../../../services/emailService2.js";
 import { env } from "../../../env.mjs";
 
 export const listConversations = async (req, res) => {

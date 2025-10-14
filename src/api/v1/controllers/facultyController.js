@@ -2,8 +2,8 @@ import prisma from "../../../utils/db.mjs";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
-import emailService from "../../../services/emailService.js";
-import { notificationService } from "../../../services/notificationService.js";
+import emailService from "../../../services/emailService2.js";
+import { notificationService } from "../../../services/notificationService2.js";
 import mongoose from "mongoose";
 import { conn, gfs } from "../../../utils/db.mjs";
 

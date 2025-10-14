@@ -3,7 +3,7 @@ import http from 'http';
 import {env} from './env.mjs';
 import customizeApp from './app.mjs';
 import {setupSocketIO} from './utils/sockets.js';
-import {notificationService} from './services/notificationService.js';
+import {notificationService} from './services/notificationService2.js';
 
 const app = express();
 

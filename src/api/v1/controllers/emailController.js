@@ -1,4 +1,4 @@
-import emailService from '../../../services/emailService.js';
+import emailService from '../../../services/emailService2.js';
 import { updateResultsSentDate } from './managementEvaluationController.js';
 
 class EmailController {

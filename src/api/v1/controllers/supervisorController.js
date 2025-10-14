@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 
-import { notificationService } from "../../../services/notificationService.js";
+import { notificationService } from "../../../services/notificationService2.js";
 
 //Supervisor login Controller
 export const loginSupervisor = async (req, res, next) => {

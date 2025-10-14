@@ -1,5 +1,6 @@
 import prisma from '../../../utils/db.mjs';
-import emailService from '../../../services/emailService.js';
+import emailService from '../../../services/emailService2.js';
+import { notificationService } from '../../../services/notificationService2.js';
 import crypto from 'crypto';
 /* ********** STUDENT EVALUATION ANALYTICS ********** */
 

@@ -1,7 +1,7 @@
 import prisma from "../../../utils/db.mjs";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { notificationService } from "../../../services/notificationService.js";
+import { notificationService } from "../../../services/notificationService2.js";
 
 // Student login controller
 export const loginStudent = async (req, res, next) => {

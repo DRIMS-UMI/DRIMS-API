@@ -1,11 +1,11 @@
 import bcrypt from 'bcryptjs';
 import prisma from '../../../utils/db.mjs';
 import jwt from 'jsonwebtoken';
-import { notificationService } from '../../../services/notificationService.js';
+import { notificationService } from '../../../services/notificationService2.js';
 import axios from 'axios';
 import crypto from 'crypto';
 
-import emailService from '../../../services/emailService.js';
+import emailService from '../../../services/emailService2.js';
 import fs from 'fs';
 import path from 'path';
 
