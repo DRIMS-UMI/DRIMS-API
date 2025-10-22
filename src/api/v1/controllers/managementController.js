@@ -2927,6 +2927,198 @@ export const createStudent = async (req, res, next) => {
     }
 };
 
+// Bulk upload students
+export const uploadStudents = async (req, res, next) => {
+    try {
+        const { students } = req.body || {};
+        if (!Array.isArray(students) || students.length === 0) {
+            const error = new Error('No students provided');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        const results = {
+            total: students.length,
+            created: 0,
+            skipped: 0,
+            failed: 0,
+            errors: []
+        };
+
+        for (const payload of students) {
+            const {
+                title,
+                firstName,
+                lastName,
+                registrationNumber,
+                course,
+                email,
+                phoneNumber,
+                dateOfBirth,
+                gender,
+                campusId,
+                schoolId,
+                departmentId,
+                academicYear,
+                studyMode,
+                intakePeriod,
+                programLevel,
+                specialization,
+                completionTime,
+                expectedCompletionDate,
+                password
+            } = payload || {};
+
+            // Basic validation
+            if (!firstName || !registrationNumber || !campusId) {
+                results.failed += 1;
+                results.errors.push({ registrationNumber, email, reason: 'Missing required fields (firstName, registrationNumber, campusId)' });
+                continue;
+            }
+
+            try {
+                // Skip if user/student already exists by email or registration number
+                if (email) {
+                    const existingUser = await prisma.user.findUnique({ where: { email } });
+                    if (existingUser) {
+                        results.skipped += 1;
+                        continue;
+                    }
+                    const existingStudentByEmail = await prisma.student.findUnique({ where: { email } });
+                    if (existingStudentByEmail) {
+                        results.skipped += 1;
+                        continue;
+                    }
+                }
+                const existingStudentByReg = await prisma.student.findFirst({ where: { registrationNumber } });
+                if (existingStudentByReg) {
+                    results.skipped += 1;
+                    continue;
+                }
+
+                const hashedPassword = await bcrypt.hash(password || 'Student@123', 10);
+
+                const user = await prisma.user.create({
+                    data: {
+                        name: `${firstName} ${lastName || ''}`.trim(),
+                        email: email || `${registrationNumber}@example.com`,
+                        password: hashedPassword,
+                        phone: phoneNumber || null,
+                        role: 'STUDENT'
+                    }
+                });
+
+                const student = await prisma.student.create({
+                    data: {
+                        title: title || null,
+                        firstName,
+                        lastName: lastName || null,
+                        registrationNumber,
+                        email: email || null,
+                        course: course || null,
+                        phoneNumber: phoneNumber || null,
+                        dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
+                        gender: gender || null,
+                        campus: { connect: { id: campusId } },
+                        ...(schoolId ? { school: { connect: { id: schoolId } } } : {}),
+                        ...(departmentId ? { department: { connect: { id: departmentId } } } : {}),
+                        academicYear: academicYear || null,
+                        studyMode: studyMode || null,
+                        intakePeriod: intakePeriod || null,
+                        programLevel: programLevel || null,
+                        specialization: specialization || null,
+                        completionTime: completionTime ? parseInt(completionTime) : null,
+                        expectedCompletionDate: expectedCompletionDate ? new Date(expectedCompletionDate) : null,
+                        currentStatus: 'WORKSHOP',
+                        user: { connect: { id: user.id } }
+                    }
+                });
+
+                // Ensure required status definitions
+                let admittedStatusDefinition = await prisma.statusDefinition.findFirst({ where: { name: { in: ['ADMITTED', 'admitted'] } } });
+                if (!admittedStatusDefinition) {
+                    admittedStatusDefinition = await prisma.statusDefinition.create({ data: { name: 'ADMITTED', description: 'Student has been admitted to the system' } });
+                }
+                await prisma.studentStatus.create({
+                    data: {
+                        student: { connect: { id: student.id } },
+                        definition: { connect: { id: admittedStatusDefinition.id } },
+                        startDate: new Date(),
+                        endDate: new Date(),
+                        conditions: 'Initial admission',
+                        ...(req.user?.id ? { updatedBy: { connect: { id: req.user.id } } } : {}),
+                        isCurrent: false
+                    }
+                });
+
+                let workshopStatusDefinition = await prisma.statusDefinition.findFirst({ where: { name: { in: ['WORKSHOP', 'workshop'] } } });
+                if (!workshopStatusDefinition) {
+                    workshopStatusDefinition = await prisma.statusDefinition.create({ data: { name: 'WORKSHOP', description: 'Student is in workshop phase' } });
+                }
+                await prisma.studentStatus.create({
+                    data: {
+                        student: { connect: { id: student.id } },
+                        definition: { connect: { id: workshopStatusDefinition.id } },
+                        startDate: new Date(),
+                        conditions: 'Initial workshop phase',
+                        isActive: true,
+                        isCurrent: true
+                    }
+                });
+
+                // Activity log
+                if (req.user?.id) {
+                    await prisma.userActivity.create({
+                        data: {
+                            action: 'Created Student (Bulk Upload)',
+                            entityType: 'Student',
+                            entityId: student.id,
+                            userId: req.user.id
+                        }
+                    });
+                }
+
+                // Send welcome email with credentials
+                // try {
+                //     const loginUrl = process.env.MANAGEMENT_PORTAL_URL || 'https://umistudent.umi.ac.ug';
+                //     const recipientEmail = "stephaniekirathe@gmail.com" //user.email;
+                //     const subject = 'Welcome to DRIMS Student Portal - Your Account Details';
+                //     const htmlContent = `
+                //         <html>
+                //           <body style="font-family: Arial, sans-serif; color: #333;">
+                //             <h2>Welcome to the Digital Research Information Management System (DRIMS)</h2>
+                //             <p>Dear ${firstName} ${lastName || ''},</p>
+                //             <p>You have been added to the DRIMS platform. Please use the credentials below to log in:</p>
+                //             <ul>
+                //               <li><strong>Username (Email):</strong> ${recipientEmail}</li>
+                //               <li><strong>Password:</strong> ${password || 'Student@123'}</li>
+                //             </ul>
+                //             <p>Login here: <a href="${loginUrl}" target="_blank">${loginUrl}</a></p>
+                //             <p>For security, change your password after logging in.</p>
+                //             <p>Best regards,<br/>UMI Research Management Team</p>
+                //           </body>
+                //         </html>
+                //     `;
+                //     await emailService.sendEmail({ to: recipientEmail, subject, htmlContent });
+                // } catch (mailErr) {
+                //     console.error('Failed to send welcome email:', mailErr?.message || mailErr);
+                // }
+
+                results.created += 1;
+            } catch (err) {
+                results.failed += 1;
+                results.errors.push({ registrationNumber, email, reason: err?.message || 'Failed to create' });
+            }
+        }
+
+        return res.status(200).json(results);
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+
 export const updateStudent = async (req, res, next) => {
     try {
         const { studentId } = req.params;
@@ -9569,6 +9761,196 @@ export const getReallocationStatistics = async (req, res, next) => {
             dateRange: {
                 startDate: startDate || null,
                 endDate: endDate || null
+            }
+        });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for creating a new course
+export const createCourse = async (req, res, next) => {
+    try {
+        const { code, title, description, campusId, schoolId } = req.body;
+        const createdById = req.user.id;
+
+        // Validate required fields
+        if (!code || !title || !campusId || !schoolId) {
+            const error = new Error('Course code, title, campus, and school are required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if course with same code already exists
+        const existingCourse = await prisma.course.findFirst({
+            where: {
+                code: code
+            }
+        });
+
+        if (existingCourse) {
+            const error = new Error('Course with this code already exists');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Verify campus exists
+        const campus = await prisma.campus.findUnique({
+            where: { id: campusId }
+        });
+
+        if (!campus) {
+            const error = new Error('Campus not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Verify school exists
+        const school = await prisma.school.findUnique({
+            where: { id: schoolId }
+        });
+
+        if (!school) {
+            const error = new Error('School not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Create new course
+        const course = await prisma.course.create({
+            data: {
+                code,
+                title,
+                description: description || null,
+                campusId,
+                schoolId,
+                createdById
+            },
+            include: {
+                campus: {
+                    select: {
+                        id: true,
+                        name: true,
+                        location: true
+                    }
+                },
+                school: {
+                    select: {
+                        id: true,
+                        name: true,
+                        code: true
+                    }
+                },
+                createdBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                }
+            }
+        });
+
+        res.status(201).json({
+            success: true,
+            message: 'Course created successfully',
+            course
+        });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for getting all courses
+export const getAllCourses = async (req, res, next) => {
+    try {
+        const { campusId, schoolId, isActive, page = 1, limit = 50 } = req.query;
+        
+        // Build where clause
+        const where = {};
+        
+        if (campusId) {
+            where.campusId = campusId;
+        }
+        
+        if (schoolId) {
+            where.schoolId = schoolId;
+        }
+        
+        if (isActive !== undefined) {
+            where.isActive = isActive === 'true';
+        }
+
+        // Calculate pagination
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+        const take = parseInt(limit);
+
+        // Get courses with pagination
+        const courses = await prisma.course.findMany({
+            where,
+            skip,
+            take,
+            include: {
+                campus: {
+                    select: {
+                        id: true,
+                        name: true,
+                        location: true
+                    }
+                },
+                school: {
+                    select: {
+                        id: true,
+                        name: true,
+                        code: true
+                    }
+                },
+                createdBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                },
+                updatedBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                }
+            },
+            orderBy: {
+                createdAt: 'desc'
+            }
+        });
+
+        // Get total count for pagination
+        const totalCount = await prisma.course.count({ where });
+
+        // Calculate pagination info
+        const totalPages = Math.ceil(totalCount / parseInt(limit));
+        const hasNextPage = parseInt(page) < totalPages;
+        const hasPrevPage = parseInt(page) > 1;
+
+        res.status(200).json({
+            success: true,
+            courses,
+            pagination: {
+                currentPage: parseInt(page),
+                totalPages,
+                totalCount,
+                hasNextPage,
+                hasPrevPage,
+                limit: parseInt(limit)
             }
         });
 

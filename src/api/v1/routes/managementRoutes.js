@@ -44,6 +44,7 @@ import {
     changeStudentSupervisor,
     getAssignedStudents,
     createStudent,
+  uploadStudents,
     updateStudent,
     changeStudentPassword,
     deleteStudent,
@@ -123,7 +124,9 @@ import {
     getResearchClinicStatistics,
     generateRecurringSessions,
     deleteResearchClinicDay,
-    getReallocationStatistics
+    getReallocationStatistics,
+    createCourse,
+    getAllCourses
 } from '../controllers/managementController.js';
 import {getEvaluationAnalytics, getDetailedEvaluations, updateResearchRequest, getAllResearchRequests, addStudentToGraduation, resetPassword, requestPasswordReset, getNotifications, getAllStudentsStatusReport, getStudentStatusReport, getProgressTrends, getStatusStatistics, getDashboardStats, updateSenateApprovalDate, updateResultsSentDate, updateResultsApprovalDate, updateComplianceReportDate, updateMinutesSentDate, getBookVivas, getAllPanelists, addNewPanelist, scheduleViva, recordVivaVerdict, getGraduationStatistics } from "../controllers/managementEvaluationController.js"
 
@@ -209,6 +212,7 @@ router.get('/reallocation-statistics', authenticateToken, authorizeRoles('SUPERA
 
 // Student management routes
 router.post('/students', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), createStudent);
+router.post('/students/upload', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), uploadStudents);
 router.put('/students/:studentId', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), updateStudent);
 router.delete('/students/:studentId', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), deleteStudent);
 router.get('/students/:studentId', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getStudent);
@@ -384,5 +388,9 @@ router.delete('/research-clinic-days/:id', authenticateToken, authorizeRoles('SU
 router.get('/research-clinic-bookings', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getResearchClinicBookings);
 router.put('/research-clinic-bookings/:bookingId/status', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), updateBookingStatus);
 router.get('/research-clinic-statistics', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getResearchClinicStatistics);
+
+// Course management routes
+router.post('/courses', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), createCourse);
+router.get('/courses', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getAllCourses);
 
 export default router;  
