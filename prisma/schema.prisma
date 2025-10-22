@@ -104,6 +104,10 @@ model user {
   updatedClinicDays researchClinicDay[] @relation("ClinicDayUpdatedBy")
   createdClinicBookings researchClinicBooking[] @relation("ClinicBookingCreatedBy")
   updatedClinicBookings researchClinicBooking[] @relation("ClinicBookingUpdatedBy")
+  
+  // Course relations
+  createdCourses course[] @relation("CourseCreatedBy")
+  updatedCourses course[] @relation("CourseUpdatedBy")
 }
 
 enum Role {
@@ -764,6 +768,7 @@ model school {
   students    student[]
   examiners   examiner[]
   staffMembers staffMember[]
+  courses     course[]
 }
 
 model campus {
@@ -779,6 +784,7 @@ model campus {
   examiners   examiner[]
   users       user[]   // Add this relation field
   staffMembers staffMember[]
+  courses     course[]
 }
 
 model schoolMember {
@@ -1068,4 +1074,31 @@ model researchClinicBooking {
   createdById String   @db.ObjectId
   updatedBy   user?    @relation("ClinicBookingUpdatedBy", fields: [updatedById], references: [id])
   updatedById String?  @db.ObjectId
+}
+
+model course {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  code        String   @unique
+  title       String
+  description String?
+  isActive    Boolean  @default(true)
+  
+  // Relations
+  campus      campus   @relation(fields: [campusId], references: [id])
+  campusId    String   @db.ObjectId
+  school      school   @relation(fields: [schoolId], references: [id])
+  schoolId    String   @db.ObjectId
+  
+  // Audit fields
+  createdBy   user     @relation("CourseCreatedBy", fields: [createdById], references: [id])
+  createdById String   @db.ObjectId
+  updatedBy   user?    @relation("CourseUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?  @db.ObjectId
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([campusId])
+  @@index([schoolId])
+  
 }
