@@ -9961,3 +9961,207 @@ export const getAllCourses = async (req, res, next) => {
         next(error);
     }
 };
+
+// Controller for updating a course
+export const updateCourse = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { code, title, description, campusId, schoolId } = req.body;
+        const updatedById = req.user.id;
+
+        // Validate required fields
+        if (!code || !title || !campusId || !schoolId) {
+            const error = new Error('Course code, title, campus, and school are required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if course exists
+        const existingCourse = await prisma.course.findUnique({
+            where: { id: parseInt(id) }
+        });
+
+        if (!existingCourse) {
+            const error = new Error('Course not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Check if course with same code already exists (excluding current course)
+        const duplicateCourse = await prisma.course.findFirst({
+            where: {
+                code: code,
+                id: {
+                    not: parseInt(id)
+                }
+            }
+        });
+
+        if (duplicateCourse) {
+            const error = new Error('Course with this code already exists');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Verify campus exists
+        const campus = await prisma.campus.findUnique({
+            where: { id: campusId }
+        });
+
+        if (!campus) {
+            const error = new Error('Campus not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Verify school exists
+        const school = await prisma.school.findUnique({
+            where: { id: schoolId }
+        });
+
+        if (!school) {
+            const error = new Error('School not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Update course
+        const updatedCourse = await prisma.course.update({
+            where: { id: parseInt(id) },
+            data: {
+                code,
+                title,
+                description: description || null,
+                campusId,
+                schoolId,
+                updatedById,
+                updatedAt: new Date()
+            },
+            include: {
+                campus: {
+                    select: {
+                        id: true,
+                        name: true,
+                        location: true
+                    }
+                },
+                school: {
+                    select: {
+                        id: true,
+                        name: true,
+                        code: true
+                    }
+                },
+                createdBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                },
+                updatedBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                }
+            }
+        });
+
+        res.status(200).json({
+            success: true,
+            message: 'Course updated successfully',
+            course: updatedCourse
+        });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for deleting a course
+export const deleteCourse = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const deletedById = req.user.id;
+
+        // Check if course exists
+        const existingCourse = await prisma.course.findUnique({
+            where: { id: parseInt(id) },
+            include: {
+                campus: {
+                    select: {
+                        id: true,
+                        name: true
+                    }
+                },
+                school: {
+                    select: {
+                        id: true,
+                        name: true,
+                        code: true
+                    }
+                }
+            }
+        });
+
+        if (!existingCourse) {
+            const error = new Error('Course not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Check if course is being used by any students or other entities
+        // You can add additional checks here if needed
+        // For example, check if any students are enrolled in this course
+        
+        // Soft delete by setting isActive to false
+        const deletedCourse = await prisma.course.update({
+            where: { id: parseInt(id) },
+            data: {
+                isActive: false,
+                deletedById,
+                deletedAt: new Date()
+            },
+            include: {
+                campus: {
+                    select: {
+                        id: true,
+                        name: true,
+                        location: true
+                    }
+                },
+                school: {
+                    select: {
+                        id: true,
+                        name: true,
+                        code: true
+                    }
+                },
+                deletedBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                }
+            }
+        });
+
+        res.status(200).json({
+            success: true,
+            message: 'Course deleted successfully',
+            course: deletedCourse
+        });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};

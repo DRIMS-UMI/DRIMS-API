@@ -126,7 +126,9 @@ import {
     deleteResearchClinicDay,
     getReallocationStatistics,
     createCourse,
-    getAllCourses
+    getAllCourses,
+    updateCourse,
+    deleteCourse
 } from '../controllers/managementController.js';
 import {getEvaluationAnalytics, getDetailedEvaluations, updateResearchRequest, getAllResearchRequests, addStudentToGraduation, resetPassword, requestPasswordReset, getNotifications, getAllStudentsStatusReport, getStudentStatusReport, getProgressTrends, getStatusStatistics, getDashboardStats, updateSenateApprovalDate, updateResultsSentDate, updateResultsApprovalDate, updateComplianceReportDate, updateMinutesSentDate, getBookVivas, getAllPanelists, addNewPanelist, scheduleViva, recordVivaVerdict, getGraduationStatistics } from "../controllers/managementEvaluationController.js"
 
@@ -392,5 +394,7 @@ router.get('/research-clinic-statistics', authenticateToken, authorizeRoles('SUP
 // Course management routes
 router.post('/courses', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), createCourse);
 router.get('/courses', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), getAllCourses);
+router.put('/courses/:id', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), updateCourse);
+router.delete('/courses/:id', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), deleteCourse);
 
 export default router;  
