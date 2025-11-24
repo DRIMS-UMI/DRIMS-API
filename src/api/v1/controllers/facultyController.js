@@ -49,6 +49,14 @@ export const loginFaculty = async (req, res, next) => {
       throw error;
     }
 
+    const faculty = await prisma.facultyMember.findUnique({
+      where: { userId: user.id },
+      include: {
+        campus: true,
+        school: true,
+      },
+    });
+
     // Generate JWT token
     const token = jwt.sign(
       {
@@ -60,6 +68,8 @@ export const loginFaculty = async (req, res, next) => {
         designation: user.designation,
         loggedInAt: new Date(),
         phone: user.phone,
+        schoolId: faculty?.school?.id,
+        campusId: faculty?.campus?.id
       },
       process.env.AUTH_SECRET,
       { expiresIn: rememberMe ? "30d" : "24h" }
