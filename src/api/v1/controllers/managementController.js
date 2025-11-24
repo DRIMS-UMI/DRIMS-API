@@ -3141,11 +3141,20 @@ export const updateStudent = async (req, res, next) => {
             }
         });
 
+        console.log(updateData)
+
+        const {campusId, schoolId, departmentId, userId, user, supervisorIds, school, department, campus,  ...restofData} = updateData
+
         // Update student with all fields from request body
         const updatedStudent = await prisma.student.update({
             where: { id: studentId },
             data: {
-                ...updateData,
+                ...restofData,
+                campus: { connect: { id: campusId } },
+                school: { connect: { id: schoolId } },
+                department: { connect: { id: departmentId } },
+                user: { connect: { id: userId } },
+
                 // Handle date fields specifically
                 dateOfBirth: updateData.dateOfBirth ? new Date(updateData.dateOfBirth) : undefined,
                 expectedCompletionDate: updateData.expectedCompletionDate ? new Date(updateData.expectedCompletionDate) : undefined
