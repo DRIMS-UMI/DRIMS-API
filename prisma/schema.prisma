@@ -127,6 +127,7 @@ enum Role {
   LIBRARIAN        // Library staff role for managing thesis submissions
   FINANCE_ADMIN    // Finance administrator role
   REGISTRY_ADMIN   // Registry administrator role
+  AUDITOR          // Read-only access to system data and activity logs
   GRADUATE_SCHOOL  // Graduate school administrator role
 }
 
@@ -150,7 +151,7 @@ model student {
   course                String?
   email                 String         @unique
   phoneNumber          String?
-  dateOfBirth          DateTime?
+
   gender               String?        // "male" or "female"
   graduatedAt    DateTime?
   graduation     graduation?
