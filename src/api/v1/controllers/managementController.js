@@ -42,7 +42,7 @@ export const registerSuperAdmin = async (req, res, next) => {
 
         res.status(201).json({ message: 'SuperAdmin registered successfully.', superAdmin });
     } catch (error) {
-        if(!error.statusCode) {
+        if (!error.statusCode) {
             error.statusCode = 500;
         }
         next(error);
@@ -53,14 +53,14 @@ export const registerSuperAdmin = async (req, res, next) => {
 export const loginSuperAdmin = async (req, res, next) => {
     try {
         const { email, password, rememberMe } = req.body;
-
         // Find the SuperAdmin by email
         const superAdmin = await prisma.user.findFirst({
             where: {
                 email,
-                role: 'SUPERADMIN'
+                role: { in: ['SUPERADMIN', 'AUDITOR'] }
             }
         });
+
 
         if (!superAdmin) {
             const error = new Error('Invalid email or password');
@@ -77,7 +77,6 @@ export const loginSuperAdmin = async (req, res, next) => {
 
         // Compare passwords
         const isValidPassword = await bcrypt.compare(password, superAdmin.password);
-
         if (!isValidPassword) {
             const error = new Error('Invalid email or password');
             error.statusCode = 403;
@@ -109,6 +108,7 @@ export const loginSuperAdmin = async (req, res, next) => {
         });
 
     } catch (error) {
+        console.log("error with login", error)
         if (!error.statusCode) {
             error.statusCode = 500;
         }
@@ -187,7 +187,7 @@ export const loginResearchCentreAdmin = async (req, res, next) => {
 // Controller for getting logged in user details
 export const getLoggedInUserDetails = async (req, res, next) => {
     try {
-        
+
         const user = req.user;
 
         console.log(user);
@@ -233,7 +233,7 @@ export const updateLoggedInUser = async (req, res, next) => {
             data: {
                 title,
                 name,
-            
+
                 phone,
                 designation
             }
@@ -502,7 +502,7 @@ export const addSchool = async (req, res, next) => {
 
         // Check if school with code and campus already exists
         const existingSchool = await prisma.school.findFirst({
-            where: { 
+            where: {
                 AND: [
                     { code },
                     { campusId }
@@ -781,34 +781,34 @@ export const addDepartment = async (req, res, next) => {
 
         // Check if department with same name already exists in this school
         const existingDepartment = await prisma.department.findFirst({
-            where: { 
+            where: {
                 name,
                 schoolId
             }
         });
 
-        if (existingDepartment) {   
+        if (existingDepartment) {
             const error = new Error('Department with this name already exists in this school');
             error.statusCode = 400;
             throw error;
-        }   
+        }
 
         // Create new department
         const department = await prisma.department.create({
-            data: { 
+            data: {
                 name,
                 url,
                 adminName,
-                adminContact, 
+                adminContact,
                 adminEmail,
                 schoolId
             }
-        }); 
+        });
 
         res.status(201).json({
             message: 'Department created successfully',
             department
-        });     
+        });
 
     } catch (error) {
         if (!error.statusCode) {
@@ -1102,7 +1102,7 @@ export const deleteSchool = async (req, res, next) => {
                     set: await prisma.campus.findUnique({
                         where: { id: school.campusId },
                         select: { schoolIds: true }
-                    }).then(campus => 
+                    }).then(campus =>
                         campus.schoolIds.filter(id => id !== schoolId)
                     )
                 }
@@ -1128,7 +1128,7 @@ export const deleteSchool = async (req, res, next) => {
 // Controller for creating a faculty member
 export const createFacultyMember = async (req, res, next) => {
     try {
-        const { 
+        const {
             name,
             workEmail,
             personalEmail,
@@ -1138,9 +1138,9 @@ export const createFacultyMember = async (req, res, next) => {
             schoolId,
             campusId,
             facultyType,
-          
+
             employeeId,
-            password 
+            password
         } = req.body;
 
         // Check if faculty member already exists
@@ -1176,7 +1176,7 @@ export const createFacultyMember = async (req, res, next) => {
             role = 'SCHOOL_PA';
         } else if (facultyType === 'school admin') {
             role = 'SCHOOL_ADMIN';
-        } else if(facultyType === "Research Committee Chairperson"){
+        } else if (facultyType === "Research Committee Chairperson") {
             role = "Research_Committee_Chairperson"
         } else {
             role = 'FACULTY';
@@ -1249,11 +1249,13 @@ export const getAllFacultyMembers = async (req, res, next) => {
             })
         ]);
 
-        res.status(200).json({facultyMembers: [
-            ...facultyMembers,
-            ...supervisors
-        ]}
-          );
+        res.status(200).json({
+            facultyMembers: [
+                ...facultyMembers,
+                ...supervisors
+            ]
+        }
+        );
     } catch (error) {
         if (!error.statusCode) {
             error.statusCode = 500;
@@ -1296,7 +1298,7 @@ export const getFacultyMember = async (req, res, next) => {
 export const updateFacultyMember = async (req, res, next) => {
     try {
         const { facultyId } = req.params;
-        const {schoolId, campusId, userId, ...updateData} = req.body;
+        const { schoolId, campusId, userId, ...updateData } = req.body;
 
         // Get existing faculty member data before update
         const existingFacultyMember = await prisma.facultyMember.findUnique({
@@ -1344,7 +1346,7 @@ export const updateFacultyMember = async (req, res, next) => {
             where: { id: facultyId },
             data: {
                 ...updateData,
-                school: { connect: { id: schoolId} },
+                school: { connect: { id: schoolId } },
                 campus: { connect: { id: campusId } },
                 user: { connect: { id: userId } }
             },
@@ -1363,7 +1365,7 @@ export const updateFacultyMember = async (req, res, next) => {
                 entityType: 'FACULTY',
                 details: JSON.stringify(changes),
                 userId: req.user.id, // Assuming req.user contains logged in user details
-               
+
             }
         });
 
@@ -1439,7 +1441,7 @@ export const deleteFacultyMember = async (req, res, next) => {
         // Get faculty member with associated user and activities
         const faculty = await prisma.facultyMember.findUnique({
             where: { id: facultyId },
-            include: { 
+            include: {
                 user: {
                     include: {
                         activities: true
@@ -1477,7 +1479,7 @@ export const deleteFacultyMember = async (req, res, next) => {
         await prisma.userActivity.create({
             data: {
                 action: "Deleted Faculty Member",
-                entityType: "FacultyMember", 
+                entityType: "FacultyMember",
                 entityId: facultyId,
                 userId: req.user?.id,
                 details: JSON.stringify({
@@ -1518,7 +1520,7 @@ export const getAllSupervisors = async (req, res, next) => {
                         }
                     }
                 },
-               
+
             }
         });
 
@@ -1544,7 +1546,7 @@ export const getSupervisor = async (req, res, next) => {
                 school: true,
                 campus: true,
                 department: true,
-                
+
             }
         });
 
@@ -1772,11 +1774,11 @@ export const assignSupervisorsToStudent = async (req, res, next) => {
 
         for (const staffMemberId of supervisorIds) {
             console.log(`Processing staff member ID: ${staffMemberId}`);
-            
+
             // Check if it's a staff member
             const staffMember = await prisma.staffMember.findUnique({
                 where: { id: staffMemberId },
-               
+
             });
 
             if (!staffMember) {
@@ -1795,7 +1797,7 @@ export const assignSupervisorsToStudent = async (req, res, next) => {
                     where: { id: staffMember.supervisorId },
                     include: { user: true }
                 });
-                
+
                 if (supervisor) {
                     console.log(`Found existing supervisor:`, supervisor.name);
                     finalSupervisorIds.push(supervisor.id);
@@ -2266,7 +2268,7 @@ export const assignSupervisorsToStudent = async (req, res, next) => {
             // Set current workshop status to inactive
             await prisma.studentStatus.update({
                 where: { id: currentStatus.id },
-                data: { isCurrent: false,    endDate: new Date(), }
+                data: { isCurrent: false, endDate: new Date(), }
             });
 
             // Find the "NORMAL_PROGRESS" status definition
@@ -2372,7 +2374,7 @@ export const assignStudentsToSupervisor = async (req, res, next) => {
         const updatePromises = studentIds.map(async studentId => {
             // First update all existing statuses to not current
             await prisma.studentStatus.updateMany({
-                where: { 
+                where: {
                     studentId: studentId,
                     isCurrent: true
                 },
@@ -2459,7 +2461,7 @@ export const changeStudentSupervisor = async (req, res, next) => {
             where: { id: studentId },
             include: {
                 supervisors: true,
-                user:true
+                user: true
             }
         });
 
@@ -2577,7 +2579,7 @@ export const changeStudentSupervisor = async (req, res, next) => {
             recipientId: student?.user?.id,
             // recipientEmail: student?.user?.email,
             recipientEmail: "stephaniekirathe@gmail.com",
-            
+
             recipientName: student?.user?.name,
             scheduledFor: new Date(Date.now() + 60000), // Schedule for delivery 1 minute from now
             // scheduledFor: new Date(new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' })).getTime() + 60000), // Schedule for delivery in Uganda timezone, 1 minute from now
@@ -2641,7 +2643,7 @@ export const getAssignedStudents = async (req, res, next) => {
             include: {
                 campus: true,
                 statuses: {
-                    
+
                     include: {
                         definition: true
                     }
@@ -2685,7 +2687,6 @@ export const createStudent = async (req, res, next) => {
             course,
             email,
             phoneNumber,
-            dateOfBirth,
             gender,
             campusId,
             schoolId,
@@ -2748,7 +2749,6 @@ export const createStudent = async (req, res, next) => {
                 email,
                 course,
                 phoneNumber,
-                dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
                 gender,
                 campus: {
                     connect: { id: campusId }
@@ -2764,7 +2764,7 @@ export const createStudent = async (req, res, next) => {
                 intakePeriod,
                 programLevel,
                 specialization,
-                completionTime : completionTime ? parseInt(completionTime) : null,
+                completionTime: completionTime ? parseInt(completionTime) : null,
                 expectedCompletionDate: expectedCompletionDate ? new Date(expectedCompletionDate) : null,
                 currentStatus: "WORKSHOP",
                 user: {
@@ -2874,9 +2874,9 @@ export const createStudent = async (req, res, next) => {
                 }
             },
             take: 2
-        }); 
+        });
 
-        console.log("adminUsers",adminUsers);
+
 
         // enum NotificationRecipientType {  // Renamed to avoid conflicts
         //     USER
@@ -2954,7 +2954,6 @@ export const uploadStudents = async (req, res, next) => {
                 course,
                 email,
                 phoneNumber,
-                dateOfBirth,
                 gender,
                 campusId,
                 schoolId,
@@ -3017,7 +3016,6 @@ export const uploadStudents = async (req, res, next) => {
                         email: email || null,
                         course: course || null,
                         phoneNumber: phoneNumber || null,
-                        dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
                         gender: gender || null,
                         campus: { connect: { id: campusId } },
                         ...(schoolId ? { school: { connect: { id: schoolId } } } : {}),
@@ -3143,7 +3141,7 @@ export const updateStudent = async (req, res, next) => {
 
         console.log(updateData)
 
-        const {campusId, schoolId, departmentId, userId, user, supervisorIds, school, department, campus,  ...restofData} = updateData
+        const { campusId, schoolId, departmentId, userId, user, supervisorIds, school, department, campus, ...restofData } = updateData
 
         // Update student with all fields from request body
         const updatedStudent = await prisma.student.update({
@@ -3156,7 +3154,6 @@ export const updateStudent = async (req, res, next) => {
                 user: { connect: { id: userId } },
 
                 // Handle date fields specifically
-                dateOfBirth: updateData.dateOfBirth ? new Date(updateData.dateOfBirth) : undefined,
                 expectedCompletionDate: updateData.expectedCompletionDate ? new Date(updateData.expectedCompletionDate) : undefined
             },
             include: {
@@ -3326,12 +3323,12 @@ export const getStudent = async (req, res, next) => {
                     include: {
                         definition: true
                     }
-                    },
+                },
                 supervisors: true,
                 proposals: true,
                 notifications: true,
                 fieldWork: true,
-              
+
                 school: true,
                 campus: true,
                 department: true,
@@ -3369,7 +3366,7 @@ export const getAllStudents = async (req, res, next) => {
                 proposals: true,
                 notifications: true,
                 fieldWork: true,
-               
+
                 school: true,
                 campus: true,
                 department: true,
@@ -3448,7 +3445,7 @@ export const getStudentStatuses = async (req, res, next) => {
 // Create a new status definition
 export const createStatusDefinition = async (req, res, next) => {
     try {
-        const { 
+        const {
             name,
             description,
             expectedDuration,
@@ -3767,7 +3764,7 @@ export const getAllProposals = async (req, res, next) => {
                         scheduledDate: true,
                         verdict: true,
                         comments: true,
-                        isCurrent:true
+                        isCurrent: true
                     }
                 },
                 panelists: {
@@ -3820,7 +3817,7 @@ export const getProposal = async (req, res, next) => {
         const proposal = await prisma.proposal.findFirst({
             where: {
                 id: proposalId,
-            
+
             },
             include: {
                 student: true,
@@ -3884,10 +3881,10 @@ export const getReviewers = async (req, res, next) => {
             where: {
                 id: req.user.id
             },
-           
+
         });
 
-        if (!User ) {
+        if (!User) {
             const error = new Error('User not found');
             error.statusCode = 400;
             throw error;
@@ -4009,14 +4006,14 @@ export const addReviewerMark = async (req, res, next) => {
             }
         });
 
-      
+
 
         // Check if current status is already "Proposal Review Finished"
         const currentStatus = updatedProposal.statuses.find(status => status.isCurrent);
         const isAlreadyFinished = currentStatus?.definition?.name === 'proposal review finished';
 
         // Only update status if not already finished and all conditions are met
-        if (!isAlreadyFinished && updatedProposal.reviewGrades.length === updatedProposal.reviewers.length ) {
+        if (!isAlreadyFinished && updatedProposal.reviewGrades.length === updatedProposal.reviewers.length) {
             // Update proposal status
             await prisma.proposalStatus.updateMany({
                 where: {
@@ -4511,10 +4508,10 @@ export const addPanelistMark = async (req, res, next) => {
                 await prisma.studentStatus.create({
                     data: {
                         student: { connect: { id: proposal.student.id } },
-                        definition: { 
-                            connect: { 
-                                id: averageGrade >= 60 ? passedStatus.id : failedStatus.id 
-                            } 
+                        definition: {
+                            connect: {
+                                id: averageGrade >= 60 ? passedStatus.id : failedStatus.id
+                            }
                         },
                         isCurrent: true,
                         startDate: new Date(),
@@ -4659,51 +4656,51 @@ export const deletePanelist = async (req, res, next) => {
  */
 export const getChairpersons = async (req, res, next) => {
     try {
-      // Get all faculty members who can serve as chairpersons
-      const chairpersons = await prisma.facultyMember.findMany({
-        where: {
-          facultyType: "Research Committee Chairperson",
-        },
-      });
-  
-          res.status(200).json({
-        message: "Chairpersons retrieved successfully",
-        chairpersons,
-      });
+        // Get all faculty members who can serve as chairpersons
+        const chairpersons = await prisma.facultyMember.findMany({
+            where: {
+                facultyType: "Research Committee Chairperson",
+            },
+        });
+
+        res.status(200).json({
+            message: "Chairpersons retrieved successfully",
+            chairpersons,
+        });
     } catch (error) {
-      if (!error.statusCode) {
-        error.statusCode = 500;
-      }
-      next(error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
     }
-  };
+};
 
 
-  /**
- * Get all external persons (acting chairpersons, minutes secretaries, etc.)
- * @route GET /api/v1/faculty/external-persons
- * @access Private
- */
+/**
+* Get all external persons (acting chairpersons, minutes secretaries, etc.)
+* @route GET /api/v1/faculty/external-persons
+* @access Private
+*/
 export const getExternalPersons = async (req, res, next) => {
     try {
-      // Get all external persons
-      const externalPersons = await prisma.externalPerson.findMany({
-        orderBy: {
-          name: "asc",
-        },
-      });
-  
-      res.status(200).json({
-        message: "External persons retrieved successfully",
-        externalPersons,
-      });
+        // Get all external persons
+        const externalPersons = await prisma.externalPerson.findMany({
+            orderBy: {
+                name: "asc",
+            },
+        });
+
+        res.status(200).json({
+            message: "External persons retrieved successfully",
+            externalPersons,
+        });
     } catch (error) {
-      if (!error.statusCode) {
-        error.statusCode = 500;
-      }
-      next(error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
     }
-  };
+};
 
 /**
  * Get external persons by role
@@ -4712,35 +4709,35 @@ export const getExternalPersons = async (req, res, next) => {
  */
 export const getExternalPersonsByRole = async (req, res, next) => {
     try {
-      const { role } = req.params;
-  
-      if (!role) {
-        const error = new Error("Role parameter is required");
-        error.statusCode = 400;
-        throw error;
-      }
-  
-      // Get external persons by role
-      const externalPersons = await prisma.externalPerson.findMany({
-        where: {
-          role,
-        },
-        orderBy: {
-          name: "asc",
-        },
-      });
-  
-      res.status(200).json({
-        message: `${role} retrieved successfully`,
-        externalPersons,
-      });
+        const { role } = req.params;
+
+        if (!role) {
+            const error = new Error("Role parameter is required");
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Get external persons by role
+        const externalPersons = await prisma.externalPerson.findMany({
+            where: {
+                role,
+            },
+            orderBy: {
+                name: "asc",
+            },
+        });
+
+        res.status(200).json({
+            message: `${role} retrieved successfully`,
+            externalPersons,
+        });
     } catch (error) {
-      if (!error.statusCode) {
-        error.statusCode = 500;
-      }
-      next(error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
     }
-  };
+};
 
 /**
  * Create a new external person (acting chairperson, minutes secretary, etc.)
@@ -4749,163 +4746,163 @@ export const getExternalPersonsByRole = async (req, res, next) => {
  */
 export const createExternalPerson = async (req, res, next) => {
     try {
-      const { name, email, role } = req.body;
-  
-      if (!name || !email || !role) {
-        const error = new Error("Name, email, and role are required");
-        error.statusCode = 400;
-        throw error;
-      }
-  
-      // Check if external person with this email already exists
-      const existingPerson = await prisma.externalPerson.findFirst({
-        where: {
-          email,
-          role,
-        },
-      });
-  
-      if (existingPerson) {
-        return res.status(200).json({
-          message: "External person already exists",
-          externalPerson: existingPerson,
+        const { name, email, role } = req.body;
+
+        if (!name || !email || !role) {
+            const error = new Error("Name, email, and role are required");
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if external person with this email already exists
+        const existingPerson = await prisma.externalPerson.findFirst({
+            where: {
+                email,
+                role,
+            },
         });
-      }
-  
-      // Create new external person
-      const externalPerson = await prisma.externalPerson.create({
-        data: {
-          name,
-          email,
-          role,
-          // isActive: true
-        },
-      });
-  
-      res.status(201).json({
-        message: "External person created successfully",
-        externalPerson,
-      });
+
+        if (existingPerson) {
+            return res.status(200).json({
+                message: "External person already exists",
+                externalPerson: existingPerson,
+            });
+        }
+
+        // Create new external person
+        const externalPerson = await prisma.externalPerson.create({
+            data: {
+                name,
+                email,
+                role,
+                // isActive: true
+            },
+        });
+
+        res.status(201).json({
+            message: "External person created successfully",
+            externalPerson,
+        });
     } catch (error) {
-      if (!error.statusCode) {
-        error.statusCode = 500;
-      }
-      next(error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
     }
-  };
+};
 
 
-  /**
- * Update an external person
- * @route PUT /api/v1/faculty/external-person/:id
- * @access Private
- */
+/**
+* Update an external person
+* @route PUT /api/v1/faculty/external-person/:id
+* @access Private
+*/
 export const updateExternalPerson = async (req, res, next) => {
     try {
-      const { id } = req.params;
-      const { name, email, role, isActive } = req.body;
-  
-      if (!id) {
-        const error = new Error("External person ID is required");
-        error.statusCode = 400;
-        throw error;
-      }
-  
-      // Check if external person exists
-      const existingPerson = await prisma.externalPerson.findUnique({
-        where: { id },
-      });
-  
-      if (!existingPerson) {
-        const error = new Error("External person not found");
-        error.statusCode = 404;
-        throw error;
-      }
-  
-      // Update external person
-      const updatedPerson = await prisma.externalPerson.update({
-        where: { id },
-        data: {
-          name: name || existingPerson.name,
-          email: email || existingPerson.email,
-          role: role || existingPerson.role,
-          isActive: isActive !== undefined ? isActive : existingPerson.isActive,
-        },
-      });
-  
-      res.status(200).json({
-        message: "External person updated successfully",
-        externalPerson: updatedPerson,
-      });
-    } catch (error) {
-      if (!error.statusCode) {
-        error.statusCode = 500;
-      }
-      next(error);
-    }
-  };
+        const { id } = req.params;
+        const { name, email, role, isActive } = req.body;
 
-  /**
- * Delete an external person
- * @route DELETE /api/v1/faculty/external-person/:id
- * @access Private
- */
+        if (!id) {
+            const error = new Error("External person ID is required");
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if external person exists
+        const existingPerson = await prisma.externalPerson.findUnique({
+            where: { id },
+        });
+
+        if (!existingPerson) {
+            const error = new Error("External person not found");
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Update external person
+        const updatedPerson = await prisma.externalPerson.update({
+            where: { id },
+            data: {
+                name: name || existingPerson.name,
+                email: email || existingPerson.email,
+                role: role || existingPerson.role,
+                isActive: isActive !== undefined ? isActive : existingPerson.isActive,
+            },
+        });
+
+        res.status(200).json({
+            message: "External person updated successfully",
+            externalPerson: updatedPerson,
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+/**
+* Delete an external person
+* @route DELETE /api/v1/faculty/external-person/:id
+* @access Private
+*/
 export const deleteExternalPerson = async (req, res, next) => {
     try {
-      const { id } = req.params;
-  
-      if (!id) {
-        const error = new Error("External person ID is required");
-        error.statusCode = 400;
-        throw error;
-      }
-  
-      // Check if external person exists
-      const existingPerson = await prisma.externalPerson.findUnique({
-        where: { id },
-      });
-  
-      if (!existingPerson) {
-        const error = new Error("External person not found");
-        error.statusCode = 404;
-        throw error;
-      }
-  
-      // Check if the external person is associated with any proposals
-      const associatedProposals = await prisma.proposal.findMany({
-        where: {
-          OR: [{ actingChairpersonId: id }, { minutesSecretaryId: id }],
-        },
-      });
-  
-      if (associatedProposals.length > 0) {
-        // Instead of deleting, mark as inactive
-        const updatedPerson = await prisma.externalPerson.update({
-          where: { id },
-          data: { isActive: false },
+        const { id } = req.params;
+
+        if (!id) {
+            const error = new Error("External person ID is required");
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Check if external person exists
+        const existingPerson = await prisma.externalPerson.findUnique({
+            where: { id },
         });
-  
-        return res.status(200).json({
-          message: "External person is in use and has been marked as inactive",
-          externalPerson: updatedPerson,
+
+        if (!existingPerson) {
+            const error = new Error("External person not found");
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Check if the external person is associated with any proposals
+        const associatedProposals = await prisma.proposal.findMany({
+            where: {
+                OR: [{ actingChairpersonId: id }, { minutesSecretaryId: id }],
+            },
         });
-      }
-  
-      // Delete the external person if not associated with any proposals
-      await prisma.externalPerson.delete({
-        where: { id },
-      });
-  
-      res.status(200).json({
-        message: "External person deleted successfully",
-      });
+
+        if (associatedProposals.length > 0) {
+            // Instead of deleting, mark as inactive
+            const updatedPerson = await prisma.externalPerson.update({
+                where: { id },
+                data: { isActive: false },
+            });
+
+            return res.status(200).json({
+                message: "External person is in use and has been marked as inactive",
+                externalPerson: updatedPerson,
+            });
+        }
+
+        // Delete the external person if not associated with any proposals
+        await prisma.externalPerson.delete({
+            where: { id },
+        });
+
+        res.status(200).json({
+            message: "External person deleted successfully",
+        });
     } catch (error) {
-      if (!error.statusCode) {
-        error.statusCode = 500;
-      }
-      next(error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
     }
-  };
+};
 
 /** to be deleted */
 // Add defense date to proposal
@@ -5133,7 +5130,7 @@ export const addComplianceReportDate = async (req, res, next) => {
             where: { id: proposalId },
             data: {
                 complianceReportDate: new Date(complianceReportDate),
-               
+
             }
         });
 
@@ -5208,13 +5205,13 @@ export const generateFieldLetter = async (req, res, next) => {
             pdfBuffer = await PDFNet.runWithCleanup(async () => {
                 const pdfdoc = await PDFNet.PDFDoc.create();
                 await pdfdoc.initSecurityHandler();
-                
+
                 // Create a temporary buffer from the uploaded file
                 const docxBuffer = req.file.buffer;
-                
+
                 // Convert DOCX to PDF
                 await PDFNet.Convert.toPdf(pdfdoc, docxBuffer);
-                
+
                 // Save to memory buffer
                 return await pdfdoc.saveMemoryBuffer(PDFNet.SDFDoc.SaveOptions.e_linearized);
             });
@@ -5486,295 +5483,295 @@ export const updateFieldLetterDate = async (req, res, next) => {
 
 export const updateEthicsCommitteeDate = async (req, res, next) => {
     try {
-          const { proposalId } = req.params;
-      const { ethicsCommitteeDate } = req.body;
-      
-      if (!ethicsCommitteeDate) {
-        const error = new Error("ETHICS COMMITTEE DATE IS REQUIRED");
-        error.statusCode = 400;
-        throw error;
-      }
-  
-      // Validate date format
-      const dateObj = new Date(ethicsCommitteeDate);
-      if (isNaN(dateObj.getTime())) {
-        const error = new Error("Invalid date format");
-        error.statusCode = 400;
-        throw error;
-      }
-      // Check if proposal exists
-          const proposal = await prisma.proposal.findUnique({
-              where: { id: proposalId },
-              include: {
-                  student: true,
-        },
-          });
-  
-          if (!proposal) {
-        const error = new Error("Proposal not found");
-              error.statusCode = 404;
-              throw error;
-          }
-  
-      // Get letter to field status definition
-      const ethicsCommitteeStatus = await prisma.statusDefinition.findFirst({
-        where: { name: "letter to ethics committee issued" },
-      });
-  
-      if (!ethicsCommitteeStatus) {
-        throw new Error("Ethics Committee Status not found");
-          }
-  
-             // Update student status
-          await prisma.studentStatus.updateMany({
-              where: {
-                  studentId: proposal.student.id,
-          isCurrent: true,
-              },
-              data: {
-                  isCurrent: false,
-          endDate: new Date(),
-        },
-          });
-  
-           // Create letter to ethics committee status
-          await prisma.studentStatus.create({
-              data: {
-                  student: { connect: { id: proposal.student.id } },
-                  definition: { connect: { id: ethicsCommitteeStatus.id } },
-          isCurrent: true,
-          startDate: new Date(),
-         
-          updatedBy: { connect: { id: req.user.id } },
-        },
-      });
-  
-       // Update proposal statuses
-      await prisma.proposalStatus.updateMany({
-        where: {
-          proposalId: proposalId,
-          isCurrent: true,
-        },
-              data: {
-          isCurrent: false,
-          endDate: new Date(),
-        },
-      });
-  
-          // Create the status for Ethics Committee
-       await prisma.proposalStatus.create({
-        data: {
-                  proposal: { connect: { id: proposalId } },
-          definition: { connect: { id: ethicsCommitteeStatus.id } },
-          isCurrent: true,
-          startDate: new Date(),
-          
-        },
-      });
-  
-      // Update the Ethics Committee date
-          const updatedProposal = await prisma.proposal.update({
-              where: { id: proposalId },
-              data: {
-                  ethicsCommitteeDate: new Date(ethicsCommitteeDate),
-                },
-          });
-      res.status(200).json({
-        message: "ETHICS COMMITTEE DATE ISSUED",
-        proposal: updatedProposal,
-            });
-    } catch (error) {
-     console.error("Error in updateEthicsCommitteeDate:", error);
-      if (!error.statusCode) {
-        error.statusCode = 500;
-      }
-      next(error);
-    }
-  }
+        const { proposalId } = req.params;
+        const { ethicsCommitteeDate } = req.body;
 
- /**
- * Generate and record a defense report
- * @route POST /api/v1/faculty/generate-defense-report/:proposalId
- * @access Private (School Admin)
- */
+        if (!ethicsCommitteeDate) {
+            const error = new Error("ETHICS COMMITTEE DATE IS REQUIRED");
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Validate date format
+        const dateObj = new Date(ethicsCommitteeDate);
+        if (isNaN(dateObj.getTime())) {
+            const error = new Error("Invalid date format");
+            error.statusCode = 400;
+            throw error;
+        }
+        // Check if proposal exists
+        const proposal = await prisma.proposal.findUnique({
+            where: { id: proposalId },
+            include: {
+                student: true,
+            },
+        });
+
+        if (!proposal) {
+            const error = new Error("Proposal not found");
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Get letter to field status definition
+        const ethicsCommitteeStatus = await prisma.statusDefinition.findFirst({
+            where: { name: "letter to ethics committee issued" },
+        });
+
+        if (!ethicsCommitteeStatus) {
+            throw new Error("Ethics Committee Status not found");
+        }
+
+        // Update student status
+        await prisma.studentStatus.updateMany({
+            where: {
+                studentId: proposal.student.id,
+                isCurrent: true,
+            },
+            data: {
+                isCurrent: false,
+                endDate: new Date(),
+            },
+        });
+
+        // Create letter to ethics committee status
+        await prisma.studentStatus.create({
+            data: {
+                student: { connect: { id: proposal.student.id } },
+                definition: { connect: { id: ethicsCommitteeStatus.id } },
+                isCurrent: true,
+                startDate: new Date(),
+
+                updatedBy: { connect: { id: req.user.id } },
+            },
+        });
+
+        // Update proposal statuses
+        await prisma.proposalStatus.updateMany({
+            where: {
+                proposalId: proposalId,
+                isCurrent: true,
+            },
+            data: {
+                isCurrent: false,
+                endDate: new Date(),
+            },
+        });
+
+        // Create the status for Ethics Committee
+        await prisma.proposalStatus.create({
+            data: {
+                proposal: { connect: { id: proposalId } },
+                definition: { connect: { id: ethicsCommitteeStatus.id } },
+                isCurrent: true,
+                startDate: new Date(),
+
+            },
+        });
+
+        // Update the Ethics Committee date
+        const updatedProposal = await prisma.proposal.update({
+            where: { id: proposalId },
+            data: {
+                ethicsCommitteeDate: new Date(ethicsCommitteeDate),
+            },
+        });
+        res.status(200).json({
+            message: "ETHICS COMMITTEE DATE ISSUED",
+            proposal: updatedProposal,
+        });
+    } catch (error) {
+        console.error("Error in updateEthicsCommitteeDate:", error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+}
+
+/**
+* Generate and record a defense report
+* @route POST /api/v1/faculty/generate-defense-report/:proposalId
+* @access Private (School Admin)
+*/
 export const generateDefenseReport = async (req, res) => {
     try {
-      // Validate input fields
-      const { proposalId } = req.params;
-      const { title, studentName, regNo, topic, supervisors, verdict, reportDate, department } = req.body;
-      const reportFile = req.file;
-  
-      if (!proposalId || !title || !studentName || !regNo || !topic || !verdict || !reportDate || !reportFile) {
-        return res.status(400).json({
-          message: 'Missing required fields'
+        // Validate input fields
+        const { proposalId } = req.params;
+        const { title, studentName, regNo, topic, supervisors, verdict, reportDate, department } = req.body;
+        const reportFile = req.file;
+
+        if (!proposalId || !title || !studentName || !regNo || !topic || !verdict || !reportDate || !reportFile) {
+            return res.status(400).json({
+                message: 'Missing required fields'
+            });
+        }
+
+        // Check if proposal exists
+        const proposal = await prisma.proposal.findUnique({
+            where: { id: proposalId }
         });
-      }
-  
-      // Check if proposal exists
-      const proposal = await prisma.proposal.findUnique({
-        where: { id: proposalId }
-      });
-  
-      if (!proposal) {
-        return res.status(404).json({
-          message: 'Proposal not found'
+
+        if (!proposal) {
+            return res.status(404).json({
+                message: 'Proposal not found'
+            });
+        }
+
+        // Sanitize student name for filename
+        const sanitizedName = studentName
+            .replace(/[^a-zA-Z0-9\s]/g, '') // Remove special characters
+            .replace(/\s+/g, '_') // Replace spaces with underscores
+            .toLowerCase(); // Convert to lowercase
+
+        // Generate filename using sanitized student name
+        const filename = `Proposal_Defense_Report_${sanitizedName}.docx`;
+
+        // Create defense report record with file data
+        const defenseReport = await prisma.proposalDefenseReport.create({
+            data: {
+                type: "defense_report",
+                title,
+                status: "completed",
+                studentName,
+                regNo,
+                topic,
+                supervisors: supervisors || "",
+                verdict,
+                reportDate,
+                department: department || "COLLEGE OF HUMANITIES AND SOCIAL SCIENCES",
+                fileData: reportFile.buffer, // Store the file data as BLOB
+                fileName: filename, // Use the sanitized filename
+                fileType: reportFile.mimetype,
+                proposal: { connect: { id: proposalId } },
+                generatedBy: { connect: { id: req.user.id } }
+            }
         });
-      }
-  
-      // Sanitize student name for filename
-      const sanitizedName = studentName
-        .replace(/[^a-zA-Z0-9\s]/g, '') // Remove special characters
-        .replace(/\s+/g, '_') // Replace spaces with underscores
-        .toLowerCase(); // Convert to lowercase
-  
-      // Generate filename using sanitized student name
-      const filename = `Proposal_Defense_Report_${sanitizedName}.docx`;
-  
-      // Create defense report record with file data
-      const defenseReport = await prisma.proposalDefenseReport.create({
-        data: {
-          type: "defense_report",
-          title,
-          status: "completed",
-          studentName,
-          regNo,
-          topic,
-          supervisors: supervisors || "",
-          verdict,
-          reportDate,
-          department: department || "COLLEGE OF HUMANITIES AND SOCIAL SCIENCES",
-          fileData: reportFile.buffer, // Store the file data as BLOB
-          fileName: filename, // Use the sanitized filename
-          fileType: reportFile.mimetype,
-          proposal: { connect: { id: proposalId } },
-          generatedBy: { connect: { id: req.user.id } }
-        }
-      });
-  
-      // Log activity
-      await prisma.userActivity.create({
-        data: {
-          userId: req.user.id,
-          action: `Generated defense report for ${studentName} (${regNo})`,
-          entityType: "DefenseReport",
-          entityId: defenseReport.id,
-          details: `Report type: Defense Report, Verdict: ${verdict}`
-        }
-      });
-  
-      res.status(201).json({
-        message: "Defense report generated and saved successfully",
-        defenseReport: {
-          id: defenseReport.id,
-          title: defenseReport.title,
-          downloadUrl: defenseReport.downloadUrl,
-          generatedAt: defenseReport.generatedAt,
-          status: defenseReport.status,
-          studentName: defenseReport.studentName,
-          regNo: defenseReport.regNo,
-          topic: defenseReport.topic,
-          verdict: defenseReport.verdict,
-          fileName: defenseReport.fileName // Include filename in response
-        }
-      });
-  
+
+        // Log activity
+        await prisma.userActivity.create({
+            data: {
+                userId: req.user.id,
+                action: `Generated defense report for ${studentName} (${regNo})`,
+                entityType: "DefenseReport",
+                entityId: defenseReport.id,
+                details: `Report type: Defense Report, Verdict: ${verdict}`
+            }
+        });
+
+        res.status(201).json({
+            message: "Defense report generated and saved successfully",
+            defenseReport: {
+                id: defenseReport.id,
+                title: defenseReport.title,
+                downloadUrl: defenseReport.downloadUrl,
+                generatedAt: defenseReport.generatedAt,
+                status: defenseReport.status,
+                studentName: defenseReport.studentName,
+                regNo: defenseReport.regNo,
+                topic: defenseReport.topic,
+                verdict: defenseReport.verdict,
+                fileName: defenseReport.fileName // Include filename in response
+            }
+        });
+
     } catch (error) {
-      console.error('Error generating defense report:', error);
-      res.status(500).json({
-        message: 'Error generating defense report',
-        error: error.message
-      });
+        console.error('Error generating defense report:', error);
+        res.status(500).json({
+            message: 'Error generating defense report',
+            error: error.message
+        });
     }
-  };
-  
-  /**
- * Get defense reports for a proposal
- * @route GET /api/v1/faculty/proposal/:proposalId/defense-reports
- * @access Private (School Admin)
- */
+};
+
+/**
+* Get defense reports for a proposal
+* @route GET /api/v1/faculty/proposal/:proposalId/defense-reports
+* @access Private (School Admin)
+*/
 export const getProposalDefenseReports = async (req, res) => {
     try {
-      const { proposalId } = req.params;
-  
-      // Check if proposal exists
-      const proposal = await prisma.proposal.findUnique({
-        where: { id: proposalId },
-      });
-  
-      if (!proposal) {
-        const error = new Error("Proposal not found");
-        error.statusCode = 404;
-        throw error;
-      }
-  
-      // Get defense reports for the proposal
-      const defenseReports = await prisma.proposalDefenseReport.findMany({
-        where: { proposalId },
-        orderBy: { generatedAt: "desc" },
-        include: {
-          generatedBy: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-            },
-          },
-        },
-      });
-  
-      res.status(200).json({
-        message: "Proposal defense reports retrieved successfully",
-        defenseReports,
-      });
-    } catch (error) {
-      console.error("Error in getProposalDefenseReports:", error);
-      if (!error.statusCode) {
-        error.statusCode = 500;
-      }
-      next(error);
-    }
-  };
+        const { proposalId } = req.params;
 
- /**
- * Download a defense report
- * @route GET /api/v1/faculty/defense-reports/:reportId/download
- * @access Private (School Admin)
- */
+        // Check if proposal exists
+        const proposal = await prisma.proposal.findUnique({
+            where: { id: proposalId },
+        });
+
+        if (!proposal) {
+            const error = new Error("Proposal not found");
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Get defense reports for the proposal
+        const defenseReports = await prisma.proposalDefenseReport.findMany({
+            where: { proposalId },
+            orderBy: { generatedAt: "desc" },
+            include: {
+                generatedBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true,
+                    },
+                },
+            },
+        });
+
+        res.status(200).json({
+            message: "Proposal defense reports retrieved successfully",
+            defenseReports,
+        });
+    } catch (error) {
+        console.error("Error in getProposalDefenseReports:", error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+/**
+* Download a defense report
+* @route GET /api/v1/faculty/defense-reports/:reportId/download
+* @access Private (School Admin)
+*/
 export const downloadDefenseReport = async (req, res) => {
     try {
-      const { reportId } = req.params;
-  
-      // Get the defense report with file data
-      const report = await prisma.proposalDefenseReport.findUnique({
-        where: { id: reportId },
-        select: {
-          fileData: true,
-          fileName: true,
-          fileType: true
-        }
-      });
-  
-      if (!report || !report.fileData) {
-        return res.status(404).json({
-          message: 'Defense report not found or file data is missing'
+        const { reportId } = req.params;
+
+        // Get the defense report with file data
+        const report = await prisma.proposalDefenseReport.findUnique({
+            where: { id: reportId },
+            select: {
+                fileData: true,
+                fileName: true,
+                fileType: true
+            }
         });
-      }
-  
-      // Set response headers
-      res.setHeader('Content-Type', report.fileType || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-      res.setHeader('Content-Disposition', `attachment; filename="${report.fileName}"`);
-      
-      // Send the file data
-      res.send(Buffer.from(report.fileData));
-  
+
+        if (!report || !report.fileData) {
+            return res.status(404).json({
+                message: 'Defense report not found or file data is missing'
+            });
+        }
+
+        // Set response headers
+        res.setHeader('Content-Type', report.fileType || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        res.setHeader('Content-Disposition', `attachment; filename="${report.fileName}"`);
+
+        // Send the file data
+        res.send(Buffer.from(report.fileData));
+
     } catch (error) {
-      console.error('Error downloading defense report:', error);
-      res.status(500).json({
-        message: 'Error downloading defense report',
-        error: error.message
-      });
+        console.error('Error downloading defense report:', error);
+        res.status(500).json({
+            message: 'Error downloading defense report',
+            error: error.message
+        });
     }
-  }; 
+};
 
 /** BOOK MANAGEMENT CONTROLLERS */
 // Controller for submitting student book
@@ -5866,9 +5863,9 @@ export const submitStudentBook = async (req, res, next) => {
         if (student.statuses[0]) {
             await prisma.studentStatus.update({
                 where: { id: student.statuses[0].id },
-                data: { 
+                data: {
                     isCurrent: false,
-                    endDate: new Date() 
+                    endDate: new Date()
                 }
             });
         }
@@ -5980,7 +5977,7 @@ export const getAllBooks = async (req, res, next) => {
                     select: {
                         id: true,
                         firstName: true,
-                        course:true,
+                        course: true,
                         lastName: true,
                         email: true,
                         academicYear: true,
@@ -5994,7 +5991,7 @@ export const getAllBooks = async (req, res, next) => {
                                 definition: true
                             },
                         }
-                       
+
                     }
                 },
                 statuses: {
@@ -6019,7 +6016,7 @@ export const getAllBooks = async (req, res, next) => {
                         role: true
                     }
                 },
-               
+
             },
             orderBy: {
                 submissionDate: 'desc'
@@ -6154,7 +6151,7 @@ export const assignExaminersToBook = async (req, res, next) => {
             where: {
                 id: bookId
             },
-           include: {
+            include: {
                 student: true,
                 statuses: {
                     where: {
@@ -6294,29 +6291,29 @@ export const assignExaminersToBook = async (req, res, next) => {
 
         // Only update statuses if not already under examination
         if (!isAlreadyUnderExamination) {
-        // Update all current book statuses to not current
-        await prisma.bookStatus.updateMany({
-            where: {
-                bookId: bookId,
-                isCurrent: true
-            },
-            data: {
-                isCurrent: false,
-                isActive: false,
-                endDate: new Date()
-            }
-        });
+            // Update all current book statuses to not current
+            await prisma.bookStatus.updateMany({
+                where: {
+                    bookId: bookId,
+                    isCurrent: true
+                },
+                data: {
+                    isCurrent: false,
+                    isActive: false,
+                    endDate: new Date()
+                }
+            });
 
-        // Create new book status "Under Examination"
-        await prisma.bookStatus.create({
-            data: {
-                book: { connect: { id: bookId } },
-                definition: { connect: { id: underExaminationStatus.id } },
-                isActive: true,
-                isCurrent: true,
-                startDate: new Date(),
-            }
-        });
+            // Create new book status "Under Examination"
+            await prisma.bookStatus.create({
+                data: {
+                    book: { connect: { id: bookId } },
+                    definition: { connect: { id: underExaminationStatus.id } },
+                    isActive: true,
+                    isCurrent: true,
+                    startDate: new Date(),
+                }
+            });
         }
 
         // If student exists, update their status as well
@@ -6347,53 +6344,53 @@ export const assignExaminersToBook = async (req, res, next) => {
             });
         }
 
-          // Check if there's an existing external examiner assignment
-          const existingAssignment = await prisma.examinerBookAssignment.findFirst({
+        // Check if there's an existing external examiner assignment
+        const existingAssignment = await prisma.examinerBookAssignment.findFirst({
             where: {
-              examiner: { type: "External" },
-              bookId,
-              isCurrent: true
+                examiner: { type: "External" },
+                bookId,
+                isCurrent: true
             }
-          });
+        });
 
-          // Create assignments for each examiner
+        // Create assignments for each examiner
         for (const examinerId of finalExaminerIds) {
             if (existingAssignment) {
-              // Deactivate existing external examiner assignment
+                // Deactivate existing external examiner assignment
                 // If the existing assignment status is "Pending", set it to "Canceled"
-              await prisma.examinerBookAssignment.update({
-                where: { id: existingAssignment.id },
-                data: {
-                  isCurrent: false,
+                await prisma.examinerBookAssignment.update({
+                    where: { id: existingAssignment.id },
+                    data: {
+                        isCurrent: false,
                         status: existingAssignment.status === "Pending" ? "Canceled" : existingAssignment.status
-                }
-              });
+                    }
+                });
 
-              // Create new resubmission assignment
-              await prisma.examinerBookAssignment.create({
-                data: {
-                  examiner: { connect: { id: examinerId } },
-                  book: { connect: { id: bookId } },
-                  assignedAt: assignmentDate,
-                  submissionType: "Resubmission",
-                  status: "Pending",
-                  isCurrent: true
-                }
-              });
+                // Create new resubmission assignment
+                await prisma.examinerBookAssignment.create({
+                    data: {
+                        examiner: { connect: { id: examinerId } },
+                        book: { connect: { id: bookId } },
+                        assignedAt: assignmentDate,
+                        submissionType: "Resubmission",
+                        status: "Pending",
+                        isCurrent: true
+                    }
+                });
             } else {
-              // Create new normal assignment
-              await prisma.examinerBookAssignment.create({
-                data: {
-                  examiner: { connect: { id: examinerId } },
-                  book: { connect: { id: bookId } },
-                  assignedAt: assignmentDate,
-                  submissionType: "Normal", 
-                  status: "Pending",
-                  isCurrent: true
-                }
-              });
+                // Create new normal assignment
+                await prisma.examinerBookAssignment.create({
+                    data: {
+                        examiner: { connect: { id: examinerId } },
+                        book: { connect: { id: bookId } },
+                        assignedAt: assignmentDate,
+                        submissionType: "Normal",
+                        status: "Pending",
+                        isCurrent: true
+                    }
+                });
             }
-          }
+        }
 
         res.status(200).json({
             message: 'Examiners assigned to book successfully and status updated to Under Examination',
@@ -6424,7 +6421,7 @@ export const getExaminer = async (req, res, next) => {
             where: {
                 id: examinerId
             },
-          include: {
+            include: {
                 examinerBookAssignments: {
                     include: {
                         book: {
@@ -6465,309 +6462,309 @@ export const getExaminer = async (req, res, next) => {
 
 // Controller for updating examiner mark
 export const updateExternalExaminerMark = async (req, res, next) => {
-  try {
-    const { assignmentId } = req.params;
-    const { mark, comments } = req.body;
+    try {
+        const { assignmentId } = req.params;
+        const { mark, comments } = req.body;
 
-    if (!assignmentId) {
-      const error = new Error("Assignment ID is required");
-      error.statusCode = 400;
-      throw error;
-    }
+        if (!assignmentId) {
+            const error = new Error("Assignment ID is required");
+            error.statusCode = 400;
+            throw error;
+        }
 
-    if (mark === undefined || mark === null) {
-      const error = new Error("Mark is required");
-      error.statusCode = 400;
-      throw error;
-    }
+        if (mark === undefined || mark === null) {
+            const error = new Error("Mark is required");
+            error.statusCode = 400;
+            throw error;
+        }
 
-    // if (!comments) {
-    //   const error = new Error("Comments are required");
-    //   error.statusCode = 400;
-    //   throw error;
-    // }
+        // if (!comments) {
+        //   const error = new Error("Comments are required");
+        //   error.statusCode = 400;
+        //   throw error;
+        // }
 
-    // Check if assignment exists
-    const existingAssignment = await prisma.examinerBookAssignment.findUnique({
-      where: {
-        id: assignmentId,
-      },
-      include: {
-        examiner: true,
-        book: {
-          include: {
-            examinerAssignments: {
-              include: {
+        // Check if assignment exists
+        const existingAssignment = await prisma.examinerBookAssignment.findUnique({
+            where: {
+                id: assignmentId,
+            },
+            include: {
                 examiner: true,
-              },
+                book: {
+                    include: {
+                        examinerAssignments: {
+                            include: {
+                                examiner: true,
+                            },
+                        },
+                    },
+                },
             },
-          },
-        },
-      },
-    });
-
-    if (!existingAssignment) {
-      const error = new Error("Assignment not found");
-      error.statusCode = 404;
-      throw error;
-    }
-
-    const parsedMark = parseFloat(mark);
-    let status = null;
-    let averageMark = parsedMark;
-
-    // Check if examiner is external
-    if (existingAssignment.examiner.type === "External") {
-      // Check if there is an active internal examiner
-      const internalExaminerAssignment =
-        existingAssignment.book.examinerAssignments.find(
-          (assignment) =>
-            assignment.examiner.type === "Internal" &&
-            assignment.grade !== null &&
-            assignment.id !== assignmentId &&
-            assignment.isCurrent === true
-        );
-
-        console.log("internalExaminerAssignment", internalExaminerAssignment);
-
-      const student = await prisma.student.findUnique({
-        where: {
-          id: existingAssignment.book.studentId,
-        },
-      });
-
-      const resubmissionRequiredStatus =
-        await prisma.statusDefinition.findFirst({
-          where: {
-            name: "failed & resubmission required",
-          },
         });
 
-      if (!resubmissionRequiredStatus) {
-        const error = new Error(
-          "Resubmission required status definition not found"
-        );
-        error.statusCode = 404;
-        throw error;
-      }
-
-      const passedStatus = await prisma.statusDefinition.findFirst({
-        where: {
-          name: "passed & authorized for viva",
-        },
-      });
-
-      if (!passedStatus) {
-        const error = new Error("Passed status definition not found");
-        error.statusCode = 404;
-        throw error;
-      }
-
-      // If mark is below 60%, status is failed
-      if (parsedMark < 60) {
-        status = "FAILED";
-        if (internalExaminerAssignment) {
-          averageMark = (parsedMark + internalExaminerAssignment.grade) / 2;
-
-          // Update the book with the average mark
-          await prisma.book.update({
-            where: {
-              id: existingAssignment.bookId,
-            },
-            data: {
-              averageExamMark: averageMark,
-            },
-          });
-        } else {
+        if (!existingAssignment) {
+            const error = new Error("Assignment not found");
+            error.statusCode = 404;
+            throw error;
         }
 
-        // Update the previous student status to not be current
-        await prisma.studentStatus.updateMany({
-          where: {
-            studentId: student.id,
-            isCurrent: true,
-          },
-          data: {
-            isCurrent: false,
-            endDate: new Date(),
-          },
-        });
+        const parsedMark = parseFloat(mark);
+        let status = null;
+        let averageMark = parsedMark;
 
-        // Update the student status to indicate resubmission is required
-        await prisma.studentStatus.create({
-          data: {
-            student: { connect: { id: student.id } },
-            definition: { connect: { id: resubmissionRequiredStatus.id } },
-            isActive: true,
-            startDate: new Date(),
-            isCurrent: true,
-            updatedBy: { connect: { id: req.user.id } },
-          },
-        });
+        // Check if examiner is external
+        if (existingAssignment.examiner.type === "External") {
+            // Check if there is an active internal examiner
+            const internalExaminerAssignment =
+                existingAssignment.book.examinerAssignments.find(
+                    (assignment) =>
+                        assignment.examiner.type === "Internal" &&
+                        assignment.grade !== null &&
+                        assignment.id !== assignmentId &&
+                        assignment.isCurrent === true
+                );
 
-        // Update the previous book status to not be current
-        await prisma.bookStatus.updateMany({
-          where: {
-            bookId: existingAssignment.bookId,
-            isCurrent: true,
-          },
-          data: {
-            isCurrent: false,
-            endDate: new Date(),
-          },
-        });
+            console.log("internalExaminerAssignment", internalExaminerAssignment);
 
-        // Create new book status for resubmission
-        await prisma.bookStatus.create({
-          data: {
-            book: { connect: { id: existingAssignment.bookId } },
-            definition: { connect: { id: resubmissionRequiredStatus.id } },
-            isActive: true,
-            startDate: new Date(),
-            isCurrent: true,
-            // updatedBy: { connect: { id: req.user.id } },
-          },
-        });
-      } else {
-        status = "PASSED";
-        // If internal examiner exists, calculate average
-        if (internalExaminerAssignment) {
-          averageMark = (parsedMark + internalExaminerAssignment.grade) / 2;
+            const student = await prisma.student.findUnique({
+                where: {
+                    id: existingAssignment.book.studentId,
+                },
+            });
 
-          // Update the book with the average mark
-          await prisma.book.update({
+            const resubmissionRequiredStatus =
+                await prisma.statusDefinition.findFirst({
+                    where: {
+                        name: "failed & resubmission required",
+                    },
+                });
+
+            if (!resubmissionRequiredStatus) {
+                const error = new Error(
+                    "Resubmission required status definition not found"
+                );
+                error.statusCode = 404;
+                throw error;
+            }
+
+            const passedStatus = await prisma.statusDefinition.findFirst({
+                where: {
+                    name: "passed & authorized for viva",
+                },
+            });
+
+            if (!passedStatus) {
+                const error = new Error("Passed status definition not found");
+                error.statusCode = 404;
+                throw error;
+            }
+
+            // If mark is below 60%, status is failed
+            if (parsedMark < 60) {
+                status = "FAILED";
+                if (internalExaminerAssignment) {
+                    averageMark = (parsedMark + internalExaminerAssignment.grade) / 2;
+
+                    // Update the book with the average mark
+                    await prisma.book.update({
+                        where: {
+                            id: existingAssignment.bookId,
+                        },
+                        data: {
+                            averageExamMark: averageMark,
+                        },
+                    });
+                } else {
+                }
+
+                // Update the previous student status to not be current
+                await prisma.studentStatus.updateMany({
+                    where: {
+                        studentId: student.id,
+                        isCurrent: true,
+                    },
+                    data: {
+                        isCurrent: false,
+                        endDate: new Date(),
+                    },
+                });
+
+                // Update the student status to indicate resubmission is required
+                await prisma.studentStatus.create({
+                    data: {
+                        student: { connect: { id: student.id } },
+                        definition: { connect: { id: resubmissionRequiredStatus.id } },
+                        isActive: true,
+                        startDate: new Date(),
+                        isCurrent: true,
+                        updatedBy: { connect: { id: req.user.id } },
+                    },
+                });
+
+                // Update the previous book status to not be current
+                await prisma.bookStatus.updateMany({
+                    where: {
+                        bookId: existingAssignment.bookId,
+                        isCurrent: true,
+                    },
+                    data: {
+                        isCurrent: false,
+                        endDate: new Date(),
+                    },
+                });
+
+                // Create new book status for resubmission
+                await prisma.bookStatus.create({
+                    data: {
+                        book: { connect: { id: existingAssignment.bookId } },
+                        definition: { connect: { id: resubmissionRequiredStatus.id } },
+                        isActive: true,
+                        startDate: new Date(),
+                        isCurrent: true,
+                        // updatedBy: { connect: { id: req.user.id } },
+                    },
+                });
+            } else {
+                status = "PASSED";
+                // If internal examiner exists, calculate average
+                if (internalExaminerAssignment) {
+                    averageMark = (parsedMark + internalExaminerAssignment.grade) / 2;
+
+                    // Update the book with the average mark
+                    await prisma.book.update({
+                        where: {
+                            id: existingAssignment.bookId,
+                        },
+                        data: {
+                            averageExamMark: averageMark,
+                        },
+                    });
+
+                    if (averageMark >= 60) {
+                        // Update the previous student status to not be current
+                        await prisma.studentStatus.updateMany({
+                            where: {
+                                studentId: student.id,
+                                isCurrent: true,
+                            },
+                            data: {
+                                isCurrent: false,
+                                endDate: new Date(),
+                            },
+                        });
+
+                        // Update the student status to indicate resubmission is required
+                        await prisma.studentStatus.create({
+                            data: {
+                                student: { connect: { id: student.id } },
+                                definition: { connect: { id: passedStatus.id } },
+                                isActive: true,
+                                startDate: new Date(),
+                                isCurrent: true,
+                                updatedBy: { connect: { id: req.user.id } },
+                            },
+                        });
+
+                        // Update the previous book status to not be current
+                        await prisma.bookStatus.updateMany({
+                            where: {
+                                bookId: existingAssignment.bookId,
+                                isCurrent: true,
+                            },
+                            data: {
+                                isCurrent: false,
+                                endDate: new Date(),
+                            },
+                        });
+
+                        // Create new book status for resubmission
+                        await prisma.bookStatus.create({
+                            data: {
+                                book: { connect: { id: existingAssignment.bookId } },
+                                definition: { connect: { id: passedStatus.id } },
+                                isActive: true,
+                                startDate: new Date(),
+                                isCurrent: true,
+                                // updatedBy: { connect: { id: req.user.id } },
+                            },
+                        });
+                    } else {
+                        // Update the previous student status to not be current
+                        await prisma.studentStatus.updateMany({
+                            where: {
+                                studentId: student.id,
+                                isCurrent: true,
+                            },
+                            data: {
+                                isCurrent: false,
+                                endDate: new Date(),
+                            },
+                        });
+
+                        // Update the student status to indicate resubmission is required
+                        await prisma.studentStatus.create({
+                            data: {
+                                student: { connect: { id: student.id } },
+                                definition: { connect: { id: resubmissionRequiredStatus.id } },
+                                isActive: true,
+                                startDate: new Date(),
+                                isCurrent: true,
+                                updatedBy: { connect: { id: req.user.id } },
+                            },
+                        });
+
+                        // Update the previous book status to not be current
+                        await prisma.bookStatus.updateMany({
+                            where: {
+                                bookId: existingAssignment.bookId,
+                                isCurrent: true,
+                            },
+                            data: {
+                                isCurrent: false,
+                                endDate: new Date(),
+                            },
+                        });
+
+                        // Create new book status for resubmission
+                        await prisma.bookStatus.create({
+                            data: {
+                                book: { connect: { id: existingAssignment.bookId } },
+                                definition: { connect: { id: resubmissionRequiredStatus.id } },
+                                isActive: true,
+                                startDate: new Date(),
+                                isCurrent: true,
+                                // updatedBy: { connect: { id: req.user.id } },
+                            },
+                        });
+                    }
+                }
+            }
+        }
+
+        // Update the assignment with mark, comments and status
+        const updatedAssignment = await prisma.examinerBookAssignment.update({
             where: {
-              id: existingAssignment.bookId,
+                id: assignmentId,
             },
             data: {
-              averageExamMark: averageMark,
+                grade: parsedMark,
+                feedback: comments,
+                reportSubmittedAt: new Date(),
+                status: status,
             },
-          });
+        });
 
-          if (averageMark >= 60) {
-            // Update the previous student status to not be current
-            await prisma.studentStatus.updateMany({
-              where: {
-                studentId: student.id,
-                isCurrent: true,
-              },
-              data: {
-                isCurrent: false,
-                endDate: new Date(),
-              },
-            });
-
-            // Update the student status to indicate resubmission is required
-            await prisma.studentStatus.create({
-              data: {
-                student: { connect: { id: student.id } },
-                definition: { connect: { id: passedStatus.id } },
-                isActive: true,
-                startDate: new Date(),
-                isCurrent: true,
-                updatedBy: { connect: { id: req.user.id } },
-              },
-            });
-
-            // Update the previous book status to not be current
-            await prisma.bookStatus.updateMany({
-              where: {
-                bookId: existingAssignment.bookId,
-                isCurrent: true,
-              },
-              data: {
-                isCurrent: false,
-                endDate: new Date(),
-              },
-            });
-
-            // Create new book status for resubmission
-            await prisma.bookStatus.create({
-              data: {
-                book: { connect: { id: existingAssignment.bookId } },
-                definition: { connect: { id: passedStatus.id } },
-                isActive: true,
-                startDate: new Date(),
-                isCurrent: true,
-                // updatedBy: { connect: { id: req.user.id } },
-              },
-            });
-          } else {
-            // Update the previous student status to not be current
-            await prisma.studentStatus.updateMany({
-              where: {
-                studentId: student.id,
-                isCurrent: true,
-              },
-              data: {
-                isCurrent: false,
-                endDate: new Date(),
-              },
-            });
-
-            // Update the student status to indicate resubmission is required
-            await prisma.studentStatus.create({
-              data: {
-                student: { connect: { id: student.id } },
-                definition: { connect: { id: resubmissionRequiredStatus.id } },
-                isActive: true,
-                startDate: new Date(),
-                isCurrent: true,
-                updatedBy: { connect: { id: req.user.id } },
-              },
-            });
-
-            // Update the previous book status to not be current
-            await prisma.bookStatus.updateMany({
-              where: {
-                bookId: existingAssignment.bookId,
-                isCurrent: true,
-              },
-              data: {
-                isCurrent: false,
-                endDate: new Date(),
-              },
-            });
-
-            // Create new book status for resubmission
-            await prisma.bookStatus.create({
-              data: {
-                book: { connect: { id: existingAssignment.bookId } },
-                definition: { connect: { id: resubmissionRequiredStatus.id } },
-                isActive: true,
-                startDate: new Date(),
-                isCurrent: true,
-                // updatedBy: { connect: { id: req.user.id } },
-              },
-            });
-          }
+        res.status(200).json({
+            message: "Examiner mark updated successfully",
+            assignment: updatedAssignment,
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
         }
-      }
+        next(error);
     }
-
-    // Update the assignment with mark, comments and status
-    const updatedAssignment = await prisma.examinerBookAssignment.update({
-      where: {
-        id: assignmentId,
-      },
-      data: {
-        grade: parsedMark,
-        feedback: comments,
-        reportSubmittedAt: new Date(),
-        status: status,
-      },
-    });
-
-    res.status(200).json({
-      message: "Examiner mark updated successfully",
-      assignment: updatedAssignment,
-    });
-  } catch (error) {
-    if (!error.statusCode) {
-      error.statusCode = 500;
-    }
-    next(error);
-  }
 };
 
 // Controller for updating an examiner
@@ -6919,15 +6916,15 @@ export const deleteExaminer = async (req, res, next) => {
 // Create a new user
 export const createUser = async (req, res, next) => {
     try {
-        const { 
-            name, 
-            email, 
-            role, 
-            password, 
-            title, 
-            phone, 
-            designation, 
-            campus 
+        const {
+            name,
+            email,
+            role,
+            password,
+            title,
+            phone,
+            designation,
+            campus
         } = req.body;
 
         // Validate required fields
@@ -6993,7 +6990,7 @@ export const getAllUsers = async (req, res, next) => {
                     not: loggedInUserId
                 },
                 role: {
-                    in: ['SUPERADMIN', 'RESEARCH_ADMIN', 'MANAGER', 'REGISTRY_ADMIN']
+                    in: ['SUPERADMIN', 'RESEARCH_ADMIN', 'AUDITOR', 'MANAGER', 'REGISTRY_ADMIN']
                 }
             },
             select: {
@@ -7054,7 +7051,7 @@ export const deactivateUser = async (req, res, next) => {
         // Update user to deactivated status
         const deactivatedUser = await prisma.user.update({
             where: { id: userId },
-            data: { 
+            data: {
                 isActive: false,
                 deactivatedAt: new Date(),
                 deactivatedBy: req.user ? { connect: { id: req.user.id } } : undefined
@@ -7103,7 +7100,7 @@ export const reactivateUser = async (req, res, next) => {
         // Update user to activated status
         const reactivatedUser = await prisma.user.update({
             where: { id: userId },
-            data: { 
+            data: {
                 isActive: true,
                 deactivatedAt: null,
                 reactivatedAt: new Date(),
@@ -7154,7 +7151,7 @@ export const updateUser = async (req, res, next) => {
         // Prepare update data
         const updateData = {};
         const changes = {};
-        
+
         if (name && name !== existingUser.name) {
             updateData.name = name;
             changes.oldName = existingUser.name;
@@ -7162,7 +7159,7 @@ export const updateUser = async (req, res, next) => {
         } else if (name) {
             updateData.name = name;
         }
-        
+
         if (email && email !== existingUser.email) {
             updateData.email = email;
             changes.oldEmail = existingUser.email;
@@ -7170,7 +7167,7 @@ export const updateUser = async (req, res, next) => {
         } else if (email) {
             updateData.email = email;
         }
-        
+
         if (phone && phone !== existingUser.phone) {
             updateData.phone = phone;
             changes.oldPhone = existingUser.phone;
@@ -7178,7 +7175,7 @@ export const updateUser = async (req, res, next) => {
         } else if (phone) {
             updateData.phone = phone;
         }
-        
+
         if (designation && designation !== existingUser.designation) {
             updateData.designation = designation;
             changes.oldDesignation = existingUser.designation;
@@ -7186,16 +7183,16 @@ export const updateUser = async (req, res, next) => {
         } else if (designation) {
             updateData.designation = designation;
         }
-        
+
         // if (role && role !== existingUser.role) {
         //     updateData.role = role;
         //     changes.push({ field: 'role', oldValue: existingUser.role, newValue: role });
         // } else if (role) {
         //     updateData.role = role;
         // }
-        
-    
-        
+
+
+
         // Handle campus connection/disconnection
         // if (campusId) {
         //     updateData.campus = { connect: { id: campusId } };
@@ -7212,19 +7209,19 @@ export const updateUser = async (req, res, next) => {
         // Remove password from response
         const { password: _, ...userWithoutPassword } = updatedUser;
 
-          // Store changes in the update data if there are any
-          if (Object.keys(changes).length > 0) {
+        // Store changes in the update data if there are any
+        if (Object.keys(changes).length > 0) {
             // Log activity
-       await prisma.userActivity.create({
-           data: {
-               userId: req.user.id,
-               action: `Updated user: ${existingUser.name}`,
-               entityType: 'user',
-               entityId: userId,
-               details: JSON.stringify(changes)
-           }
-       });
-       }
+            await prisma.userActivity.create({
+                data: {
+                    userId: req.user.id,
+                    action: `Updated user: ${existingUser.name}`,
+                    entityType: 'user',
+                    entityId: userId,
+                    details: JSON.stringify(changes)
+                }
+            });
+        }
 
         res.status(200).json({
             message: 'User updated successfully',
@@ -7268,7 +7265,7 @@ export const getUser = async (req, res, next) => {
         // Fetch user activities
         const activities = await prisma.userActivity.findMany({
             where: { userId },
-            
+
             orderBy: { timestamp: 'desc' }
         });
 
@@ -7283,6 +7280,36 @@ export const getUser = async (req, res, next) => {
 
     } catch (error) {
         console.error('Error in getUser:', error);
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+// Fetch all user activities (for Auditor/SuperAdmin)
+export const getAllActivities = async (req, res, next) => {
+    try {
+        const activities = await prisma.userActivity.findMany({
+            include: {
+                user: {
+                    select: {
+                        name: true,
+                        email: true,
+                        role: true,
+                        title: true
+                    }
+                }
+            },
+            orderBy: {
+                timestamp: 'desc'
+            }
+        });
+
+        res.status(200).json({
+            message: 'Activities fetched successfully',
+            activities
+        });
+    } catch (error) {
         if (!error.statusCode) {
             error.statusCode = 500;
         }
@@ -7550,7 +7577,7 @@ export const addPanelistsToBook = async (req, res, next) => {
 // Controller for accessing the research centre portal
 export const accessManagementPortal = (req, res) => {
     res.send('Welcome to the Research Centre Portal');
-}; 
+};
 /** PROPOSAL DEFENSE CONTROLLERS */
 // Controller for scheduling a proposal defense
 export const scheduleProposalDefense = async (req, res, next) => {
@@ -7662,13 +7689,13 @@ export const scheduleProposalDefense = async (req, res, next) => {
         if (waitingForDefenseStatus) {
             // Set all current proposal statuses to not current
             await prisma.proposalStatus.updateMany({
-                where: { 
+                where: {
                     proposalId: proposalId,
-                    isCurrent: true 
+                    isCurrent: true
                 },
-                data: { 
-                    isCurrent: false, 
-                    endDate: new Date() 
+                data: {
+                    isCurrent: false,
+                    endDate: new Date()
                 }
             });
 
@@ -7749,7 +7776,7 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
         // Check if defense exists
         const existingDefense = await prisma.proposalDefense.findUnique({
             where: { id: defenseId },
-            include: { 
+            include: {
                 proposal: {
                     include: {
                         student: true
@@ -7805,7 +7832,7 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
         if (defenseStatus === 'COMPLETED' || defenseStatus === 'FAILED') {
             // Get appropriate status definition based on verdict
             const statusDefinitionName = defenseStatus === 'COMPLETED' ? 'passed-proposal graded' : 'failed-proposal graded';
-            
+
             const statusDefinition = await prisma.statusDefinition.findFirst({
                 where: { name: statusDefinitionName }
             });
@@ -7944,7 +7971,7 @@ export const createStaffMember = async (req, res, next) => {
             externalDepartment,
             externalLocation,
             isExternal,
-          
+
         } = req.body;
 
         // Check if staff member with email already exists
@@ -7979,7 +8006,7 @@ export const createStaffMember = async (req, res, next) => {
             institutionalConnections.isExternal = true;
         }
 
-    
+
 
         // Create staff member
         const staffMember = await prisma.staffMember.create({
@@ -7997,7 +8024,7 @@ export const createStaffMember = async (req, res, next) => {
                 isActive: true,
                 createdBy: { connect: { id: req.user.id } },
                 ...institutionalConnections,
-                
+
             },
             include: {
                 supervisor: true,
@@ -8007,7 +8034,7 @@ export const createStaffMember = async (req, res, next) => {
                 school: true,
                 department: true,
                 campus: true,
-              
+
                 createdBy: {
                     select: {
                         id: true,
@@ -8081,7 +8108,7 @@ export const getAllStaffMembers = async (req, res, next) => {
         }
 
         const staffMembers = await prisma.staffMember.findMany({
-            
+
             include: {
                 supervisor: true,
                 examiner: true,
@@ -8090,7 +8117,7 @@ export const getAllStaffMembers = async (req, res, next) => {
                 school: true,
                 department: true,
                 campus: true,
-               
+
                 createdBy: {
                     select: {
                         id: true,
@@ -8140,7 +8167,7 @@ export const getStaffMember = async (req, res, next) => {
                 school: true,
                 department: true,
                 campus: true,
-               
+
                 createdBy: {
                     select: {
                         id: true,
@@ -8203,7 +8230,7 @@ export const updateStaffMember = async (req, res, next) => {
             externalDepartment,
             externalLocation,
             isExternal,
-      
+
         } = req.body;
 
         // Check if staff member exists
@@ -8238,7 +8265,7 @@ export const updateStaffMember = async (req, res, next) => {
             institutionalConnections.externalInstitution = null;
             institutionalConnections.externalDepartment = null;
             institutionalConnections.externalLocation = null;
-            
+
             if (schoolId !== undefined) {
                 institutionalConnections.school = schoolId ? { connect: { id: schoolId } } : { disconnect: true };
             }
@@ -8278,14 +8305,14 @@ export const updateStaffMember = async (req, res, next) => {
                 isActive,
                 updatedBy: { connect: { id: req.user.id } },
                 ...institutionalConnections,
-               
+
             },
             include: {
                 supervisor: true,
                 examiner: true,
                 reviewer: true,
                 panelist: true,
-              
+
                 createdBy: {
                     select: {
                         id: true,
@@ -8358,7 +8385,7 @@ export const getStaffMembersByRole = async (req, res, next) => {
 
         // Build where clause based on role
         let whereClause = { isActive: true };
-        
+
         switch (role) {
             case 'supervisor':
                 whereClause.supervisorId = { not: null };
@@ -8389,7 +8416,7 @@ export const getStaffMembersByRole = async (req, res, next) => {
                 examiner: true,
                 reviewer: true,
                 panelist: true,
-                
+
             },
             orderBy: {
                 name: 'asc'
@@ -8549,7 +8576,7 @@ export const createSupervisorFromStaff = async (req, res, next) => {
                 department: { connect: { id: staffMember.departmentId } },
                 user: { connect: { id: newUser.id } }
             },
-            include: { 
+            include: {
                 user: true,
                 school: true,
                 campus: true,
@@ -8862,11 +8889,11 @@ export const createExaminerFromStaff = async (req, res, next) => {
 // Create a new research clinic day
 export const createResearchClinicDay = async (req, res, next) => {
     try {
-        const { 
-            startTime, 
-            endTime, 
-            maxBookings, 
-            zoomLink, 
+        const {
+            startTime,
+            endTime,
+            maxBookings,
+            zoomLink,
             description,
             selectedDaysOfWeek,
             weekStartDate,
@@ -9215,11 +9242,11 @@ export const updateResearchClinicDay = async (req, res, next) => {
 
         // Check if this is a parent clinic day (week-based and no parent itself)
         const isParentClinicDay = clinicDay.isWeekBased && !clinicDay.parentClinicDayId;
-        
+
         // If this is a parent clinic day and week-based fields were updated, regenerate sessions
         if (isParentClinicDay && (selectedDaysOfWeek !== undefined || weekStartDate !== undefined || numberOfWeeks !== undefined)) {
             console.log('Regenerating sessions for parent clinic day:', id);
-            
+
             // Delete existing generated sessions
             await prisma.researchClinicDay.deleteMany({
                 where: {
@@ -9624,7 +9651,7 @@ export const deleteResearchClinicDay = async (req, res, next) => {
 export const getReallocationStatistics = async (req, res, next) => {
     try {
         const { startDate, endDate, supervisorId } = req.query;
-        
+
         // Build date filter
         const dateFilter = {};
         if (startDate && endDate) {
@@ -9675,7 +9702,7 @@ export const getReallocationStatistics = async (req, res, next) => {
         // Filter by specific supervisor if provided
         let filteredActivities = parsedActivities;
         if (supervisorId) {
-            filteredActivities = parsedActivities.filter(activity => 
+            filteredActivities = parsedActivities.filter(activity =>
                 activity.oldSupervisorId === supervisorId || activity.newSupervisorId === supervisorId
             );
         }
@@ -9683,10 +9710,10 @@ export const getReallocationStatistics = async (req, res, next) => {
         // Calculate statistics
         const totalReallocations = filteredActivities.length;
         const uniqueStudentsReallocated = new Set(filteredActivities.map(a => a.studentId)).size;
-        
+
         // Count supervisors who lost students
         const supervisorsWhoLostStudents = new Set(filteredActivities.map(a => a.oldSupervisorId)).size;
-        
+
         // Count supervisors who gained students
         const supervisorsWhoGainedStudents = new Set(filteredActivities.map(a => a.newSupervisorId)).size;
 
@@ -9760,7 +9787,7 @@ export const getReallocationStatistics = async (req, res, next) => {
                 uniqueStudentsReallocated,
                 supervisorsWhoLostStudents,
                 supervisorsWhoGainedStudents,
-                averageReallocationsPerStudent: uniqueStudentsReallocated > 0 ? 
+                averageReallocationsPerStudent: uniqueStudentsReallocated > 0 ?
                     (totalReallocations / uniqueStudentsReallocated).toFixed(2) : 0
             },
             supervisorStats: sortedSupervisors,
@@ -9882,18 +9909,18 @@ export const createCourse = async (req, res, next) => {
 export const getAllCourses = async (req, res, next) => {
     try {
         const { campusId, schoolId, isActive, page = 1, limit = 50 } = req.query;
-        
+
         // Build where clause
         const where = {};
-        
+
         if (campusId) {
             where.campusId = campusId;
         }
-        
+
         if (schoolId) {
             where.schoolId = schoolId;
         }
-        
+
         if (isActive !== undefined) {
             where.isActive = isActive === 'true';
         }
@@ -10127,7 +10154,7 @@ export const deleteCourse = async (req, res, next) => {
         // Check if course is being used by any students or other entities
         // You can add additional checks here if needed
         // For example, check if any students are enrolled in this course
-        
+
         // Soft delete by setting isActive to false
         const deletedCourse = await prisma.course.update({
             where: { id: parseInt(id) },
