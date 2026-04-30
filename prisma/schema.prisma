@@ -139,6 +139,9 @@ model userActivity {
   entityType  String   // e.g., "Proposal", "Student", "Viva"
   entityId    String   // ID of the affected entity
   details     String?  // Additional details about the activity (e.g. tracked changes)
+  browserAgent String? // Browser Agent used by the client
+  ipAddress   String?  // IP Address of the client
+  deviceId    String?  // Device fingerprint ID
   timestamp   DateTime @default(now())
 }
 
