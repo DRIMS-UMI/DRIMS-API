@@ -2771,6 +2771,9 @@ export const generateDefenseReport = async (req, res) => {
     // Log activity
     await prisma.userActivity.create({
       data: {
+                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                deviceId: req?.headers['x-device-id'] || 'Unknown',
+                browserAgent: req?.headers['user-agent'] || 'Unknown',
         userId: req.user.id,
         action: `Generated defense report for ${studentName} (${regNo})`,
         entityType: "DefenseReport",
@@ -4211,6 +4214,9 @@ export const scheduleProposalDefense = async (req, res, next) => {
     // Log activity
     await prisma.userActivity.create({
       data: {
+                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                deviceId: req?.headers['x-device-id'] || 'Unknown',
+                browserAgent: req?.headers['user-agent'] || 'Unknown',
         userId: req.user.id,
         action: `Scheduled proposal defense for ${
           existingProposal.student?.firstName || "Unknown Student"
@@ -4590,6 +4596,9 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
     // Log activity
     await prisma.userActivity.create({
       data: {
+                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                deviceId: req?.headers['x-device-id'] || 'Unknown',
+                browserAgent: req?.headers['user-agent'] || 'Unknown',
         userId: req.user.id,
         action: `Recorded proposal defense verdict (${verdict}) for ${
           existingDefense.proposal.student?.firstName || "Unknown Student"
@@ -6390,6 +6399,9 @@ export const assignStudentsToSupervisor = async (req, res, next) => {
     // Track this activity
     await prisma.userActivity.create({
       data: {
+                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                deviceId: req?.headers['x-device-id'] || 'Unknown',
+                browserAgent: req?.headers['user-agent'] || 'Unknown',
         user: { connect: { id: req.user?.id } },
         action: "ASSIGN_STUDENTS",
         entityType: "Supervisor",
@@ -6543,6 +6555,9 @@ export const changeStudentSupervisor = async (req, res, next) => {
     // Track this activity
     await prisma.userActivity.create({
       data: {
+                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                deviceId: req?.headers['x-device-id'] || 'Unknown',
+                browserAgent: req?.headers['user-agent'] || 'Unknown',
         user: { connect: { id: req.user?.id } },
         action: "CHANGE_SUPERVISOR",
         entityType: "Student",

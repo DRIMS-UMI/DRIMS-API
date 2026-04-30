@@ -516,6 +516,9 @@ export const recordVivaVerdict = async (req, res, next) => {
         // Log activity
         await prisma.userActivity.create({
             data: {
+                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                deviceId: req?.headers['x-device-id'] || 'Unknown',
+                browserAgent: req?.headers['user-agent'] || 'Unknown',
                 userId: req.user.id,
                 action: `Recorded viva verdict: ${verdict} with marks (External: ${externalMark}, Internal: ${internalMark}) for ${existingViva.book?.title || `Book ID: ${existingViva.bookId}`}`,
                 entityId: existingViva.bookId,
@@ -780,6 +783,9 @@ export const scheduleViva = async (req, res, next) => {
         // Log activity
         await prisma.userActivity.create({
             data: {
+                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                deviceId: req?.headers['x-device-id'] || 'Unknown',
+                browserAgent: req?.headers['user-agent'] || 'Unknown',
                 userId: req.user.id,
                 action: `Scheduled viva for ${existingBook.student?.firstName || "Unknown Student"
                     } ${existingBook.student?.lastName || ""} with chairperson: ${chairpersonName}, reviewers: ${reviewerNames}`,
@@ -1231,6 +1237,9 @@ export const updateMinutesSentDate = async (req, res, next) => {
         // Log activity
         await prisma.userActivity.create({
             data: {
+                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                deviceId: req?.headers['x-device-id'] || 'Unknown',
+                browserAgent: req?.headers['user-agent'] || 'Unknown',
                 userId: req.user.id,
                 action: `Updated minutes sent date to ${new Date(minutesSentDate).toISOString().split('T')[0]} for book: ${existingBook.title || `Book for ${existingBook.student?.firstName || 'Unknown Student'}`}`,
                 entityId: updatedBook.id,
@@ -1357,6 +1366,9 @@ export const updateComplianceReportDate = async (req, res, next) => {
         // Log activity
         await prisma.userActivity.create({
             data: {
+                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                deviceId: req?.headers['x-device-id'] || 'Unknown',
+                browserAgent: req?.headers['user-agent'] || 'Unknown',
                 userId: req.user.id,
                 action: `Updated compliance report date to ${new Date(complianceReportDate).toISOString().split('T')[0]} and actual topic for book: ${existingBook.title || `Book for ${existingBook.student?.firstName || 'Unknown Student'}`}`,
                 entityId: updatedBook.id,
@@ -1452,6 +1464,9 @@ export const updateResultsApprovalDate = async (req, res, next) => {
         // Log activity
         await prisma.userActivity.create({
             data: {
+                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                deviceId: req?.headers['x-device-id'] || 'Unknown',
+                browserAgent: req?.headers['user-agent'] || 'Unknown',
                 userId: req.user.id,
                 action: `Updated results approval date to ${new Date(resultsApprovedDate).toISOString().split('T')[0]} for student: ${student.firstName} ${student.lastName}`,
                 entityId: studentId,
@@ -1550,6 +1565,9 @@ export const updateResultsSentDate = async (req, res, next) => {
         // Log activity
         await prisma.userActivity.create({
             data: {
+                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                deviceId: req?.headers['x-device-id'] || 'Unknown',
+                browserAgent: req?.headers['user-agent'] || 'Unknown',
                 userId: req.user.id,
                 action: `Updated results sent date to ${new Date(resultsSentDate).toISOString().split('T')[0]} for student: ${student.firstName} ${student.lastName}`,
                 entityId: studentId,
@@ -1645,6 +1663,9 @@ export const updateSenateApprovalDate = async (req, res, next) => {
         // Log activity
         await prisma.userActivity.create({
             data: {
+                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                deviceId: req?.headers['x-device-id'] || 'Unknown',
+                browserAgent: req?.headers['user-agent'] || 'Unknown',
                 userId: req.user.id,
                 action: `Updated senate approval date to ${new Date(senateApprovalDate).toISOString().split('T')[0]} for student: ${student.firstName} ${student.lastName}`,
                 entityId: studentId,
