@@ -808,8 +808,7 @@ export const getAllSchools = async (req, res, next) => {
         const schools = await prisma.school.findMany({
             include: {
                 campus: true,
-                departments: true,
-                members: true
+                departments: true
             }
         });
 
@@ -834,8 +833,7 @@ export const getSchool = async (req, res, next) => {
             where: { id: schoolId },
             include: {
                 campus: true,
-                departments: true,
-                members: true
+                departments: true
             }
         });
 
@@ -893,8 +891,7 @@ export const updateSchool = async (req, res, next) => {
             data: updateData,
             include: {
                 campus: true,
-                departments: true,
-                members: true
+                departments: true
             }
         });
 
@@ -938,7 +935,6 @@ export const deleteSchool = async (req, res, next) => {
             include: {
                 _count: {
                     select: {
-                        members: true,
                         departments: true,
                         facultyMembers: true,
                         supervisors: true,

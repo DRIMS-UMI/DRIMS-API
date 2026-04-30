@@ -6022,9 +6022,8 @@ export const getAllSchools = async (req, res, next) => {
     const schools = await prisma.school.findMany({
       include: {
         campus: true,
-        departments: true,
-        members: true,
-      },
+        departments: true
+      }
     });
 
     res.status(200).json({
