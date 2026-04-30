@@ -536,220 +536,25 @@ export const addSchool = async (req, res, next) => {
             }
         });
 
-        res.status(201).json({
-            message: 'School created successfully',
-            school
-        });
-
-    } catch (error) {
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
-    }
-};
-
-// Controller for adding Dean and PA to a school
-export const addSchoolMembers = async (req, res, next) => {
-    try {
-        const { schoolId } = req.params;
-        const { dean, pa } = req.body;
-
-        console.log('schoolId', schoolId);
-        // Check if school exists
-        const school = await prisma.school.findUnique({
-            where: { id: schoolId }
-        });
-
-        if (!school) {
-            const error = new Error('School not found');
-            error.statusCode = 404;
-            throw error;
-        }
-
-        let deanMember = null;
-        // Only process dean if details provided
-        if (dean && dean.email) {
-            // Check if dean email already exists
-            const existingDean = await prisma.schoolMember.findFirst({
-                where: { email: dean.email }
-            });
-
-            if (existingDean) {
-                const error = new Error('Dean with this email already exists');
-                error.statusCode = 400;
-                throw error;
-            }
-
-            // Find current dean if exists and make them not current
-            const currentDean = await prisma.schoolMember.findFirst({
-                where: {
-                    schoolId,
-                    role: 'Dean',
-                    isCurrent: true
-                }
-            });
-
-            if (currentDean) {
-                await prisma.schoolMember.update({
-                    where: { id: currentDean.id },
-                    data: { isCurrent: false }
-                });
-            }
-
-            // Create Dean
-            deanMember = await prisma.schoolMember.create({
+        // Log the activity
+        if (req.user?.id) {
+            await prisma.userActivity.create({
                 data: {
-                    schoolId,
-                    name: dean.name,
-                    contact: dean.contact,
-                    email: dean.email,
-                    role: 'Dean',
-                    isCurrent: dean.isCurrent || true
-                }
-            });
-        }
-
-        let paMember = null;
-        // Create PA only if PA details are provided
-        if (pa) {
-            paMember = await prisma.schoolMember.create({
-                data: {
-                    schoolId,
-                    name: pa.name,
-                    contact: pa.contact,
-                    email: pa.email,
-                    role: 'Personal Assistant',
-                    isCurrent: pa.isCurrent || true
+                    ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                    deviceId: req?.headers['x-device-id'] || 'Unknown',
+                    action: 'Created School',
+                    entityType: 'School',
+                    entityId: school.id,
+                    details: JSON.stringify({ name: school.name, code: school.code }),
+                    userId: req.user.id,
+                    browserAgent: req?.headers['user-agent'] || 'Unknown',
                 }
             });
         }
 
         res.status(201).json({
-            message: 'School members added successfully',
-            ...(deanMember && { dean: deanMember }),
-            ...(paMember && { pa: paMember })
-        });
-
-    } catch (error) {
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
-    }
-};
-
-// Controller for updating school members
-export const updateSchoolMembers = async (req, res, next) => {
-    try {
-        const { schoolId } = req.params;
-        const { dean, pa } = req.body;
-
-        console.log('dean', dean);
-
-        // Update Dean
-        if (dean) {
-            // Check if a school member with the given email already exists
-            const existingDean = await prisma.schoolMember.findUnique({
-                where: { email: dean.email }
-            });
-
-            if (existingDean) {
-                // If the existing member is not the current dean, update their details
-                if (existingDean.role !== 'Dean' || existingDean.schoolId !== schoolId) {
-                    await prisma.schoolMember.update({
-                        where: { id: existingDean.id },
-                        data: {
-                            schoolId,
-                            name: dean.name,
-                            contact: dean.contact,
-                            role: 'Dean',
-                            isCurrent: true
-                        }
-                    });
-                } else {
-                    // If the existing member is already the current dean, update their details
-                    await prisma.schoolMember.update({
-                        where: { id: existingDean.id },
-                        data: {
-                            name: dean.name,
-                            contact: dean.contact,
-                            isCurrent: true
-                        }
-                    });
-                }
-            } else {
-                // If no member with the email exists, create a new dean
-                await prisma.schoolMember.create({
-                    data: {
-                        schoolId,
-                        name: dean.name,
-                        contact: dean.contact,
-                        email: dean.email,
-                        role: 'Dean',
-                        isCurrent: true
-                    }
-                });
-            }
-        }
-
-        // Update PA
-        if (pa) {
-            // Check if a school member with the given email already exists
-            const existingPA = await prisma.schoolMember.findUnique({
-                where: { email: pa.email }
-            });
-
-            if (existingPA) {
-                // If the existing member is not the current PA, update their details
-                if (existingPA.role !== 'Personal Assistant' || existingPA.schoolId !== schoolId) {
-                    await prisma.schoolMember.update({
-                        where: { id: existingPA.id },
-                        data: {
-                            schoolId,
-                            name: pa.name,
-                            contact: pa.contact,
-                            role: 'Personal Assistant',
-                            isCurrent: true
-                        }
-                    });
-                } else {
-                    // If the existing member is already the current PA, update their details
-                    await prisma.schoolMember.update({
-                        where: { id: existingPA.id },
-                        data: {
-                            name: pa.name,
-                            contact: pa.contact,
-                            isCurrent: true
-                        }
-                    });
-                }
-            } else {
-                // If no member with the email exists, create a new PA
-                await prisma.schoolMember.create({
-                    data: {
-                        schoolId,
-                        name: pa.name,
-                        contact: pa.contact,
-                        email: pa.email,
-                        role: 'Personal Assistant',
-                        isCurrent: true
-                    }
-                });
-            }
-        }
-
-        // Get updated school members
-        const updatedMembers = await prisma.schoolMember.findMany({
-            where: {
-                schoolId,
-                isCurrent: true
-            }
-        });
-
-        res.status(200).json({
-            message: 'School members updated successfully',
-            members: updatedMembers
+            message: 'School created successfully',
+            school
         });
 
     } catch (error) {
@@ -1058,13 +863,34 @@ export const updateSchool = async (req, res, next) => {
         const { schoolId } = req.params;
         const { name, code, url } = req.body;
 
+        // Get existing school data before update
+        const existingSchool = await prisma.school.findUnique({
+            where: { id: schoolId }
+        });
+
+        if (!existingSchool) {
+            const error = new Error('School not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        const updateData = { name, code, url };
+
+        // Track changes
+        const changes = [];
+        Object.keys(updateData).forEach(key => {
+            if (updateData[key] !== undefined && updateData[key] !== existingSchool[key]) {
+                changes.push({
+                    field: key,
+                    oldValue: existingSchool[key],
+                    newValue: updateData[key]
+                });
+            }
+        });
+
         const updatedSchool = await prisma.school.update({
             where: { id: schoolId },
-            data: {
-                name,
-                code,
-                url
-            },
+            data: updateData,
             include: {
                 campus: true,
                 departments: true,
@@ -1072,9 +898,26 @@ export const updateSchool = async (req, res, next) => {
             }
         });
 
+        // Log the activity
+        if (req.user?.id) {
+            await prisma.userActivity.create({
+                data: {
+                    ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                    deviceId: req?.headers['x-device-id'] || 'Unknown',
+                    action: 'Updated School',
+                    entityType: 'School',
+                    entityId: updatedSchool.id,
+                    details: JSON.stringify(changes),
+                    userId: req.user.id,
+                    browserAgent: req?.headers['user-agent'] || 'Unknown',
+                }
+            });
+        }
+
         res.status(200).json({
             message: 'School updated successfully',
-            school: updatedSchool
+            school: updatedSchool,
+            changes
         });
     } catch (error) {
         if (!error.statusCode) {
@@ -1089,30 +932,61 @@ export const deleteSchool = async (req, res, next) => {
     try {
         const { schoolId } = req.params;
 
-        // First remove the school reference from campus
-        const school = await prisma.school.findUnique({
+        // Check if there are any attached entries
+        const schoolWithRelations = await prisma.school.findUnique({
             where: { id: schoolId },
-            select: { campusId: true }
-        });
-
-        await prisma.campus.update({
-            where: { id: school.campusId },
-            data: {
-                schoolIds: {
-                    set: await prisma.campus.findUnique({
-                        where: { id: school.campusId },
-                        select: { schoolIds: true }
-                    }).then(campus =>
-                        campus.schoolIds.filter(id => id !== schoolId)
-                    )
+            include: {
+                _count: {
+                    select: {
+                        members: true,
+                        departments: true,
+                        facultyMembers: true,
+                        supervisors: true,
+                        students: true,
+                        examiners: true,
+                        staffMembers: true,
+                        courses: true
+                    }
                 }
             }
         });
 
-        // Then delete the school
+        if (!schoolWithRelations) {
+            const error = new Error('School not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        const counts = schoolWithRelations._count;
+        const totalRelations = counts.members + counts.departments + counts.facultyMembers + 
+                               counts.supervisors + counts.students + counts.examiners + 
+                               counts.staffMembers + counts.courses;
+
+        if (totalRelations > 0) {
+            const error = new Error(`Cannot delete school. It has attached entities (${totalRelations} total). Please reassign or delete them first.`);
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Delete the school (Prisma will automatically handle removing it from the campus relation)
         await prisma.school.delete({
             where: { id: schoolId }
         });
+
+        // Log the activity
+        if (req.user?.id) {
+            await prisma.userActivity.create({
+                data: {
+                    ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                    deviceId: req?.headers['x-device-id'] || 'Unknown',
+                    action: 'Deleted School',
+                    entityType: 'School',
+                    entityId: schoolId,
+                    userId: req.user.id,
+                    browserAgent: req?.headers['user-agent'] || 'Unknown',
+                }
+            });
+        }
 
         res.status(200).json({
             message: 'School deleted successfully'
@@ -1360,6 +1234,9 @@ export const updateFacultyMember = async (req, res, next) => {
         // Log the activity
         await prisma.userActivity.create({
             data: {
+                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                deviceId: req?.headers['x-device-id'] || 'Unknown',
+                browserAgent: req?.headers['user-agent'] || 'Unknown',
                 action: 'UPDATE_FACULTY',
                 entityId: facultyId,
                 entityType: 'FACULTY',
@@ -1478,6 +1355,9 @@ export const deleteFacultyMember = async (req, res, next) => {
         // Create user activity log
         await prisma.userActivity.create({
             data: {
+                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                deviceId: req?.headers['x-device-id'] || 'Unknown',
+                browserAgent: req?.headers['user-agent'] || 'Unknown',
                 action: "Deleted Faculty Member",
                 entityType: "FacultyMember",
                 entityId: facultyId,
@@ -2240,6 +2120,9 @@ export const assignSupervisorsToStudent = async (req, res, next) => {
         // Track this activity
         await prisma.userActivity.create({
             data: {
+                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                deviceId: req?.headers['x-device-id'] || 'Unknown',
+                browserAgent: req?.headers['user-agent'] || 'Unknown',
                 user: { connect: { id: req.user?.id } },
                 action: 'ASSIGN_SUPERVISORS',
                 entityType: 'Student',
@@ -2425,6 +2308,9 @@ export const assignStudentsToSupervisor = async (req, res, next) => {
         // Track this activity
         await prisma.userActivity.create({
             data: {
+                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                deviceId: req?.headers['x-device-id'] || 'Unknown',
+                browserAgent: req?.headers['user-agent'] || 'Unknown',
                 user: { connect: { id: req.user?.id } },
                 action: 'ASSIGN_STUDENTS',
                 entityType: 'Supervisor',
@@ -2528,6 +2414,9 @@ export const changeStudentSupervisor = async (req, res, next) => {
         // Track this activity
         await prisma.userActivity.create({
             data: {
+                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                deviceId: req?.headers['x-device-id'] || 'Unknown',
+                browserAgent: req?.headers['user-agent'] || 'Unknown',
                 user: { connect: { id: req.user?.id } },
                 action: 'CHANGE_SUPERVISOR',
                 entityType: 'Student',
@@ -2858,6 +2747,9 @@ export const createStudent = async (req, res, next) => {
         // Create user activity log
         await prisma.userActivity.create({
             data: {
+                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                deviceId: req?.headers['x-device-id'] || 'Unknown',
+                browserAgent: req?.headers['user-agent'] || 'Unknown',
                 action: "Created Student",
                 entityType: "Student",
                 entityId: student.id,
@@ -3068,6 +2960,9 @@ export const uploadStudents = async (req, res, next) => {
                 if (req.user?.id) {
                     await prisma.userActivity.create({
                         data: {
+                            ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                            deviceId: req?.headers['x-device-id'] || 'Unknown',
+                            browserAgent: req?.headers['user-agent'] || 'Unknown',
                             action: 'Created Student (Bulk Upload)',
                             entityType: 'Student',
                             entityId: student.id,
@@ -3169,6 +3064,9 @@ export const updateStudent = async (req, res, next) => {
         // Create user activity log with tracked changes
         await prisma.userActivity.create({
             data: {
+                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                deviceId: req?.headers['x-device-id'] || 'Unknown',
+                browserAgent: req?.headers['user-agent'] || 'Unknown',
                 action: "Updated Student",
                 entityType: "Student",
                 entityId: studentId,
@@ -3232,6 +3130,9 @@ export const changeStudentPassword = async (req, res, next) => {
         // Create user activity log
         await prisma.userActivity.create({
             data: {
+                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                deviceId: req?.headers['x-device-id'] || 'Unknown',
+                browserAgent: req?.headers['user-agent'] || 'Unknown',
                 action: "Changed Student Password",
                 entityType: "Student",
                 entityId: studentId,
@@ -3291,6 +3192,9 @@ export const deleteStudent = async (req, res, next) => {
         // Create user activity log
         await prisma.userActivity.create({
             data: {
+                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                deviceId: req?.headers['x-device-id'] || 'Unknown',
+                browserAgent: req?.headers['user-agent'] || 'Unknown',
                 action: "Deleted Student",
                 entityType: "Student",
                 entityId: studentId,
@@ -5651,6 +5555,9 @@ export const generateDefenseReport = async (req, res) => {
         // Log activity
         await prisma.userActivity.create({
             data: {
+                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                deviceId: req?.headers['x-device-id'] || 'Unknown',
+                browserAgent: req?.headers['user-agent'] || 'Unknown',
                 userId: req.user.id,
                 action: `Generated defense report for ${studentName} (${regNo})`,
                 entityType: "DefenseReport",
@@ -7214,6 +7121,9 @@ export const updateUser = async (req, res, next) => {
             // Log activity
             await prisma.userActivity.create({
                 data: {
+                    ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                    deviceId: req?.headers['x-device-id'] || 'Unknown',
+                    browserAgent: req?.headers['user-agent'] || 'Unknown',
                     userId: req.user.id,
                     action: `Updated user: ${existingUser.name}`,
                     entityType: 'user',
@@ -7348,6 +7258,9 @@ export const deleteUser = async (req, res, next) => {
         // Log activity
         await prisma.userActivity.create({
             data: {
+                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                deviceId: req?.headers['x-device-id'] || 'Unknown',
+                browserAgent: req?.headers['user-agent'] || 'Unknown',
                 userId: req.user.id,
                 action: `Deleted user: ${existingUser.name}`,
                 entityType: 'user',
@@ -7415,6 +7328,9 @@ export const updateUserPassword = async (req, res, next) => {
         // Log activity
         await prisma.userActivity.create({
             data: {
+                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                deviceId: req?.headers['x-device-id'] || 'Unknown',
+                browserAgent: req?.headers['user-agent'] || 'Unknown',
                 userId: req.user.id,
                 action: `Updated password for user: ${existingUser.name}`
             }
@@ -7550,6 +7466,9 @@ export const addPanelistsToBook = async (req, res, next) => {
         // Log activity
         await prisma.userActivity.create({
             data: {
+                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                deviceId: req?.headers['x-device-id'] || 'Unknown',
+                browserAgent: req?.headers['user-agent'] || 'Unknown',
                 userId: req.user.id,
                 action: `Added ${panelistsToAdd.length} panelists to book: ${existingBook.title || `Book for ${existingBook.student?.name || 'Unknown Student'}`}`,
                 entityId: updatedBook.id,
@@ -7739,6 +7658,9 @@ export const scheduleProposalDefense = async (req, res, next) => {
         // Log activity
         await prisma.userActivity.create({
             data: {
+                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                deviceId: req?.headers['x-device-id'] || 'Unknown',
+                browserAgent: req?.headers['user-agent'] || 'Unknown',
                 userId: req.user.id,
                 action: `Scheduled proposal defense for ${existingProposal.student?.firstName || 'Unknown Student'} ${existingProposal.student?.lastName || ''}`,
                 entityId: proposalDefense.id,
@@ -7894,6 +7816,9 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
         // Log activity
         await prisma.userActivity.create({
             data: {
+                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                deviceId: req?.headers['x-device-id'] || 'Unknown',
+                browserAgent: req?.headers['user-agent'] || 'Unknown',
                 userId: req.user.id,
                 action: `Recorded proposal defense verdict (${verdict}) for ${existingDefense.proposal.student?.firstName || 'Unknown Student'} ${existingDefense.proposal.student?.lastName || ''}`,
                 entityId: updatedDefense.id,
@@ -10192,6 +10117,60 @@ export const deleteCourse = async (req, res, next) => {
             success: true,
             message: 'Course deleted successfully',
             course: deletedCourse
+        });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for fetching student data from ACMIS
+export const fetchAcmisStudent = async (req, res, next) => {
+    try {
+        const { registrationNumber } = req.query;
+
+        if (!registrationNumber) {
+            const error = new Error('Registration number is required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // ACMIS API Integration (Mocking for now as per user request)
+        // In production, this would be: 
+        // const acmisResponse = await axios.get(`${process.env.ACMIS_API_URL}/api/students/${registrationNumber}`);
+
+        // Mocking a successful response from ACMIS
+        const mockAcmisData = {
+            registration_number: registrationNumber,
+            first_name: "John",
+            last_name: "Doe",
+            email: "john.doe@example.com",
+            phone_number: "+256700000000",
+            gender: "male",
+            title: "Mr",
+            campus_name: "Main Campus",
+            school_name: "School of Business",
+            department_name: "Department of Management",
+            nationality: "Ugandan",
+            address: "Main Street, Kampala",
+            city: "Kampala",
+            country: "Uganda"
+        };
+
+        // For simulation, let's say if reg number starts with "ERR", it's not found
+        if (registrationNumber.toUpperCase().startsWith("ERR")) {
+            const error = new Error('Student not found in ACMIS system');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Student data fetched from ACMIS',
+            student: mockAcmisData
         });
 
     } catch (error) {

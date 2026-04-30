@@ -17,8 +17,6 @@ import {
   updateCampus,
   deleteCampus,
   addSchool,
-  addSchoolMembers,
-  updateSchoolMembers,
   addDepartment,
   getAllDepartments,
   getDepartment,
@@ -130,7 +128,8 @@ import {
   getAllCourses,
   updateCourse,
   deleteCourse,
-  getAllActivities
+  getAllActivities,
+  fetchAcmisStudent
 } from '../controllers/managementController.js';
 import { getEvaluationAnalytics, getDetailedEvaluations, updateResearchRequest, getAllResearchRequests, addStudentToGraduation, resetPassword, requestPasswordReset, getNotifications, getAllStudentsStatusReport, getStudentStatusReport, getProgressTrends, getStatusStatistics, getDashboardStats, updateSenateApprovalDate, updateResultsSentDate, updateResultsApprovalDate, updateComplianceReportDate, updateMinutesSentDate, getBookVivas, getAllPanelists, addNewPanelist, scheduleViva, recordVivaVerdict, getGraduationStatistics } from "../controllers/managementEvaluationController.js"
 
@@ -171,8 +170,6 @@ router.use(readOnlyMiddleware);
 
 // School management routes
 router.post('/schools', authenticateToken, authorizeRoles('SUPERADMIN'), addSchool);
-router.post('/schools/:schoolId/members', authenticateToken, authorizeRoles('SUPERADMIN'), addSchoolMembers);
-router.put('/schools/:schoolId/members', authenticateToken, authorizeRoles('SUPERADMIN'), updateSchoolMembers);
 router.get('/schools', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN', 'AUDITOR'), getAllSchools);
 router.get('/schools/:schoolId', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN', 'AUDITOR'), getSchool);
 router.put('/schools/:schoolId', authenticateToken, authorizeRoles('SUPERADMIN'), updateSchool);
@@ -226,6 +223,7 @@ router.get('/students/:studentId', authenticateToken, authorizeRoles('SUPERADMIN
 router.get('/students', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN', 'AUDITOR'), getAllStudents);
 router.put('/students/:studentId/password', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), changeStudentPassword);
 router.get('/students/:studentId/statuses', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN', 'AUDITOR'), getStudentStatuses);
+router.get('/acmis/student', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), fetchAcmisStudent);
 
 // Status management routes
 router.post('/status-definitions', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), createStatusDefinition);
