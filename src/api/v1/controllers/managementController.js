@@ -9732,12 +9732,12 @@ export const getReallocationStatistics = async (req, res, next) => {
 // Controller for creating a new course
 export const createCourse = async (req, res, next) => {
     try {
-        const { code, title, description, campusId, schoolId } = req.body;
+        const { code, title, description, campusId } = req.body;
         const createdById = req.user.id;
 
         // Validate required fields
-        if (!code || !title || !campusId || !schoolId) {
-            const error = new Error('Course code, title, campus, and school are required');
+        if (!code || !title || !campusId) {
+            const error = new Error('Course code, title, and campus are required');
             error.statusCode = 400;
             throw error;
         }
@@ -9766,16 +9766,7 @@ export const createCourse = async (req, res, next) => {
             throw error;
         }
 
-        // Verify school exists
-        const school = await prisma.school.findUnique({
-            where: { id: schoolId }
-        });
 
-        if (!school) {
-            const error = new Error('School not found');
-            error.statusCode = 404;
-            throw error;
-        }
 
         // Create new course
         const course = await prisma.course.create({
@@ -9784,7 +9775,6 @@ export const createCourse = async (req, res, next) => {
                 title,
                 description: description || null,
                 campusId,
-                schoolId,
                 createdById
             },
             include: {
@@ -9795,11 +9785,10 @@ export const createCourse = async (req, res, next) => {
                         location: true
                     }
                 },
-                school: {
-                    select: {
-                        id: true,
-                        name: true,
-                        code: true
+                specializations: {
+                    include: {
+                        school: true,
+                        department: true
                     }
                 },
                 createdBy: {
@@ -9839,7 +9828,11 @@ export const getAllCourses = async (req, res, next) => {
         }
 
         if (schoolId) {
-            where.schoolId = schoolId;
+            where.specializations = {
+                some: {
+                    schoolId: schoolId
+                }
+            };
         }
 
         if (isActive !== undefined) {
@@ -9863,11 +9856,10 @@ export const getAllCourses = async (req, res, next) => {
                         location: true
                     }
                 },
-                school: {
-                    select: {
-                        id: true,
-                        name: true,
-                        code: true
+                specializations: {
+                    include: {
+                        school: true,
+                        department: true
                     }
                 },
                 createdBy: {
@@ -9923,19 +9915,19 @@ export const getAllCourses = async (req, res, next) => {
 export const updateCourse = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { code, title, description, campusId, schoolId } = req.body;
+        const { code, title, description, campusId } = req.body;
         const updatedById = req.user.id;
 
         // Validate required fields
-        if (!code || !title || !campusId || !schoolId) {
-            const error = new Error('Course code, title, campus, and school are required');
+        if (!code || !title || !campusId) {
+            const error = new Error('Course code, title, and campus are required');
             error.statusCode = 400;
             throw error;
         }
 
         // Check if course exists
         const existingCourse = await prisma.course.findUnique({
-            where: { id: parseInt(id) }
+            where: { id: id }
         });
 
         if (!existingCourse) {
@@ -9949,7 +9941,7 @@ export const updateCourse = async (req, res, next) => {
             where: {
                 code: code,
                 id: {
-                    not: parseInt(id)
+                    not: id
                 }
             }
         });
@@ -9971,26 +9963,16 @@ export const updateCourse = async (req, res, next) => {
             throw error;
         }
 
-        // Verify school exists
-        const school = await prisma.school.findUnique({
-            where: { id: schoolId }
-        });
 
-        if (!school) {
-            const error = new Error('School not found');
-            error.statusCode = 404;
-            throw error;
-        }
 
         // Update course
         const updatedCourse = await prisma.course.update({
-            where: { id: parseInt(id) },
+            where: { id: id },
             data: {
                 code,
                 title,
                 description: description || null,
                 campusId,
-                schoolId,
                 updatedById,
                 updatedAt: new Date()
             },
@@ -10002,11 +9984,10 @@ export const updateCourse = async (req, res, next) => {
                         location: true
                     }
                 },
-                school: {
-                    select: {
-                        id: true,
-                        name: true,
-                        code: true
+                specializations: {
+                    include: {
+                        school: true,
+                        department: true
                     }
                 },
                 createdBy: {
@@ -10048,7 +10029,7 @@ export const deleteCourse = async (req, res, next) => {
 
         // Check if course exists
         const existingCourse = await prisma.course.findUnique({
-            where: { id: parseInt(id) },
+            where: { id: id },
             include: {
                 campus: {
                     select: {
@@ -10056,11 +10037,10 @@ export const deleteCourse = async (req, res, next) => {
                         name: true
                     }
                 },
-                school: {
-                    select: {
-                        id: true,
-                        name: true,
-                        code: true
+                specializations: {
+                    include: {
+                        school: true,
+                        department: true
                     }
                 }
             }
@@ -10078,7 +10058,7 @@ export const deleteCourse = async (req, res, next) => {
 
         // Soft delete by setting isActive to false
         const deletedCourse = await prisma.course.update({
-            where: { id: parseInt(id) },
+            where: { id: id },
             data: {
                 isActive: false,
                 deletedById,
@@ -10092,11 +10072,10 @@ export const deleteCourse = async (req, res, next) => {
                         location: true
                     }
                 },
-                school: {
-                    select: {
-                        id: true,
-                        name: true,
-                        code: true
+                specializations: {
+                    include: {
+                        school: true,
+                        department: true
                     }
                 },
                 deletedBy: {
@@ -10167,6 +10146,213 @@ export const fetchAcmisStudent = async (req, res, next) => {
             success: true,
             message: 'Student data fetched from ACMIS',
             student: mockAcmisData
+        });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+// Controller for creating a new specialization
+export const createSpecialization = async (req, res, next) => {
+    try {
+        const { name, code, courseId, schoolId, departmentId } = req.body;
+        const createdById = req.user.id;
+
+        // Validate required fields
+        if (!name || !courseId || !schoolId || !departmentId) {
+            const error = new Error('Name, course, school, and department are required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // Verify course exists
+        const course = await prisma.course.findUnique({
+            where: { id: courseId }
+        });
+
+        if (!course) {
+            const error = new Error('Course not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Verify school exists
+        const school = await prisma.school.findUnique({
+            where: { id: schoolId }
+        });
+
+        if (!school) {
+            const error = new Error('School not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Verify department exists
+        const department = await prisma.department.findUnique({
+            where: { id: departmentId }
+        });
+
+        if (!department) {
+            const error = new Error('Department not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // Create specialization
+        const specialization = await prisma.specialization.create({
+            data: {
+                name,
+                code: code || null,
+                courseId,
+                schoolId,
+                departmentId,
+                createdById
+            },
+            include: {
+                course: true,
+                school: true,
+                department: true,
+                createdBy: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                }
+            }
+        });
+
+        res.status(201).json({
+            success: true,
+            message: 'Specialization created successfully',
+            specialization
+        });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for getting all specializations
+export const getAllSpecializations = async (req, res, next) => {
+    try {
+        const { courseId, schoolId, departmentId, isActive } = req.query;
+
+        const where = {};
+        if (courseId) where.courseId = courseId;
+        if (schoolId) where.schoolId = schoolId;
+        if (departmentId) where.departmentId = departmentId;
+        if (isActive !== undefined) where.isActive = isActive === 'true';
+
+        const specializations = await prisma.specialization.findMany({
+            where,
+            include: {
+                course: true,
+                school: true,
+                department: true,
+                createdBy: {
+                    select: { id: true, name: true, email: true }
+                },
+                updatedBy: {
+                    select: { id: true, name: true, email: true }
+                }
+            },
+            orderBy: {
+                createdAt: 'desc'
+            }
+        });
+
+        res.status(200).json({
+            success: true,
+            specializations
+        });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for updating a specialization
+export const updateSpecialization = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { name, code, courseId, schoolId, departmentId, isActive } = req.body;
+        const updatedById = req.user.id;
+
+        const existingSpecialization = await prisma.specialization.findUnique({
+            where: { id: id }
+        });
+
+        if (!existingSpecialization) {
+            const error = new Error('Specialization not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        const updatedSpecialization = await prisma.specialization.update({
+            where: { id: id },
+            data: {
+                name: name !== undefined ? name : existingSpecialization.name,
+                code: code !== undefined ? code : existingSpecialization.code,
+                courseId: courseId !== undefined ? courseId : existingSpecialization.courseId,
+                schoolId: schoolId !== undefined ? schoolId : existingSpecialization.schoolId,
+                departmentId: departmentId !== undefined ? departmentId : existingSpecialization.departmentId,
+                isActive: isActive !== undefined ? isActive : existingSpecialization.isActive,
+                updatedById,
+                updatedAt: new Date()
+            },
+            include: {
+                course: true,
+                school: true,
+                department: true
+            }
+        });
+
+        res.status(200).json({
+            success: true,
+            message: 'Specialization updated successfully',
+            specialization: updatedSpecialization
+        });
+
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for deleting a specialization
+export const deleteSpecialization = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+
+        const existingSpecialization = await prisma.specialization.findUnique({
+            where: { id: id }
+        });
+
+        if (!existingSpecialization) {
+            const error = new Error('Specialization not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        await prisma.specialization.delete({
+            where: { id: id }
+        });
+
+        res.status(200).json({
+            success: true,
+            message: 'Specialization deleted successfully'
         });
 
     } catch (error) {

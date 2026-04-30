@@ -108,6 +108,10 @@ model user {
   // Course relations
   createdCourses course[] @relation("CourseCreatedBy")
   updatedCourses course[] @relation("CourseUpdatedBy")
+
+  // Specialization relations
+  createdSpecializations specialization[] @relation("SpecializationCreatedBy")
+  updatedSpecializations specialization[] @relation("SpecializationUpdatedBy")
 }
 
 enum Role {
@@ -772,7 +776,7 @@ model school {
   students    student[]
   examiners   examiner[]
   staffMembers staffMember[]
-  courses     course[]
+  specializations specialization[]
 }
 
 model campus {
@@ -806,6 +810,7 @@ model department {
   students    student[]
   examiners   examiner[]
   staffMembers staffMember[]
+  specializations specialization[]
 }
 
 model facultyMember {
@@ -1081,8 +1086,9 @@ model course {
   // Relations
   campus      campus   @relation(fields: [campusId], references: [id])
   campusId    String   @db.ObjectId
-  school      school   @relation(fields: [schoolId], references: [id])
-  schoolId    String   @db.ObjectId
+  specializations specialization[]
+
+
   
   // Audit fields
   createdBy   user     @relation("CourseCreatedBy", fields: [createdById], references: [id])
@@ -1094,6 +1100,32 @@ model course {
   updatedAt   DateTime @updatedAt
   
   @@index([campusId])
+}
+
+model specialization {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  code        String?
+  isActive    Boolean  @default(true)
+
+  // Relations
+  course      course   @relation(fields: [courseId], references: [id])
+  courseId    String   @db.ObjectId
+  school      school   @relation(fields: [schoolId], references: [id])
+  schoolId    String   @db.ObjectId
+  department  department @relation(fields: [departmentId], references: [id])
+  departmentId String   @db.ObjectId
+
+  // Audit fields
+  createdBy   user     @relation("SpecializationCreatedBy", fields: [createdById], references: [id])
+  createdById String   @db.ObjectId
+  updatedBy   user?    @relation("SpecializationUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?  @db.ObjectId
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([courseId])
   @@index([schoolId])
-  
+  @@index([departmentId])
 }

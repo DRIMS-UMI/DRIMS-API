@@ -128,6 +128,10 @@ import {
   getAllCourses,
   updateCourse,
   deleteCourse,
+  createSpecialization,
+  getAllSpecializations,
+  updateSpecialization,
+  deleteSpecialization,
   getAllActivities,
   fetchAcmisStudent
 } from '../controllers/managementController.js';
@@ -403,7 +407,10 @@ router.get('/courses', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH
 router.put('/courses/:id', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), updateCourse);
 router.delete('/courses/:id', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), deleteCourse);
 
-// Activity Logs route
-router.get('/activities', authenticateToken, authorizeRoles('SUPERADMIN', 'AUDITOR'), getAllActivities);
+// Specialization management routes
+router.post('/specializations', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), createSpecialization);
+router.get('/specializations', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN', 'AUDITOR'), getAllSpecializations);
+router.put('/specializations/:id', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), updateSpecialization);
+router.delete('/specializations/:id', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), deleteSpecialization);
 
 export default router;
