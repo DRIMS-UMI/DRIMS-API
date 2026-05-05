@@ -2626,23 +2626,23 @@ export const createStudent = async (req, res, next) => {
                 lastName,
                 registrationNumber,
                 email,
-                course,
+                course: course ? { connect: { id: course } } : undefined,
                 phoneNumber,
                 gender,
-                campus: {
+                campus: campusId ? {
                     connect: { id: campusId }
-                },
-                school: {
+                } : undefined,
+                school: schoolId ? {
                     connect: { id: schoolId }
-                },
-                department: {
+                } : undefined,
+                department: departmentId ? {
                     connect: { id: departmentId }
-                },
+                } : undefined,
                 academicYear,
                 studyMode,
                 intakePeriod,
                 programLevel,
-                specialization,
+                specialization: specialization ? { connect: { id: specialization } } : undefined,
                 completionTime: completionTime ? parseInt(completionTime) : null,
                 expectedCompletionDate: expectedCompletionDate ? new Date(expectedCompletionDate) : null,
                 currentStatus: "WORKSHOP",
