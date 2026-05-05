@@ -155,7 +155,8 @@ model student {
   registrationNumber     String?        
   firstName             String
   lastName              String
-  course                String?
+  course                course?        @relation(fields: [courseId], references: [id])
+  courseId              String?        @db.ObjectId
   email                 String         @unique
   phoneNumber          String?
 
@@ -175,7 +176,8 @@ model student {
   studyMode            String?        // "Full Time" or "Part Time"
   intakePeriod         String?
   programLevel         String?        // "Masters" or "PhD"
-  specialization       String?
+  specialization        specialization? @relation(fields: [specializationId], references: [id])
+  specializationId      String?         @db.ObjectId
   completionTime       Int?           // Expected completion time in months
   
   admissionDate        DateTime       @default(now())
@@ -1096,6 +1098,8 @@ model course {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   
+  students    student[]
+  
   @@index([campusId])
 }
 
@@ -1122,6 +1126,8 @@ model specialization {
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  students    student[]
 
   @@index([courseId])
   @@index([schoolId])
