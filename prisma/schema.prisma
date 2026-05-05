@@ -1103,6 +1103,7 @@ model specialization {
   id          String   @id @default(auto()) @map("_id") @db.ObjectId
   name        String
   code        String?
+  duration    Int?
   isActive    Boolean  @default(true)
 
   // Relations

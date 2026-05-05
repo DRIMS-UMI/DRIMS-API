@@ -10216,7 +10216,7 @@ export const fetchAcmisStudent = async (req, res, next) => {
 // Controller for creating a new specialization
 export const createSpecialization = async (req, res, next) => {
     try {
-        const { name, code, courseId, schoolId, departmentId } = req.body;
+        const { name, code, duration, courseId, schoolId, departmentId } = req.body;
         const createdById = req.user.id;
 
         // Validate required fields
@@ -10264,6 +10264,7 @@ export const createSpecialization = async (req, res, next) => {
             data: {
                 name,
                 code: code || null,
+                duration: duration && duration !== "" ? Number(duration) : null,
                 courseId,
                 schoolId,
                 departmentId,
@@ -10292,7 +10293,7 @@ export const createSpecialization = async (req, res, next) => {
                     action: 'Created Specialization',
                     entityType: 'Specialization',
                     entityId: specialization.id,
-                    details: JSON.stringify({ name: specialization.name, code: specialization.code, course: specialization.course?.title }),
+                    details: JSON.stringify({ name: specialization.name, code: specialization.code, duration: specialization.duration, course: specialization.course?.title }),
                     userId: req.user.id,
                     browserAgent: req?.headers['user-agent'] || 'Unknown',
                 }
@@ -10359,7 +10360,7 @@ export const getAllSpecializations = async (req, res, next) => {
 export const updateSpecialization = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { name, code, courseId, schoolId, departmentId, isActive } = req.body;
+        const { name, code, duration, courseId, schoolId, departmentId, isActive } = req.body;
         const updatedById = req.user.id;
 
         const existingSpecialization = await prisma.specialization.findUnique({
@@ -10373,7 +10374,7 @@ export const updateSpecialization = async (req, res, next) => {
         }
 
         // Track changes
-        const updateData = { name, code, courseId, schoolId, departmentId, isActive };
+        const updateData = { name, code, duration, courseId, schoolId, departmentId, isActive };
         const changes = [];
         Object.keys(updateData).forEach(key => {
             if (updateData[key] !== undefined && updateData[key] !== existingSpecialization[key]) {
@@ -10390,6 +10391,7 @@ export const updateSpecialization = async (req, res, next) => {
             data: {
                 name: name !== undefined ? name : existingSpecialization.name,
                 code: code !== undefined ? code : existingSpecialization.code,
+                duration: duration !== undefined ? (duration && duration !== "" ? Number(duration) : null) : existingSpecialization.duration,
                 courseId: courseId !== undefined ? courseId : existingSpecialization.courseId,
                 schoolId: schoolId !== undefined ? schoolId : existingSpecialization.schoolId,
                 departmentId: departmentId !== undefined ? departmentId : existingSpecialization.departmentId,
