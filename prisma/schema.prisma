@@ -802,10 +802,7 @@ model department {
   school    school?   @relation(fields: [schoolId], references: [id])
   schoolId  String?    @db.ObjectId
   name      String
-  url       String?
-  adminName String
-  adminContact   String
-  adminEmail     String @unique
+  code      String?   
   supervisors supervisor[]
   students    student[]
   examiners   examiner[]
