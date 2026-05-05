@@ -571,7 +571,7 @@ export const addSchool = async (req, res, next) => {
 export const addDepartment = async (req, res, next) => {
     try {
         const { schoolId } = req.params;
-        const { name, url, adminName, adminContact, adminEmail } = req.body;
+        const { name, code } = req.body;
 
         // Check if school exists
         const school = await prisma.school.findUnique({
@@ -602,10 +602,7 @@ export const addDepartment = async (req, res, next) => {
         const department = await prisma.department.create({
             data: {
                 name,
-                url,
-                adminName,
-                adminContact,
-                adminEmail,
+                code,
                 schoolId
             }
         });
@@ -699,7 +696,7 @@ export const getDepartment = async (req, res, next) => {
 export const updateDepartment = async (req, res, next) => {
     try {
         const { schoolId, departmentId } = req.params;
-        const { name, url, adminName, adminContact, adminEmail } = req.body;
+        const { name, code } = req.body;
 
         // Check if department exists
         const existingDepartment = await prisma.department.findFirst({
@@ -741,10 +738,7 @@ export const updateDepartment = async (req, res, next) => {
             where: { id: departmentId },
             data: {
                 name,
-                url,
-                adminName,
-                adminContact,
-                adminEmail
+                code
             }
         });
 
@@ -9801,6 +9795,22 @@ export const createCourse = async (req, res, next) => {
             }
         });
 
+        // Log the activity
+        if (req.user?.id) {
+            await prisma.userActivity.create({
+                data: {
+                    ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                    deviceId: req?.headers['x-device-id'] || 'Unknown',
+                    action: 'Created Course',
+                    entityType: 'Course',
+                    entityId: course.id,
+                    details: JSON.stringify({ title: course.title, code: course.code, campus: course.campus?.name }),
+                    userId: req.user.id,
+                    browserAgent: req?.headers['user-agent'] || 'Unknown',
+                }
+            });
+        }
+
         res.status(201).json({
             success: true,
             message: 'Course created successfully',
@@ -9965,14 +9975,29 @@ export const updateCourse = async (req, res, next) => {
 
 
 
+        // Track changes
+        const updateData = {
+            code,
+            title,
+            description: description || null,
+            campusId
+        };
+        const changes = [];
+        Object.keys(updateData).forEach(key => {
+            if (updateData[key] !== undefined && updateData[key] !== existingCourse[key]) {
+                changes.push({
+                    field: key,
+                    oldValue: existingCourse[key],
+                    newValue: updateData[key]
+                });
+            }
+        });
+
         // Update course
         const updatedCourse = await prisma.course.update({
             where: { id: id },
             data: {
-                code,
-                title,
-                description: description || null,
-                campusId,
+                ...updateData,
                 updatedById,
                 updatedAt: new Date()
             },
@@ -10007,10 +10032,27 @@ export const updateCourse = async (req, res, next) => {
             }
         });
 
+        // Log the activity
+        if (req.user?.id) {
+            await prisma.userActivity.create({
+                data: {
+                    ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                    deviceId: req?.headers['x-device-id'] || 'Unknown',
+                    action: 'Updated Course',
+                    entityType: 'Course',
+                    entityId: updatedCourse.id,
+                    details: JSON.stringify(changes),
+                    userId: req.user.id,
+                    browserAgent: req?.headers['user-agent'] || 'Unknown',
+                }
+            });
+        }
+
         res.status(200).json({
             success: true,
             message: 'Course updated successfully',
-            course: updatedCourse
+            course: updatedCourse,
+            changes
         });
 
     } catch (error) {
@@ -10087,6 +10129,22 @@ export const deleteCourse = async (req, res, next) => {
                 }
             }
         });
+
+        // Log the activity
+        if (req.user?.id) {
+            await prisma.userActivity.create({
+                data: {
+                    ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                    deviceId: req?.headers['x-device-id'] || 'Unknown',
+                    action: 'Deleted Course',
+                    entityType: 'Course',
+                    entityId: deletedCourse.id,
+                    details: JSON.stringify({ title: deletedCourse.title, code: deletedCourse.code, campus: deletedCourse.campus?.name }),
+                    userId: req.user.id,
+                    browserAgent: req?.headers['user-agent'] || 'Unknown',
+                }
+            });
+        }
 
         res.status(200).json({
             success: true,
@@ -10225,6 +10283,22 @@ export const createSpecialization = async (req, res, next) => {
             }
         });
 
+        // Log the activity
+        if (req.user?.id) {
+            await prisma.userActivity.create({
+                data: {
+                    ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                    deviceId: req?.headers['x-device-id'] || 'Unknown',
+                    action: 'Created Specialization',
+                    entityType: 'Specialization',
+                    entityId: specialization.id,
+                    details: JSON.stringify({ name: specialization.name, code: specialization.code, course: specialization.course?.title }),
+                    userId: req.user.id,
+                    browserAgent: req?.headers['user-agent'] || 'Unknown',
+                }
+            });
+        }
+
         res.status(201).json({
             success: true,
             message: 'Specialization created successfully',
@@ -10298,6 +10372,19 @@ export const updateSpecialization = async (req, res, next) => {
             throw error;
         }
 
+        // Track changes
+        const updateData = { name, code, courseId, schoolId, departmentId, isActive };
+        const changes = [];
+        Object.keys(updateData).forEach(key => {
+            if (updateData[key] !== undefined && updateData[key] !== existingSpecialization[key]) {
+                changes.push({
+                    field: key,
+                    oldValue: existingSpecialization[key],
+                    newValue: updateData[key]
+                });
+            }
+        });
+
         const updatedSpecialization = await prisma.specialization.update({
             where: { id: id },
             data: {
@@ -10317,10 +10404,27 @@ export const updateSpecialization = async (req, res, next) => {
             }
         });
 
+        // Log the activity
+        if (req.user?.id) {
+            await prisma.userActivity.create({
+                data: {
+                    ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                    deviceId: req?.headers['x-device-id'] || 'Unknown',
+                    action: 'Updated Specialization',
+                    entityType: 'Specialization',
+                    entityId: updatedSpecialization.id,
+                    details: JSON.stringify(changes),
+                    userId: req.user.id,
+                    browserAgent: req?.headers['user-agent'] || 'Unknown',
+                }
+            });
+        }
+
         res.status(200).json({
             success: true,
             message: 'Specialization updated successfully',
-            specialization: updatedSpecialization
+            specialization: updatedSpecialization,
+            changes
         });
 
     } catch (error) {
@@ -10349,6 +10453,22 @@ export const deleteSpecialization = async (req, res, next) => {
         await prisma.specialization.delete({
             where: { id: id }
         });
+
+        // Log the activity
+        if (req.user?.id) {
+            await prisma.userActivity.create({
+                data: {
+                    ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                    deviceId: req?.headers['x-device-id'] || 'Unknown',
+                    action: 'Deleted Specialization',
+                    entityType: 'Specialization',
+                    entityId: id,
+                    details: JSON.stringify({ name: existingSpecialization.name, code: existingSpecialization.code }),
+                    userId: req.user.id,
+                    browserAgent: req?.headers['user-agent'] || 'Unknown',
+                }
+            });
+        }
 
         res.status(200).json({
             success: true,
