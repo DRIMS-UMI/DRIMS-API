@@ -147,8 +147,7 @@ export const getEvaluationAnalytics = async (req, res, next) => {
             include: {
                 student: {
                     select: {
-                        firstName: true,
-                        lastName: true,
+                        fullName: true,
                         email: true,
                         registrationNumber: true
                     }
@@ -175,7 +174,7 @@ export const getEvaluationAnalytics = async (req, res, next) => {
                 recentEvaluations: recentEvaluations.map(evaluation => ({
                     id: evaluation.id,
                     student: {
-                        name: `${evaluation.student.firstName} ${evaluation.student.lastName}`,
+                        name: `${evaluation.student.fullName}`,
                         email: evaluation.student.email,
                         studentNumber: evaluation.student.registrationNumber
                     },
@@ -252,8 +251,7 @@ export const getDetailedEvaluations = async (req, res, next) => {
                 include: {
                     student: {
                         select: {
-                            firstName: true,
-                            lastName: true,
+                            fullName: true,
                             email: true,
                             registrationNumber: true,
                             programLevel: true
@@ -271,7 +269,7 @@ export const getDetailedEvaluations = async (req, res, next) => {
                     id: evaluation.id,
                     student: {
                         ...evaluation.student,
-                        name: `${evaluation.student.firstName} ${evaluation.student.lastName}`,
+                        name: `${evaluation.student.fullName}`,
                         studentNumber: evaluation.student.registrationNumber,
                         program: evaluation.student.programLevel
                     },
@@ -787,8 +785,8 @@ export const scheduleViva = async (req, res, next) => {
                 deviceId: req?.headers['x-device-id'] || 'Unknown',
                 browserAgent: req?.headers['user-agent'] || 'Unknown',
                 userId: req.user.id,
-                action: `Scheduled viva for ${existingBook.student?.firstName || "Unknown Student"
-                    } ${existingBook.student?.lastName || ""} with chairperson: ${chairpersonName}, reviewers: ${reviewerNames}`,
+                action: `Scheduled viva for ${existingBook.student?.fullName || "Unknown Student"
+                    } with chairperson: ${chairpersonName}, reviewers: ${reviewerNames}`,
                 entityId: viva.id,
                 entityType: "Viva",
             },
@@ -812,7 +810,7 @@ export const scheduleViva = async (req, res, next) => {
                 category: "STUDENT",
                 id: existingBook.student.id,
                 email: existingBook.student.email,
-                name: `${existingBook.student.firstName} ${existingBook.student.lastName}`,
+                name: `${existingBook.student.fullName}`,
             },
             // Add all supervisors
             ...existingBook.student.supervisors.map((supervisor) => ({
@@ -880,7 +878,7 @@ export const scheduleViva = async (req, res, next) => {
         // Schedule immediate invitations
         for (const participant of participants) {
             // Customize message based on participant type
-            let message = `You are invited to attend the viva of ${existingBook.student.firstName} ${existingBook.student.lastName}.`;
+            let message = `You are invited to attend the viva of ${existingBook.student.fullName}.`;
             let additionalContent = `
                 <p><strong>Details:</strong></p>
                 <ul>
@@ -911,7 +909,7 @@ export const scheduleViva = async (req, res, next) => {
             await notificationService.scheduleNotification({
                 type: "EMAIL",
                 statusType: "PENDING",
-                title: `Viva Invitation - ${existingBook.student.firstName} ${existingBook.student.lastName}`,
+                title: `Viva Invitation - ${existingBook.student.fullName}`,
                 message,
                 recipientCategory: participant.category,
                 recipientId: participant.id,
@@ -929,7 +927,7 @@ export const scheduleViva = async (req, res, next) => {
         reminderDate.setHours(reminderDate.getHours() - 24);
 
         for (const participant of participants) {
-            let message = `Reminder: Viva for ${existingBook.student.firstName} ${existingBook.student.lastName} is scheduled for tomorrow.`;
+            let message = `Reminder: Viva for ${existingBook.student.fullName} is scheduled for tomorrow.`;
             let additionalContent = `
                 <p><strong>Viva Details:</strong></p>
                 <ul>
@@ -979,7 +977,7 @@ export const scheduleViva = async (req, res, next) => {
         finalReminderDate.setHours(finalReminderDate.getHours() - 1);
 
         for (const participant of participants) {
-            let message = `Final reminder: Viva for ${existingBook.student.firstName} ${existingBook.student.lastName} is scheduled in 1 hour.`;
+            let message = `Final reminder: Viva for ${existingBook.student.fullName} is scheduled in 1 hour.`;
             let additionalContent = `
                 <p><strong>Viva Details:</strong></p>
                 <ul>
@@ -1241,7 +1239,7 @@ export const updateMinutesSentDate = async (req, res, next) => {
                 deviceId: req?.headers['x-device-id'] || 'Unknown',
                 browserAgent: req?.headers['user-agent'] || 'Unknown',
                 userId: req.user.id,
-                action: `Updated minutes sent date to ${new Date(minutesSentDate).toISOString().split('T')[0]} for book: ${existingBook.title || `Book for ${existingBook.student?.firstName || 'Unknown Student'}`}`,
+                action: `Updated minutes sent date to ${new Date(minutesSentDate).toISOString().split('T')[0]} for book: ${existingBook.title || `Book for ${existingBook.student?.fullName || 'Unknown Student'}`}`,
                 entityId: updatedBook.id,
                 entityType: "Student Book"
             }
@@ -1370,7 +1368,7 @@ export const updateComplianceReportDate = async (req, res, next) => {
                 deviceId: req?.headers['x-device-id'] || 'Unknown',
                 browserAgent: req?.headers['user-agent'] || 'Unknown',
                 userId: req.user.id,
-                action: `Updated compliance report date to ${new Date(complianceReportDate).toISOString().split('T')[0]} and actual topic for book: ${existingBook.title || `Book for ${existingBook.student?.firstName || 'Unknown Student'}`}`,
+                action: `Updated compliance report date to ${new Date(complianceReportDate).toISOString().split('T')[0]} and actual topic for book: ${existingBook.title || `Book for ${existingBook.student?.fullName || 'Unknown Student'}`}`,
                 entityId: updatedBook.id,
                 entityType: "Student Book"
             }
@@ -1468,7 +1466,7 @@ export const updateResultsApprovalDate = async (req, res, next) => {
                 deviceId: req?.headers['x-device-id'] || 'Unknown',
                 browserAgent: req?.headers['user-agent'] || 'Unknown',
                 userId: req.user.id,
-                action: `Updated results approval date to ${new Date(resultsApprovedDate).toISOString().split('T')[0]} for student: ${student.firstName} ${student.lastName}`,
+                action: `Updated results approval date to ${new Date(resultsApprovedDate).toISOString().split('T')[0]} for student: ${student.fullName}`,
                 entityId: studentId,
                 entityType: "Student"
             }
@@ -1569,7 +1567,7 @@ export const updateResultsSentDate = async (req, res, next) => {
                 deviceId: req?.headers['x-device-id'] || 'Unknown',
                 browserAgent: req?.headers['user-agent'] || 'Unknown',
                 userId: req.user.id,
-                action: `Updated results sent date to ${new Date(resultsSentDate).toISOString().split('T')[0]} for student: ${student.firstName} ${student.lastName}`,
+                action: `Updated results sent date to ${new Date(resultsSentDate).toISOString().split('T')[0]} for student: ${student.fullName}`,
                 entityId: studentId,
                 entityType: "Student"
             }
@@ -1667,7 +1665,7 @@ export const updateSenateApprovalDate = async (req, res, next) => {
                 deviceId: req?.headers['x-device-id'] || 'Unknown',
                 browserAgent: req?.headers['user-agent'] || 'Unknown',
                 userId: req.user.id,
-                action: `Updated senate approval date to ${new Date(senateApprovalDate).toISOString().split('T')[0]} for student: ${student.firstName} ${student.lastName}`,
+                action: `Updated senate approval date to ${new Date(senateApprovalDate).toISOString().split('T')[0]} for student: ${student.fullName}`,
                 entityId: studentId,
                 entityType: "Student"
             }
@@ -2032,8 +2030,7 @@ export const getNotifications = async (req, res, next) => {
                         student: {
                             select: {
                                 id: true,
-                                firstName: true,
-                                lastName: true,
+                                fullName: true,
 
                             }
                         }
@@ -2117,7 +2114,7 @@ export const getAllStudentsStatusReport = async (req, res, next) => {
             statusReports.push({
                 student: {
                     id: student.id,
-                    name: `${student.firstName} ${student.lastName}`,
+                    name: `${student.fullName}`,
                     email: student.email
                 },
                 currentStatus: {
@@ -2229,7 +2226,7 @@ export const getStudentStatusReport = async (req, res, next) => {
         const statusReport = {
             student: {
                 id: student.id,
-                name: `${student.firstName} ${student.lastName}`,
+                name: `${student.fullName}`,
                 email: student.email
             },
             currentStatus: {
@@ -2776,8 +2773,7 @@ export const getAllResearchRequests = async (req, res, next) => {
                 student: {
                     select: {
                         id: true,
-                        firstName: true,
-                        lastName: true,
+                        fullName: true,
                         registrationNumber: true,
                         email: true
                     }
@@ -2826,8 +2822,7 @@ export const updateResearchRequest = async (req, res, next) => {
                 student: {
                     select: {
                         id: true,
-                        firstName: true,
-                        lastName: true,
+                        fullName: true,
                         registrationNumber: true,
                         email: true
                     }

@@ -6,24 +6,41 @@ import { notificationService } from "../../../services/notificationService2.js";
 // Student login controller
 export const loginStudent = async (req, res, next) => {
   try {
-    const { email, password, rememberMe } = req.body;
+    const { email, password, rememberMe } = req.body; // 'email' field might contain regNo or email
 
-    // Find student by email
-    const user = await prisma.user.findUnique({
-      where: { 
-        email,
-        role: "STUDENT"
+    // Find studentUser by registrationNumber or email
+    const studentUser = await prisma.studentUser.findFirst({
+      where: {
+        OR: [
+          { registrationNumber: email },
+          { studentNumber: email },
+          { email: email }
+        ]
       },
+      include: {
+        student: {
+          include: {
+            statuses: {
+              where: { isCurrent: true },
+              include: { definition: true }
+            },
+            supervisors: true,
+            school: true,
+            campus: true,
+            department: true
+          }
+        }
+      }
     });
 
-    if (!user) {
-      const error = new Error("Student not found");
+    if (!studentUser) {
+      const error = new Error("Student account not found");
       error.statusCode = 404;
       throw error;
     }
 
-    // Check if user is active
-    if (!user.isActive) {
+    // Check if studentUser is active
+    if (!studentUser.isActive) {
       const error = new Error(
         "Your account has been deactivated. Please contact the administrator."
       );
@@ -31,50 +48,25 @@ export const loginStudent = async (req, res, next) => {
       throw error;
     }
 
-    // Check if user has correct role
-    if (user.role !== "STUDENT") {
-      const error = new Error(
-        "Unauthorized access - must be a Student"
-      );
-      error.statusCode = 403;
-      throw error;
-    }
-
     // Check password
-    const isValidPassword = await bcrypt.compare(password, user.password);
+    const isValidPassword = await bcrypt.compare(password, studentUser.password);
     if (!isValidPassword) {
       const error = new Error("Invalid password");
       error.statusCode = 401;
       throw error;
     }
 
-    // Get student details
-    const student = await prisma.student.findUnique({
-      where: { email },
-      include: {
-        statuses: {
-          where: { isCurrent: true },
-          include: { definition: true }
-        },
-        supervisors: true,
-        school: true,
-        campus: true,
-        department: true
-      }
-    });
-
     // Generate JWT token
     const token = jwt.sign(
       {
-        id: user.id,
-        title: user.title,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        designation: user.designation,
+        id: studentUser.id, // studentUser ID
+        email: studentUser.email,
+        name: studentUser.fullName,
+        role: studentUser.role,
+        registrationNumber: studentUser.registrationNumber,
         loggedInAt: new Date(),
-        phone: user.phone,
-        studentId: student?.id
+        studentId: studentUser.student?.id,
+        isStudentUser: true // Flag to distinguish from regular users
       },
       process.env.AUTH_SECRET,
       { expiresIn: rememberMe ? "30d" : "24h" }
@@ -83,14 +75,12 @@ export const loginStudent = async (req, res, next) => {
     res.status(200).json({
       message: "Login successful",
       user: {
-        id: user.id,
-        title: user.title,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        designation: user.designation,
-        phone: user.phone,
-        student: student
+        id: studentUser.id,
+        email: studentUser.email,
+        name: studentUser.fullName,
+        role: studentUser.role,
+        registrationNumber: studentUser.registrationNumber,
+        student: studentUser.student
       },
       token
     });
@@ -108,10 +98,9 @@ export const getLoggedInUser = async (req, res, next) => {
   try {
     const userId = req.user.id;
 
-    // Get user with basic student information
-    const user = await prisma.user.findUnique({
+    // Get studentUser with basic information
+    const user = await prisma.studentUser.findUnique({
       where: { id: userId },
-     
     });
 
     if (!user) {
@@ -124,14 +113,10 @@ export const getLoggedInUser = async (req, res, next) => {
       message: "Logged in user information retrieved successfully",
       user: {
         id: user.id,
-        title: user.title,
         email: user.email,
-        name: user.name,
+        name: user.fullName,
         role: user.role,
-        designation: user.designation,
-        phone: user.phone,
-       
-        
+        registrationNumber: user.registrationNumber
       }
     });
 
@@ -148,8 +133,8 @@ export const getStudentProfile = async (req, res, next) => {
   try {
     const userId = req.user.id;
 
-    // Get user with student information
-    const user = await prisma.user.findUnique({
+    // Get studentUser with basic information
+    const user = await prisma.studentUser.findUnique({
       where: { id: userId },
       include: { student: true }
     });
@@ -220,7 +205,7 @@ export const getStudentStatuses = async (req, res, next) => {
   try {
     const userId = req.user.id
 
-    const user = await prisma.user.findUnique({
+    const user = await prisma.studentUser.findUnique({
       where: { id: userId },
       include: { student: true }
     });
@@ -288,7 +273,7 @@ export const getStudentProposals = async (req, res, next) => {
   try {
     const userId = req.user.id
 
-    const user = await prisma.user.findUnique({
+    const user = await prisma.studentUser.findUnique({
       where: { id: userId },
       include: { student: true }
     });
@@ -365,7 +350,7 @@ export const getStudentBooks = async (req, res, next) => {
   try {
     const userId = req.user.id
 
-    const user = await prisma.user.findUnique({
+    const user = await prisma.studentUser.findUnique({
       where: { id: userId },
       include: { student: true }
     });
@@ -437,7 +422,7 @@ export const updateStudentProfile = async (req, res, next) => {
     const updateData = req.body;
 
     // First, get the user to find the associated student id
-    const user = await prisma.user.findUnique({
+    const user = await prisma.studentUser.findUnique({
       where: { id: userId },
       include: { student: true }
     });
@@ -468,6 +453,14 @@ export const updateStudentProfile = async (req, res, next) => {
       }
     });
 
+    // Sync studentUser fullName if it was updated
+    if (updateData.fullName) {
+      await prisma.studentUser.update({
+        where: { id: userId },
+        data: { fullName: updateData.fullName }
+      });
+    }
+
     res.status(200).json({
       message: "Student profile updated successfully",
       student: updatedStudent
@@ -487,8 +480,8 @@ export const changeStudentPassword = async (req, res, next) => {
     const { currentPassword, newPassword } = req.body;
     const userId = req.user.id;
 
-    // Get current user
-    const user = await prisma.user.findUnique({
+    // Get current studentUser
+    const user = await prisma.studentUser.findUnique({
       where: { id: userId }
     });
 
@@ -510,7 +503,7 @@ export const changeStudentPassword = async (req, res, next) => {
     const hashedPassword = await bcrypt.hash(newPassword, 12);
 
     // Update password
-    await prisma.user.update({
+    await prisma.studentUser.update({
       where: { id: userId },
       data: { password: hashedPassword }
     });
@@ -532,8 +525,8 @@ export const getStudentDashboardStats = async (req, res, next) => {
   try {
     const userId = req.user.id;
 
-    // Get user with student information
-    const user = await prisma.user.findUnique({
+    // Get studentUser with basic information
+    const user = await prisma.studentUser.findUnique({
       where: { id: userId },
       include: { student: true }
     });
@@ -622,8 +615,8 @@ export const getStudentNotifications = async (req, res, next) => {
     const userId = req.user.id;
     const { page = 1, limit = 20 } = req.query;
 
-    // Get user with student information
-    const user = await prisma.user.findUnique({
+    // Get studentUser with basic information
+    const user = await prisma.studentUser.findUnique({
       where: { id: userId },
       include: { student: true }
     });
@@ -676,8 +669,8 @@ export const markNotificationAsRead = async (req, res, next) => {
     const { notificationId } = req.params;
     const userId = req.user.id;
 
-    // Get user with student information
-    const user = await prisma.user.findUnique({
+    // Get studentUser with basic information
+    const user = await prisma.studentUser.findUnique({
       where: { id: userId },
       include: { student: true }
     });
@@ -739,7 +732,7 @@ export const getStudentResearchRequests = async (req, res, next) => {
   try {
     const userId = req.user.id;
 
-    const user = await prisma.user.findUnique({
+    const user = await prisma.studentUser.findUnique({
       where: { id: userId },
       include: { student: true }
     });
@@ -751,8 +744,7 @@ export const getStudentResearchRequests = async (req, res, next) => {
         student: {
           select: {
             id: true,
-            firstName: true,
-            lastName: true,
+            fullName: true,
             registrationNumber: true,
             email: true
           }
@@ -788,7 +780,7 @@ export const createResearchRequest = async (req, res, next) => {
     const userId = req.user.id;
     let { requestType, formData } = req.body;
 
-    const user = await prisma.user.findUnique({
+    const user = await prisma.studentUser.findUnique({
       where: { id: userId },
       include: { student: true }
     });
@@ -826,8 +818,7 @@ export const createResearchRequest = async (req, res, next) => {
         student: {
           select: {
             id: true,
-            firstName: true,
-            lastName: true,
+            fullName: true,
             registrationNumber: true,
             email: true
           }
@@ -839,7 +830,7 @@ export const createResearchRequest = async (req, res, next) => {
     // await notificationService.createNotification({
     //   type: 'SYSTEM',
     //   title: 'New Research Request',
-    //   message: `Student ${researchRequest.student.firstName} ${researchRequest.student.lastName} has submitted a new ${requestType} request.`,
+    //   message: `Student ${researchRequest.student.fullName} has submitted a new ${requestType} request.`,
     //   recipientType: 'SUPERVISOR',
     //   recipientIds: researchRequest.student.supervisorIds || [],
     //   relatedEntityType: 'RESEARCH_REQUEST',
@@ -865,7 +856,7 @@ export const getResearchRequest = async (req, res, next) => {
     const { requestId } = req.params;
     const userId = req.user.id;
 
-    const user = await prisma.user.findUnique({
+    const user = await prisma.studentUser.findUnique({
       where: { id: userId },
       include: { student: true }
     });
@@ -887,8 +878,7 @@ export const getResearchRequest = async (req, res, next) => {
         student: {
           select: {
             id: true,
-            firstName: true,
-            lastName: true,
+            fullName: true,
             registrationNumber: true,
             email: true
           }
@@ -920,7 +910,7 @@ export const listAllSupervisorsForMessaging = async (req, res, next) => {
   try {
     // Get the current user (student)
     const userId = req.user.id;
-    const user = await prisma.user.findUnique({
+    const user = await prisma.studentUser.findUnique({
       where: { id: userId },
       include: { student: { include: { supervisors: true } } }
     });
@@ -1175,8 +1165,8 @@ export const getStudentEvaluations = async (req, res, next) => {
   try {
     const userId = req.user.id;
 
-    // Get user with student information
-    const user = await prisma.user.findUnique({
+    // Get studentUser with basic information
+    const user = await prisma.studentUser.findUnique({
       where: { id: userId },
       include: { student: true }
     });
@@ -1233,8 +1223,8 @@ export const uploadDocument = async (req, res, next) => {
       throw error;
     }
 
-    // Get user with student information
-    const user = await prisma.user.findUnique({
+    // Get studentUser with basic information
+    const user = await prisma.studentUser.findUnique({
       where: { id: userId },
       include: { student: true }
     });
@@ -1324,7 +1314,7 @@ export const uploadDocument = async (req, res, next) => {
         uploadedBy: document.uploadedBy,
         supervisor: document.supervisor,
         studentId: user.student.id,
-        studentName: `${user.student.firstName} ${user.student.lastName}`
+        studentName: `${user.student.fullName}`
       };
 
       console.log('Emitting socket events for document upload...');
@@ -1376,8 +1366,8 @@ export const getStudentDocuments = async (req, res, next) => {
   try {
     const userId = req.user.id;
 
-    // Get user with student information
-    const user = await prisma.user.findUnique({
+    // Get studentUser with basic information
+    const user = await prisma.studentUser.findUnique({
       where: { id: userId },
       include: { student: true }
     });
@@ -1458,8 +1448,8 @@ export const downloadDocument = async (req, res, next) => {
     const userId = req.user.id;
     const { documentId } = req.params;
 
-    // Get user with student information
-    const user = await prisma.user.findUnique({
+    // Get studentUser with basic information
+    const user = await prisma.studentUser.findUnique({
       where: { id: userId },
       include: { student: true }
     });
@@ -1535,8 +1525,8 @@ export const deleteDocument = async (req, res, next) => {
     const userId = req.user.id;
     const { documentId } = req.params;
 
-    // Get user with student information
-    const user = await prisma.user.findUnique({
+    // Get studentUser with basic information
+    const user = await prisma.studentUser.findUnique({
       where: { id: userId },
       include: { student: true }
     });

@@ -948,9 +948,9 @@ export const deleteSchool = async (req, res, next) => {
         }
 
         const counts = schoolWithRelations._count;
-        const totalRelations = counts.members + counts.departments + counts.facultyMembers + 
-                               counts.supervisors + counts.students + counts.examiners + 
-                               counts.staffMembers + counts.courses;
+        const totalRelations = counts.members + counts.departments + counts.facultyMembers +
+            counts.supervisors + counts.students + counts.examiners +
+            counts.staffMembers + counts.courses;
 
         if (totalRelations > 0) {
             const error = new Error(`Cannot delete school. It has attached entities (${totalRelations} total). Please reassign or delete them first.`);
@@ -1860,7 +1860,7 @@ export const assignSupervisorsToStudent = async (req, res, next) => {
         //     await notificationService.createNotification({
         //         userId: supervisor.user.id,
         //         title: 'New Student Assignment',
-        //         message: `You have been assigned as a supervisor to student ${student.firstName} ${student.lastName}`,
+        //         message: `You have been assigned as a supervisor to student ${student.fullName}`,
         //         type: 'ASSIGNMENT'
         //     });
         // }
@@ -1932,7 +1932,7 @@ export const assignSupervisorsToStudent = async (req, res, next) => {
                                 
                                 <div class="student-info">
                                     <h3>Student Information</h3>
-                                    <p><strong>Name:</strong> ${student.firstName} ${student.lastName}</p>
+                                    <p><strong>Name:</strong> ${student.fullName}</p>
                                     <p><strong>Registration Number:</strong> ${student.registrationNumber}</p>
                                     <p><strong>Course:</strong> ${student.course}</p>
                                     <p><strong>Email:</strong> ${student.email}</p>
@@ -1971,7 +1971,7 @@ export const assignSupervisorsToStudent = async (req, res, next) => {
 
                 await emailService.sendEmail({
                     to: supervisor.user.email,
-                    subject: `New Student Assignment - ${student.firstName} ${student.lastName}`,
+                    subject: `New Student Assignment - ${student.fullName}`,
                     htmlContent: assignmentEmailTemplate
                 });
 
@@ -2043,7 +2043,7 @@ export const assignSupervisorsToStudent = async (req, res, next) => {
                         </div>
                         <div class="content">
                             <h2>Supervisors Assigned to Your Research Project</h2>
-                            <p>Dear ${student.firstName} ${student.lastName},</p>
+                            <p>Dear ${student.fullName},</p>
                             <p>Great news! Your research project supervisors have been assigned. You can now begin working with your supervisors to develop and complete your research project.</p>
                             
                             <div class="supervisor-info">
@@ -2121,7 +2121,7 @@ export const assignSupervisorsToStudent = async (req, res, next) => {
                     studentId,
                     supervisorIds: finalSupervisorIds,
                     staffMemberIds: supervisorIds,
-                    description: `Assigned ${finalSupervisorIds.length} supervisor(s) to student ${student.firstName} ${student.lastName}`
+                    description: `Assigned ${finalSupervisorIds.length} supervisor(s) to student ${student.fullName}`
                 })
             }
         });
@@ -2167,7 +2167,7 @@ export const assignSupervisorsToStudent = async (req, res, next) => {
             message: 'Supervisors assigned to student successfully',
             student: {
                 id: updatedStudent.id,
-                name: `${updatedStudent.firstName} ${updatedStudent.lastName}`,
+                name: `${updatedStudent.fullName}`,
                 supervisors: updatedStudent.supervisors.map(supervisor => ({
                     id: supervisor.id,
                     name: supervisor.user.name,
@@ -2337,7 +2337,7 @@ export const changeStudentSupervisor = async (req, res, next) => {
             where: { id: studentId },
             include: {
                 supervisors: true,
-                user: true
+                studentUser: true
             }
         });
 
@@ -2429,7 +2429,7 @@ export const changeStudentSupervisor = async (req, res, next) => {
             type: "EMAIL",
             statusType: "PENDING",
             title: "New Student Supervision Assignment",
-            message: `You have been assigned as a supervisor for student ${student.firstName} ${student.lastName} .`,
+            message: `You have been assigned as a supervisor for student ${student.fullName} .`,
             recipientCategory: "USER",
             recipientId: newSupervisor.user.id,
             // recipientEmail: newSupervisor.user.email,
@@ -2560,8 +2560,7 @@ export const createStudent = async (req, res, next) => {
     try {
         const {
             title,
-            firstName,
-            lastName,
+            fullName,
             registrationNumber,
             course,
             email,
@@ -2577,54 +2576,78 @@ export const createStudent = async (req, res, next) => {
             specialization,
             completionTime,
             expectedCompletionDate,
-            password
+            password,
+            studentNumber
         } = req.body;
 
-        // Check if user already exists
-        const existingUser = await prisma.user.findUnique({
-            where: { email }
+        // Check if studentUser already exists by registrationNumber
+        const existingStudentUser = await prisma.studentUser.findUnique({
+            where: { registrationNumber }
         });
 
-        if (existingUser) {
-            const error = new Error('User with this email already exists');
+        if (existingStudentUser) {
+            const error = new Error('Student with this registration number already exists');
             error.statusCode = 409;
             throw error;
         }
 
-        // Check if student already exists
+        // Check if student already exists by registrationNumber
         const existingStudent = await prisma.student.findUnique({
-            where: { email }
+            where: { registrationNumber }
         });
 
         if (existingStudent) {
-            const error = new Error('Student with this email already exists');
+            const error = new Error('Student record with this registration number already exists');
             error.statusCode = 409;
             throw error;
         }
 
-        // Hash the password before saving
-        const hashedPassword = await bcrypt.hash(password, 10);
+        // Check if studentNumber already exists if provided
+        if (studentNumber) {
+            const existingByStudentNumber = await prisma.student.findFirst({
+                where: { studentNumber }
+            });
+            if (existingByStudentNumber) {
+                const error = new Error('Student record with this student number already exists');
+                error.statusCode = 409;
+                throw error;
+            }
+        }
 
-        // Create user first
-        const user = await prisma.user.create({
+        // Generate password if not provided
+        let passwordToUse = password;
+        if (!passwordToUse) {
+            const firstName = fullName?.trim().split(' ')[0] || '';
+            const regParts = registrationNumber?.split('/') || [];
+            const lastPart = regParts[regParts.length - 1] || '';
+            const lastNumbers = lastPart.replace(/[^0-9]/g, '');
+            passwordToUse = `${firstName}${lastNumbers}`;
+        }
+
+        // Hash the password before saving
+        const hashedPassword = await bcrypt.hash(passwordToUse, 10);
+
+        // Create studentUser first
+        const studentUser = await prisma.studentUser.create({
             data: {
-                name: `${firstName} ${lastName}`,
+                fullName,
+                registrationNumber,
+                studentNumber,
                 email,
                 password: hashedPassword,
-                phone: phoneNumber,
                 role: "STUDENT"
             }
         });
 
-        createdUser = user;
+        createdUser = studentUser;
 
         // Then create student with user connection
         const student = await prisma.student.create({
             data: {
                 title,
-                firstName,
-                lastName,
+                fullName,
                 registrationNumber,
+                studentNumber,
                 email,
                 course: course ? { connect: { id: course } } : undefined,
                 phoneNumber,
@@ -2646,8 +2669,8 @@ export const createStudent = async (req, res, next) => {
                 completionTime: completionTime ? parseInt(completionTime) : null,
                 expectedCompletionDate: expectedCompletionDate ? new Date(expectedCompletionDate) : null,
                 currentStatus: "WORKSHOP",
-                user: {
-                    connect: { id: user.id }
+                studentUser: {
+                    connect: { id: studentUser.id }
                 }
             },
             include: {
@@ -2656,7 +2679,7 @@ export const createStudent = async (req, res, next) => {
                 department: true,
                 statuses: true,
                 supervisors: true,
-                user: true
+                studentUser: true
             }
         });
 
@@ -2775,7 +2798,7 @@ export const createStudent = async (req, res, next) => {
                 type: "EMAIL",
                 statusType: "PENDING",
                 title: "New Student in Workshop Phase",
-                message: `A new student, ${firstName} ${lastName}, has been added to the system and is currently in the Workshop phase.`,
+                message: `A new student, ${fullName}, has been added to the system and is currently in the Workshop phase.`,
                 recipientCategory: "USER",
                 recipientId: admin.id,
                 recipientEmail: admin.email,
@@ -2801,7 +2824,7 @@ export const createStudent = async (req, res, next) => {
             error.statusCode = 500;
         }
         if (createdUser) {
-            await prisma.user.delete({
+            await prisma.studentUser.delete({
                 where: { id: createdUser.id }
             });
         }
@@ -2830,8 +2853,7 @@ export const uploadStudents = async (req, res, next) => {
         for (const payload of students) {
             const {
                 title,
-                firstName,
-                lastName,
+                fullName,
                 registrationNumber,
                 course,
                 email,
@@ -2847,44 +2869,60 @@ export const uploadStudents = async (req, res, next) => {
                 specialization,
                 completionTime,
                 expectedCompletionDate,
-                password
+                password,
+                studentNumber
             } = payload || {};
 
             // Basic validation
-            if (!firstName || !registrationNumber || !campusId) {
+            if (!fullName || !registrationNumber || !campusId) {
                 results.failed += 1;
-                results.errors.push({ registrationNumber, email, reason: 'Missing required fields (firstName, registrationNumber, campusId)' });
+                results.errors.push({ registrationNumber, email, reason: 'Missing required fields (fullName, registrationNumber, campusId)' });
                 continue;
             }
 
             try {
-                // Skip if user/student already exists by email or registration number
-                if (email) {
-                    const existingUser = await prisma.user.findUnique({ where: { email } });
-                    if (existingUser) {
-                        results.skipped += 1;
-                        continue;
-                    }
-                    const existingStudentByEmail = await prisma.student.findUnique({ where: { email } });
-                    if (existingStudentByEmail) {
-                        results.skipped += 1;
-                        continue;
-                    }
+                // Skip if studentUser already exists by registrationNumber
+                const existingStudentUser = await prisma.studentUser.findUnique({
+                    where: { registrationNumber }
+                });
+                if (existingStudentUser) {
+                    results.skipped += 1;
+                    continue;
                 }
-                const existingStudentByReg = await prisma.student.findFirst({ where: { registrationNumber } });
+
+                const existingStudentByReg = await prisma.student.findUnique({ where: { registrationNumber } });
                 if (existingStudentByReg) {
                     results.skipped += 1;
                     continue;
                 }
 
-                const hashedPassword = await bcrypt.hash(password || 'Student@123', 10);
+                if (studentNumber) {
+                    const existingByStudentNumber = await prisma.student.findFirst({ where: { studentNumber } });
+                    if (existingByStudentNumber) {
+                        results.skipped += 1;
+                        continue;
+                    }
+                }
 
-                const user = await prisma.user.create({
+                // Generate password if not provided
+                let passwordToUse = password;
+                if (!passwordToUse) {
+                    const firstName = fullName?.trim().split(' ')[0] || '';
+                    const regParts = registrationNumber?.split('/') || [];
+                    const lastPart = regParts[regParts.length - 1] || '';
+                    const lastNumbers = lastPart.replace(/[^0-9]/g, '');
+                    passwordToUse = `${firstName}${lastNumbers}`;
+                }
+
+                const hashedPassword = await bcrypt.hash(passwordToUse, 10);
+
+                const studentUser = await prisma.studentUser.create({
                     data: {
-                        name: `${firstName} ${lastName || ''}`.trim(),
+                        fullName,
+                        registrationNumber,
+                        studentNumber,
                         email: email || `${registrationNumber}@example.com`,
                         password: hashedPassword,
-                        phone: phoneNumber || null,
                         role: 'STUDENT'
                     }
                 });
@@ -2892,9 +2930,9 @@ export const uploadStudents = async (req, res, next) => {
                 const student = await prisma.student.create({
                     data: {
                         title: title || null,
-                        firstName,
-                        lastName: lastName || null,
+                        fullName,
                         registrationNumber,
+                        studentNumber,
                         email: email || null,
                         course: course || null,
                         phoneNumber: phoneNumber || null,
@@ -2910,7 +2948,7 @@ export const uploadStudents = async (req, res, next) => {
                         completionTime: completionTime ? parseInt(completionTime) : null,
                         expectedCompletionDate: expectedCompletionDate ? new Date(expectedCompletionDate) : null,
                         currentStatus: 'WORKSHOP',
-                        user: { connect: { id: user.id } }
+                        studentUser: { connect: { id: studentUser.id } }
                     }
                 });
 
@@ -2973,8 +3011,8 @@ export const uploadStudents = async (req, res, next) => {
                 //             <p>Dear ${firstName} ${lastName || ''},</p>
                 //             <p>You have been added to the DRIMS platform. Please use the credentials below to log in:</p>
                 //             <ul>
-                //               <li><strong>Username (Email):</strong> ${recipientEmail}</li>
-                //               <li><strong>Password:</strong> ${password || 'Student@123'}</li>
+                //               <li><strong>Username (Registration Number):</strong> ${registrationNumber}</li>
+                //               <li><strong>Password:</strong> ${passwordToUse || 'Student@123'}</li>
                 //             </ul>
                 //             <p>Login here: <a href="${loginUrl}" target="_blank">${loginUrl}</a></p>
                 //             <p>For security, change your password after logging in.</p>
@@ -3026,7 +3064,7 @@ export const updateStudent = async (req, res, next) => {
 
         console.log(updateData)
 
-        const { campusId, schoolId, departmentId, userId, user, supervisorIds, school, department, campus, ...restofData } = updateData
+        const { campusId, schoolId, departmentId, studentUserId, studentUser, supervisorIds, school, department, campus, ...restofData } = updateData
 
         // Update student with all fields from request body
         const updatedStudent = await prisma.student.update({
@@ -3036,7 +3074,7 @@ export const updateStudent = async (req, res, next) => {
                 campus: { connect: { id: campusId } },
                 school: { connect: { id: schoolId } },
                 department: { connect: { id: departmentId } },
-                user: { connect: { id: userId } },
+                studentUser: studentUserId ? { connect: { id: studentUserId } } : undefined,
 
                 // Handle date fields specifically
                 expectedCompletionDate: updateData.expectedCompletionDate ? new Date(updateData.expectedCompletionDate) : undefined
@@ -3047,9 +3085,21 @@ export const updateStudent = async (req, res, next) => {
                 department: true,
                 statuses: true,
                 supervisors: true,
-                user: true
+                studentUser: true
             }
         });
+
+        // Sync studentUser if fullName or registrationNumber or email is updated
+        if (studentUserId && (updateData.fullName || updateData.registrationNumber || updateData.email)) {
+            await prisma.studentUser.update({
+                where: { id: studentUserId },
+                data: {
+                    fullName: updateData.fullName,
+                    registrationNumber: updateData.registrationNumber,
+                    email: updateData.email
+                }
+            });
+        }
 
         // Create user activity log with tracked changes
         await prisma.userActivity.create({
@@ -3093,7 +3143,7 @@ export const changeStudentPassword = async (req, res, next) => {
         // Get student with associated user
         const student = await prisma.student.findUnique({
             where: { id: studentId },
-            include: { user: true }
+            include: { studentUser: true }
         });
 
         if (!student) {
@@ -3102,7 +3152,7 @@ export const changeStudentPassword = async (req, res, next) => {
             throw error;
         }
 
-        if (!student.user) {
+        if (!student.studentUser) {
             const error = new Error('No user account associated with this student');
             error.statusCode = 404;
             throw error;
@@ -3111,9 +3161,9 @@ export const changeStudentPassword = async (req, res, next) => {
         // Hash the new password
         const hashedPassword = await bcrypt.hash(newPassword, 12);
 
-        // Update user password
-        await prisma.user.update({
-            where: { id: student.user.id },
+        // Update studentUser password
+        await prisma.studentUser.update({
+            where: { id: student.studentUser.id },
             data: { password: hashedPassword }
         });
 
@@ -3153,7 +3203,7 @@ export const deleteStudent = async (req, res, next) => {
         // Get student with associated user
         const student = await prisma.student.findUnique({
             where: { id: studentId },
-            include: { user: true }
+            include: { studentUser: true }
         });
 
         if (!student) {
@@ -3163,9 +3213,9 @@ export const deleteStudent = async (req, res, next) => {
         }
 
         // Delete student's user account if it exists
-        if (student.user) {
-            await prisma.user.delete({
-                where: { id: student.user.id }
+        if (student.studentUser) {
+            await prisma.studentUser.delete({
+                where: { id: student.studentUser.id }
             });
         }
 
@@ -3226,7 +3276,7 @@ export const getStudent = async (req, res, next) => {
                 school: true,
                 campus: true,
                 department: true,
-                user: true
+                studentUser: true
             }
         });
 
@@ -3264,7 +3314,7 @@ export const getAllStudents = async (req, res, next) => {
                 school: true,
                 campus: true,
                 department: true,
-                user: true
+                studentUser: true
             }
         });
 
@@ -3605,8 +3655,7 @@ export const getAllProposals = async (req, res, next) => {
                 student: {
                     select: {
                         id: true,
-                        firstName: true,
-                        lastName: true,
+                        fullName: true,
                         email: true,
                         campus: true,
                         school: true
@@ -5122,10 +5171,10 @@ export const generateFieldLetter = async (req, res, next) => {
             await emailService.sendEmail({
                 to: process.env.NODE_MAILER_EMAIL_TO,
                 cc: process.env.NODE_MAILER_EMAIL_CC,
-                subject: `Field Letter - ${proposal.student.firstName} ${proposal.student.lastName}`,
-                textContent: `Please find attached the field letter for ${proposal.student.firstName} ${proposal.student.lastName}`,
+                subject: `Field Letter - ${proposal.student.fullName}`,
+                textContent: `Please find attached the field letter for ${proposal.student.fullName}`,
                 attachments: [{
-                    attachmentName: `field-letter-${proposal.student.firstName}-${proposal.student.lastName}.pdf`,
+                    attachmentName: `field-letter-${proposal.student.fullName}.pdf`,
                     content: pdfBuffer.toString('base64'),
                     contentType: 'application/pdf'
                 }]
@@ -5174,7 +5223,7 @@ export const generateFieldLetter = async (req, res, next) => {
             // Store the PDF file
             const pdfDoc = await prisma.letterDocument.create({
                 data: {
-                    name: `field-letter-${proposal.student.firstName}-${proposal.student.lastName}.pdf`,
+                    name: `field-letter-${proposal.student.fullName}.pdf`,
                     type: 'FIELD_LETTER',
                     file: pdfBuffer,
                     proposal: { connect: { id: proposalId } },
@@ -5873,9 +5922,8 @@ export const getAllBooks = async (req, res, next) => {
                 student: {
                     select: {
                         id: true,
-                        firstName: true,
+                        fullName: true,
                         course: true,
-                        lastName: true,
                         email: true,
                         academicYear: true,
                         gender: true,
@@ -5952,8 +6000,7 @@ export const getBook = async (req, res, next) => {
                 student: {
                     select: {
                         id: true,
-                        firstName: true,
-                        lastName: true,
+                        fullName: true,
                         email: true
                     }
                 },
@@ -6326,8 +6373,7 @@ export const getExaminer = async (req, res, next) => {
                                 student: {
                                     select: {
                                         id: true,
-                                        firstName: true,
-                                        lastName: true,
+                                        fullName: true,
                                         email: true
                                     }
                                 }
@@ -7652,7 +7698,7 @@ export const scheduleProposalDefense = async (req, res, next) => {
                 deviceId: req?.headers['x-device-id'] || 'Unknown',
                 browserAgent: req?.headers['user-agent'] || 'Unknown',
                 userId: req.user.id,
-                action: `Scheduled proposal defense for ${existingProposal.student?.firstName || 'Unknown Student'} ${existingProposal.student?.lastName || ''}`,
+                action: `Scheduled proposal defense for ${existingProposal.student?.fullName || 'Unknown Student'}`,
                 entityId: proposalDefense.id,
                 entityType: "Proposal Defense"
             }
@@ -7810,7 +7856,7 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
                 deviceId: req?.headers['x-device-id'] || 'Unknown',
                 browserAgent: req?.headers['user-agent'] || 'Unknown',
                 userId: req.user.id,
-                action: `Recorded proposal defense verdict (${verdict}) for ${existingDefense.proposal.student?.firstName || 'Unknown Student'} ${existingDefense.proposal.student?.lastName || ''}`,
+                action: `Recorded proposal defense verdict (${verdict}) for ${existingDefense.proposal.student?.fullName || 'Unknown Student'}`,
                 entityId: updatedDefense.id,
                 entityType: "Proposal Defense"
             }
@@ -9211,10 +9257,10 @@ export const getResearchClinicBookings = async (req, res, next) => {
             include: {
                 student: {
                     include: {
-                        user: {
+                        studentUser: {
                             select: {
                                 id: true,
-                                name: true,
+                                fullName: true,
                                 email: true
                             }
                         }
@@ -9293,10 +9339,10 @@ export const updateBookingStatus = async (req, res, next) => {
             include: {
                 student: {
                     include: {
-                        user: {
+                        studentUser: {
                             select: {
                                 id: true,
-                                name: true,
+                                fullName: true,
                                 email: true
                             }
                         }

@@ -62,7 +62,6 @@ model user {
   reactivatedUsers user[] @relation("reactivatedUsers")
   
   activities userActivity[]
-  student     student? 
   facultyMember facultyMember?
   supervisor   supervisor?
  
@@ -139,6 +138,8 @@ model userActivity {
   id          String   @id @default(auto()) @map("_id") @db.ObjectId
   user        user?     @relation(fields: [userId], references: [id])
   userId      String?   @db.ObjectId
+  studentUser studentUser? @relation(fields: [studentUserId], references: [id])
+  studentUserId String? @db.ObjectId
   action      String   // e.g., "Updated Proposal Status", "Assigned Supervisor"
   entityType  String   // e.g., "Proposal", "Student", "Viva"
   entityId    String   // ID of the affected entity
@@ -149,15 +150,31 @@ model userActivity {
   timestamp   DateTime @default(now())
 }
 
+model studentUser {
+  id                String   @id @default(auto()) @map("_id") @db.ObjectId
+  registrationNumber String   @unique
+  studentNumber     String?
+  fullName          String
+  email             String
+  password          String
+  role              Role     @default(STUDENT)
+  isActive          Boolean? @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  student           student?
+  activities        userActivity[]
+}
+
 model student {
   id                    String         @id @default(auto()) @map("_id") @db.ObjectId
   title                 String?
-  registrationNumber     String?        
-  firstName             String
-  lastName              String
+  registrationNumber     String         @unique
+  studentNumber         String?
+  fullName              String
   course                course?        @relation(fields: [courseId], references: [id])
   courseId              String?        @db.ObjectId
-  email                 String         @unique
+  email                 String         
   phoneNumber          String?
 
   gender               String?        // "male" or "female"
@@ -188,8 +205,8 @@ model student {
  
   fieldWork            fieldWork[]     
   
-  user                 user?          @relation(fields: [userId], references: [id])
-  userId               String?        @unique @db.ObjectId
+  studentUser          studentUser?   @relation(fields: [studentUserId], references: [id])
+  studentUserId        String?        @unique @db.ObjectId
 
   // Arrays
   statuses             studentStatus[] 

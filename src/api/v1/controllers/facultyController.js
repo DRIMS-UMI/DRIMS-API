@@ -618,8 +618,7 @@ export const getSchoolProposals = async (req, res, next) => {
         student: {
           select: {
             id: true,
-            firstName: true,
-            lastName: true,
+            fullName: true,
             email: true,
           },
         },
@@ -2972,8 +2971,7 @@ export const getAllBooks = async (req, res, next) => {
         student: {
           select: {
             id: true,
-            firstName: true,
-            lastName: true,
+            fullName: true,
             email: true,
           },
         },
@@ -3034,8 +3032,7 @@ export const getBook = async (req, res, next) => {
         student: {
           select: {
             id: true,
-            firstName: true,
-            lastName: true,
+            fullName: true,
             email: true,
           },
         },
@@ -3428,8 +3425,7 @@ export const getExaminer = async (req, res, next) => {
                 student: {
                   select: {
                     id: true,
-                    firstName: true,
-                    lastName: true,
+                    fullName: true,
                     email: true,
                   },
                 },
@@ -4219,8 +4215,8 @@ export const scheduleProposalDefense = async (req, res, next) => {
                 browserAgent: req?.headers['user-agent'] || 'Unknown',
         userId: req.user.id,
         action: `Scheduled proposal defense for ${
-          existingProposal.student?.firstName || "Unknown Student"
-        } ${existingProposal.student?.lastName || ""}`,
+          existingProposal.student?.fullName || "Unknown Student"
+        }`,
         entityId: proposalDefense.id,
         entityType: "Proposal Defense",
       },
@@ -4244,7 +4240,7 @@ export const scheduleProposalDefense = async (req, res, next) => {
         category: "STUDENT",
         id: existingProposal.student.id,
         email: existingProposal.student.email,
-        name: `${existingProposal.student.firstName} ${existingProposal.student.lastName}`,
+        name: `${existingProposal.student.fullName}`,
       },
       // Add all supervisors
       ...existingProposal.student.supervisors.map((supervisor) => ({
@@ -4294,7 +4290,7 @@ export const scheduleProposalDefense = async (req, res, next) => {
     // Schedule immediate invitations
     for (const participant of participants) {
       // Customize message based on participant type
-      let message = `You are invited to attend the proposal defense of ${existingProposal.student.firstName} ${existingProposal.student.lastName}.`;
+      let message = `You are invited to attend the proposal defense of ${existingProposal.student.fullName}.`;
       let additionalContent = `
         <p><strong>Details:</strong></p>
         <ul>
@@ -4325,7 +4321,7 @@ export const scheduleProposalDefense = async (req, res, next) => {
       await notificationService.scheduleNotification({
         type: "EMAIL",
         statusType: "PENDING",
-        title: `Proposal Defense Invitation - ${existingProposal.student.firstName} ${existingProposal.student.lastName}`,
+        title: `Proposal Defense Invitation - ${existingProposal.student.fullName}`,
         message,
         recipientCategory: participant.category,
         recipientId: participant.id,
@@ -4344,7 +4340,7 @@ export const scheduleProposalDefense = async (req, res, next) => {
 
     for (const participant of participants) {
       // Customize reminder message based on participant type
-      let message = `Reminder: Proposal defense for ${existingProposal.student.firstName} ${existingProposal.student.lastName} is scheduled for tomorrow.`;
+      let message = `Reminder: Proposal defense for ${existingProposal.student.fullName} is scheduled for tomorrow.`;
       let additionalContent = `
         <p><strong>Defense Details:</strong></p>
         <ul>
@@ -4394,7 +4390,7 @@ export const scheduleProposalDefense = async (req, res, next) => {
 
     for (const participant of participants) {
       // Customize final reminder message based on participant type
-      let message = `Final reminder: Proposal defense for ${existingProposal.student.firstName} ${existingProposal.student.lastName} is scheduled in 1 hour.`;
+      let message = `Final reminder: Proposal defense for ${existingProposal.student.fullName} is scheduled in 1 hour.`;
       let additionalContent = `
         <p><strong>Defense Details:</strong></p>
         <ul>
@@ -4601,8 +4597,8 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
                 browserAgent: req?.headers['user-agent'] || 'Unknown',
         userId: req.user.id,
         action: `Recorded proposal defense verdict (${verdict}) for ${
-          existingDefense.proposal.student?.firstName || "Unknown Student"
-        } ${existingDefense.proposal.student?.lastName || ""}`,
+          existingDefense.proposal.student?.fullName || "Unknown Student"
+        }`,
         entityId: updatedDefense.id,
         entityType: "Proposal Defense",
       },
@@ -4663,7 +4659,7 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
             additionalContent: `
               <p><strong>Defense Details:</strong></p>
               <ul>
-                <li>Student: ${student.firstName} ${student.lastName}</li>
+                <li>Student: ${student.fullName}</li>
                 <li>Date: ${formattedDefenseDate}</li>
                 <li>Title: ${existingDefense.proposal.title}</li>
                 <li>Verdict: ${verdict}</li>
@@ -4697,7 +4693,7 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
           recipientCategory: "STUDENT",
           recipientId: student.id,
           recipientEmail: student.email,
-          recipientName: `${student.firstName} ${student.lastName}`,
+          recipientName: `${student.fullName}`,
           scheduledFor: new Date(),
           metadata: {
             additionalContent: `
@@ -4732,9 +4728,7 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
             type: "EMAIL",
             statusType: "PENDING",
             title: "Student Proposal Defense Result",
-            message: `Your student ${student.firstName} ${
-              student.lastName
-            } has successfully defended their proposal${
+            message: `Your student ${student.fullName} has successfully defended their proposal${
               correctionMessage ? ` with ${correctionMessage}` : ""
             }.`,
             recipientCategory: "SUPERVISOR",
@@ -4783,7 +4777,7 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
           recipientCategory: "STUDENT",
           recipientId: student.id,
           recipientEmail: student.email,
-          recipientName: `${student.firstName} ${student.lastName}`,
+          recipientName: `${student.fullName}`,
           scheduledFor: reminderDate,
           metadata: {
             additionalContent: `
@@ -4816,7 +4810,7 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
               additionalContent: `
                 <p><strong>Supervisor Reminder:</strong></p>
                 <ul>
-                  <li>Student: ${student.firstName} ${student.lastName}</li>
+                  <li>Student: ${student.fullName}</li>
                   <li>Compliance report deadline: ${formattedComplianceDate}</li>
                   <li>Please ensure the student has addressed all corrections</li>
                   <li>Review and approve the compliance report when submitted</li>
@@ -4841,7 +4835,7 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
           recipientCategory: "STUDENT",
           recipientId: student.id,
           recipientEmail: student.email,
-          recipientName: `${student.firstName} ${student.lastName}`,
+          recipientName: `${student.fullName}`,
           scheduledFor: finalReminderDate,
           metadata: {
             additionalContent: `
@@ -4874,7 +4868,7 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
               additionalContent: `
                 <p><strong>Final Supervisor Reminder:</strong></p>
                 <ul>
-                  <li>Student: ${student.firstName} ${student.lastName}</li>
+                  <li>Student: ${student.fullName}</li>
                   <li>Compliance report deadline: ${formattedComplianceDate}</li>
                   <li>Please ensure the student submits the report on time</li>
                   <li>Review and approve the compliance report when submitted</li>
@@ -5431,8 +5425,7 @@ export const getNotifications = async (req, res, next) => {
             student: {
               select: {
                 id: true,
-                firstName: true,
-                lastName: true,
+                fullName: true,
               },
             },
           },
@@ -5523,7 +5516,7 @@ export const getAllStudentsStatusReport = async (req, res, next) => {
       statusReports.push({
         student: {
           id: student.id,
-          name: `${student.firstName} ${student.lastName}`,
+          name: `${student.fullName}`,
           email: student.email,
         },
         currentStatus: {
@@ -5643,7 +5636,7 @@ export const getStudentStatusReport = async (req, res, next) => {
     const statusReport = {
       student: {
         id: student.id,
-        name: `${student.firstName} ${student.lastName}`,
+        name: `${student.fullName}`,
         email: student.email,
       },
       currentStatus: {
@@ -6568,7 +6561,7 @@ export const changeStudentSupervisor = async (req, res, next) => {
           newSupervisorId,
           newSupervisorName: newSupervisor.user.name,
           reason,
-          description: `Changed supervisor for student ${student.name} from ${oldSupervisor?.user?.name} to ${newSupervisor.user.name}`,
+          description: `Changed supervisor for student ${student.fullName} from ${oldSupervisor?.user?.name} to ${newSupervisor.user.name}`,
         }),
       },
     });
@@ -6579,7 +6572,7 @@ export const changeStudentSupervisor = async (req, res, next) => {
       type: "EMAIL",
       statusType: "PENDING",
       title: "New Student Supervision Assignment",
-      message: `You have been assigned as a supervisor for student ${student.firstName} ${student.lastName} .`,
+      message: `You have been assigned as a supervisor for student ${student.fullName} .`,
       recipientCategory: "USER",
       recipientId: newSupervisor.user.id,
       // recipientEmail: newSupervisor.user.email,

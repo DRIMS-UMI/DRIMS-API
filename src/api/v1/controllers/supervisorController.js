@@ -529,8 +529,7 @@ export const getSchoolProposals = async (req, res, next) => {
         student: {
           select: {
             id: true,
-            firstName: true,
-            lastName: true,
+            fullName: true,
             email: true,
           },
         },
@@ -875,8 +874,7 @@ export const getStudentBooks = async (req, res, next) => {
         student: {
           select: {
             id: true,
-            firstName: true,
-            lastName: true,
+            fullName: true,
             email: true,
           },
         },
