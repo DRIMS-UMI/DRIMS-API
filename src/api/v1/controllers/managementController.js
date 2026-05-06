@@ -552,6 +552,9 @@ export const addSchool = async (req, res, next) => {
             });
         }
 
+        // Emit real-time update
+        req.app.get('io').emit('school_updated', { action: 'create', school });
+
         res.status(201).json({
             message: 'School created successfully',
             school
@@ -606,6 +609,9 @@ export const addDepartment = async (req, res, next) => {
                 schoolId
             }
         });
+
+        // Emit real-time update
+        req.app.get('io').emit('school_updated', { action: 'create_department', department });
 
         res.status(201).json({
             message: 'Department created successfully',
@@ -742,6 +748,9 @@ export const updateDepartment = async (req, res, next) => {
             }
         });
 
+        // Emit real-time update
+        req.app.get('io').emit('school_updated', { action: 'update_department', department: updatedDepartment });
+
         res.status(200).json({
             message: 'Department updated successfully',
             department: updatedDepartment
@@ -780,6 +789,9 @@ export const deleteDepartment = async (req, res, next) => {
         await prisma.department.delete({
             where: { id: departmentId }
         });
+
+        // Emit real-time update
+        req.app.get('io').emit('school_updated', { action: 'delete_department', departmentId: id });
 
         res.status(200).json({
             message: 'Department deleted successfully'
@@ -905,6 +917,9 @@ export const updateSchool = async (req, res, next) => {
             });
         }
 
+        // Emit real-time update
+        req.app.get('io').emit('school_updated', { action: 'update', school: updatedSchool });
+
         res.status(200).json({
             message: 'School updated successfully',
             school: updatedSchool,
@@ -977,6 +992,9 @@ export const deleteSchool = async (req, res, next) => {
                 }
             });
         }
+
+        // Emit real-time update
+        req.app.get('io').emit('school_updated', { action: 'delete', schoolId });
 
         res.status(200).json({
             message: 'School deleted successfully'
@@ -2815,6 +2833,9 @@ export const createStudent = async (req, res, next) => {
             });
         }
 
+        // Emit real-time update
+        req.app.get('io').emit('student_updated', { action: 'create', student });
+
         res.status(201).json({
             message: 'Student created successfully',
             student
@@ -3031,6 +3052,9 @@ export const uploadStudents = async (req, res, next) => {
                 results.errors.push({ registrationNumber, email, reason: err?.message || 'Failed to create' });
             }
         }
+
+        // Emit real-time update
+        req.app.get('io').emit('student_updated', { action: 'bulk_upload', count: results.created });
 
         return res.status(200).json(results);
     } catch (error) {
@@ -4606,6 +4630,9 @@ export const getChairpersons = async (req, res, next) => {
             },
         });
 
+        // Emit real-time update
+        req.app.get('io').emit('course_updated', { action: 'update', course: updatedCourse });
+
         res.status(200).json({
             message: "Chairpersons retrieved successfully",
             chairpersons,
@@ -4721,6 +4748,9 @@ export const createExternalPerson = async (req, res, next) => {
                 // isActive: true
             },
         });
+
+        // Emit real-time update
+        req.app.get('io').emit('course_updated', { action: 'create', course });
 
         res.status(201).json({
             message: "External person created successfully",
@@ -10345,6 +10375,9 @@ export const createSpecialization = async (req, res, next) => {
                 }
             });
         }
+
+        // Emit real-time update
+        req.app.get('io').emit('course_updated', { action: 'create_specialization', specialization });
 
         res.status(201).json({
             success: true,
