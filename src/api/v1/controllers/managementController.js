@@ -2833,6 +2833,33 @@ export const createStudent = async (req, res, next) => {
             });
         }
 
+        // Schedule welcome email with credentials for the student
+
+        const loginUrl = process.env.MANAGEMENT_PORTAL_URL || 'https://umistudent.umi.ac.ug';
+
+        await notificationService.scheduleNotification({
+            type: "EMAIL",
+            statusType: "PENDING",
+            title: "Welcome to DRIMS Student Portal - Your Account Details",
+            message: "You have been added to the DRIMS platform. Please use the credentials below to log in:",
+            recipientCategory: "STUDENT",
+            recipientId: student.id,
+            recipientEmail: email,
+            recipientName: fullName,
+            scheduledFor: new Date(Date.now() + 1000 * 60 * 5), // 5 minutes
+            metadata: {
+                additionalContent: `
+                        <ul>
+                            <li><strong>Username (Registration Number):</strong> ${registrationNumber}</li>
+                            <li><strong>Password:</strong> ${passwordToUse}</li>
+                        </ul>
+                        <p>Login here: <a href="${loginUrl}" target="_blank">${loginUrl}</a></p>
+                        
+                    `
+            }
+        });
+
+
         // Emit real-time update
         req.app.get('io').emit('student_updated', { action: 'create', student });
 
