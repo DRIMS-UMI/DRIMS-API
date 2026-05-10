@@ -387,39 +387,88 @@ export const recordVivaVerdict = async (req, res, next) => {
                 vivaStatus = 'COMPLETED';
         }
 
-        // Update viva with verdict and marks
-        const updatedViva = await prisma.viva.update({
-            where: { id: vivaId },
-            data: {
-                verdict,
-                comments,
-                status: vivaStatus,
-                externalMark,
-                internalMark,
-                finalExternalMark,
-                finalInternalMark,
-                completedAt: new Date()
-            },
-            include: {
-                book: {
-                    include: {
-                        student: true
-                    }
+        const { updatedViva } = await prisma.$transaction(async (tx) => {
+            // Update viva with verdict and marks
+            const updated = await tx.viva.update({
+                where: { id: vivaId },
+                data: {
+                    verdict,
+                    comments,
+                    status: vivaStatus,
+                    externalMark,
+                    internalMark,
+                    finalExternalMark,
+                    finalInternalMark,
+                    completedAt: new Date()
                 },
-                panelists: true
-            }
-        });
-
-        // Update student and book status if passed
-        if (verdict === 'PASS' || verdict === 'PASS_WITH_MINOR_CORRECTIONS' || verdict === 'PASS_WITH_MAJOR_CORRECTIONS' || vivaStatus === 'COMPLETED') {
-            // Find status definition for minutes pending
-            const minutesPendingStatus = await prisma.statusDefinition.findFirst({
-                where: { name: 'minutes pending' }
+                include: {
+                    book: {
+                        include: {
+                            student: true
+                        }
+                    },
+                    panelists: true
+                }
             });
 
-            if (minutesPendingStatus) {
-                // First, update all current statuses to not current
-                await prisma.studentStatus.updateMany({
+            // Update student and book status if passed
+            if (verdict === 'PASS' || verdict === 'PASS_WITH_MINOR_CORRECTIONS' || verdict === 'PASS_WITH_MAJOR_CORRECTIONS' || vivaStatus === 'COMPLETED') {
+                // Find status definition for minutes pending
+                const minutesPendingStatus = await tx.statusDefinition.findFirst({
+                    where: { name: 'minutes pending' }
+                });
+
+                if (minutesPendingStatus) {
+                    // First, update all current student statuses to not current
+                    await tx.studentStatus.updateMany({
+                        where: {
+                            studentId: existingViva.book.student.id,
+                            isCurrent: true
+                        },
+                        data: {
+                            isCurrent: false,
+                            endDate: new Date()
+                        }
+                    });
+
+                    // Update student status
+                    await tx.studentStatus.create({
+                        data: {
+                            student: { connect: { id: existingViva.book.student.id } },
+                            definition: { connect: { id: minutesPendingStatus.id } },
+                            startDate: new Date(),
+                            isCurrent: true
+                        }
+                    });
+
+                    // First, update all current book statuses to not current
+                    await tx.bookStatus.updateMany({
+                        where: {
+                            bookId: existingViva.bookId,
+                            isCurrent: true
+                        },
+                        data: {
+                            isCurrent: false,
+                            endDate: new Date()
+                        }
+                    });
+
+                    // Create new book status
+                    await tx.bookStatus.create({
+                        data: {
+                            book: { connect: { id: existingViva.bookId } },
+                            definition: { connect: { id: minutesPendingStatus.id } },
+                            startDate: new Date(),
+                            isCurrent: true
+                        }
+                    });
+                }
+            } else if (vivaStatus === "FAILED") {
+                const failedVivaStatus = await tx.statusDefinition.findFirst({
+                    where: { name: 'failed viva' }
+                });
+
+                await tx.studentStatus.updateMany({
                     where: {
                         studentId: existingViva.book.student.id,
                         isCurrent: true
@@ -431,17 +480,17 @@ export const recordVivaVerdict = async (req, res, next) => {
                 });
 
                 // Update student status
-                await prisma.studentStatus.create({
+                await tx.studentStatus.create({
                     data: {
                         student: { connect: { id: existingViva.book.student.id } },
-                        definition: { connect: { id: minutesPendingStatus.id } },
+                        definition: { connect: { id: failedVivaStatus.id } },
                         startDate: new Date(),
                         isCurrent: true
                     }
                 });
 
                 // First, update all current book statuses to not current
-                await prisma.bookStatus.updateMany({
+                await tx.bookStatus.updateMany({
                     where: {
                         bookId: existingViva.bookId,
                         isCurrent: true
@@ -453,75 +502,30 @@ export const recordVivaVerdict = async (req, res, next) => {
                 });
 
                 // Create new book status
-                await prisma.bookStatus.create({
+                await tx.bookStatus.create({
                     data: {
                         book: { connect: { id: existingViva.bookId } },
-                        definition: { connect: { id: minutesPendingStatus.id } },
+                        definition: { connect: { id: failedVivaStatus.id } },
                         startDate: new Date(),
                         isCurrent: true
                     }
                 });
             }
-        } else if (vivaStatus === "FAILED") {
-            const failedVivaStatus = await prisma.statusDefinition.findFirst({
-                where: { name: 'failed viva' }
-            });
 
-            await prisma.studentStatus.updateMany({
-                where: {
-                    studentId: existingViva.book.student.id,
-                    isCurrent: true
-                },
+            // Log activity
+            await tx.userActivity.create({
                 data: {
-                    isCurrent: false,
-                    endDate: new Date()
+                    ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                    deviceId: req?.headers['x-device-id'] || 'Unknown',
+                    browserAgent: req?.headers['user-agent'] || 'Unknown',
+                    userId: req.user.id,
+                    action: `Recorded viva verdict: ${verdict} with marks (External: ${externalMark}, Internal: ${internalMark}) for ${existingViva.book?.title || `Book ID: ${existingViva.bookId}`}`,
+                    entityId: existingViva.bookId,
+                    entityType: "Student Book"
                 }
             });
 
-            // Update student status
-            await prisma.studentStatus.create({
-                data: {
-                    student: { connect: { id: existingViva.book.student.id } },
-                    definition: { connect: { id: failedVivaStatus.id } },
-                    startDate: new Date(),
-                    isCurrent: true
-                }
-            });
-
-            // First, update all current book statuses to not current
-            await prisma.bookStatus.updateMany({
-                where: {
-                    bookId: existingViva.bookId,
-                    isCurrent: true
-                },
-                data: {
-                    isCurrent: false,
-                    endDate: new Date()
-                }
-            });
-
-            // Create new book status
-            await prisma.bookStatus.create({
-                data: {
-                    book: { connect: { id: existingViva.bookId } },
-                    definition: { connect: { id: failedVivaStatus.id } },
-                    startDate: new Date(),
-                    isCurrent: true
-                }
-            });
-        }
-
-        // Log activity
-        await prisma.userActivity.create({
-            data: {
-                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
-                deviceId: req?.headers['x-device-id'] || 'Unknown',
-                browserAgent: req?.headers['user-agent'] || 'Unknown',
-                userId: req.user.id,
-                action: `Recorded viva verdict: ${verdict} with marks (External: ${externalMark}, Internal: ${internalMark}) for ${existingViva.book?.title || `Book ID: ${existingViva.bookId}`}`,
-                entityId: existingViva.bookId,
-                entityType: "Student Book"
-            }
+            return { updatedViva: updated };
         });
 
         res.status(200).json({
@@ -644,75 +648,78 @@ export const scheduleViva = async (req, res, next) => {
             throw error;
         }
 
-        // Get the current attempt number
-        const currentVivas = await prisma.viva.findMany({
-            where: {
-                bookId: bookId,
-            },
-            orderBy: {
-                attempt: "desc",
-            },
-            take: 1,
-        });
-
-        const attemptNumber = currentVivas.length > 0 ? currentVivas[0].attempt + 1 : 1;
-
-        // If there's a current viva, mark it as not current
-        if (currentVivas.length > 0 && currentVivas[0].isCurrent) {
-            await prisma.viva.update({
-                where: { id: currentVivas[0].id },
-                data: { isCurrent: false },
+        const { viva } = await prisma.$transaction(async (tx) => {
+            // Get the current attempt number
+            const currentVivas = await tx.viva.findMany({
+                where: {
+                    bookId: bookId,
+                },
+                orderBy: {
+                    attempt: "desc",
+                },
+                take: 1,
             });
-        }
 
-        // Create new viva
-        const viva = await prisma.viva.create({
-            data: {
-                book: { connect: { id: bookId } },
-                scheduledDate: new Date(scheduledDate),
-                location,
-                status: "SCHEDULED",
-                attempt: attemptNumber,
-                panelists: { connect: panelistIds.map((id) => ({ id })) },
-                isCurrent: true,
-                // Use internal examiner as chairperson
-                internalExaminerChairperson: chairpersonId
-                    ? { connect: { id: chairpersonId } }
-                    : undefined,
-                // Use external examiners as reviewers
-                externalExaminers: reviewerIds && reviewerIds.length > 0
-                    ? { connect: reviewerIds.map((id) => ({ id })) }
-                    : undefined,
-                minutesSecretary: minutesSecretaryId
-                    ? { connect: { id: minutesSecretaryId } }
-                    : undefined,
-                chairperson: chairpersonId
-                    ? { connect: { id: chairpersonId } }
-                    : undefined,
+            const attemptNumber = currentVivas.length > 0 ? currentVivas[0].attempt + 1 : 1;
 
-                reviewers: reviewerIds ? { connect: reviewerIds.map((id) => ({ id })) } : undefined,
-            },
-            include: {
-                panelists: true,
-                internalExaminerChairperson: true,
-                externalExaminers: true,
-                reviewers: true,
-                chairperson: true,
-                minutesSecretary: true,
-                book: {
-                    include: {
-                        student: true,
-                        examinerAssignments: {
-                            where: {
-                                isCurrent: true,
-                            },
-                            include: {
-                                examiner: true,
+            // If there's a current viva, mark it as not current
+            if (currentVivas.length > 0 && currentVivas[0].isCurrent) {
+                await tx.viva.update({
+                    where: { id: currentVivas[0].id },
+                    data: { isCurrent: false },
+                });
+            }
+
+            // Create new viva
+            const newViva = await tx.viva.create({
+                data: {
+                    book: { connect: { id: bookId } },
+                    scheduledDate: new Date(scheduledDate),
+                    location,
+                    status: "SCHEDULED",
+                    attempt: attemptNumber,
+                    panelists: { connect: panelistIds.map((id) => ({ id })) },
+                    isCurrent: true,
+                    // Use internal examiner as chairperson
+                    internalExaminerChairperson: chairpersonId
+                        ? { connect: { id: chairpersonId } }
+                        : undefined,
+                    // Use external examiners as reviewers
+                    externalExaminers: reviewerIds && reviewerIds.length > 0
+                        ? { connect: reviewerIds.map((id) => ({ id })) }
+                        : undefined,
+                    minutesSecretary: minutesSecretaryId
+                        ? { connect: { id: minutesSecretaryId } }
+                        : undefined,
+                    chairperson: chairpersonId
+                        ? { connect: { id: chairpersonId } }
+                        : undefined,
+
+                    reviewers: reviewerIds ? { connect: reviewerIds.map((id) => ({ id })) } : undefined,
+                },
+                include: {
+                    panelists: true,
+                    internalExaminerChairperson: true,
+                    externalExaminers: true,
+                    reviewers: true,
+                    chairperson: true,
+                    minutesSecretary: true,
+                    book: {
+                        include: {
+                            student: true,
+                            examinerAssignments: {
+                                where: {
+                                    isCurrent: true,
+                                },
+                                include: {
+                                    examiner: true,
+                                },
                             },
                         },
                     },
                 },
-            },
+            });
+            return { viva: newViva };
         });
 
         // Find the status definition for "waiting for viva"
@@ -1170,67 +1177,70 @@ export const updateMinutesSentDate = async (req, res, next) => {
             throw error;
         }
 
-        // Update book with minutes sent date
-        const updatedBook = await prisma.book.update({
-            where: { id: bookId },
-            data: {
-                minutesSentDate: new Date(minutesSentDate)
-            },
-            include: {
-                student: true
-            }
-        });
-
         // Find status definition for minutes sent
         const minutesSentStatus = await prisma.statusDefinition.findFirst({
             where: { name: 'minutes sent' }
         });
 
-        if (minutesSentStatus) {
-            // First, update all current statuses to not current for student
-            await prisma.studentStatus.updateMany({
-                where: {
-                    studentId: existingBook.student.id,
-                    isCurrent: true
+        let updatedBook;
+        await prisma.$transaction(async (tx) => {
+            if (minutesSentStatus) {
+                // First, update all current statuses to not current for student
+                await tx.studentStatus.updateMany({
+                    where: {
+                        studentId: existingBook.student.id,
+                        isCurrent: true
+                    },
+                    data: {
+                        isCurrent: false,
+                        endDate: new Date()
+                    }
+                });
+
+                // Update student status
+                await tx.studentStatus.create({
+                    data: {
+                        student: { connect: { id: existingBook.student.id } },
+                        definition: { connect: { id: minutesSentStatus.id } },
+                        startDate: new Date(),
+                        isCurrent: true
+                    }
+                });
+
+                // First, update all current book statuses to not current
+                await tx.bookStatus.updateMany({
+                    where: {
+                        bookId: bookId,
+                        isCurrent: true
+                    },
+                    data: {
+                        isCurrent: false,
+                        endDate: new Date()
+                    }
+                });
+
+                // Create new book status
+                await tx.bookStatus.create({
+                    data: {
+                        book: { connect: { id: bookId } },
+                        definition: { connect: { id: minutesSentStatus.id } },
+                        startDate: new Date(),
+                        isCurrent: true
+                    }
+                });
+            }
+
+            // Update book with minutes sent date
+            updatedBook = await tx.book.update({
+                where: { id: bookId },
+                data: {
+                    minutesSentDate: new Date(minutesSentDate)
                 },
-                data: {
-                    isCurrent: false,
-                    endDate: new Date()
+                include: {
+                    student: true
                 }
             });
-
-            // Update student status
-            await prisma.studentStatus.create({
-                data: {
-                    student: { connect: { id: existingBook.student.id } },
-                    definition: { connect: { id: minutesSentStatus.id } },
-                    startDate: new Date(),
-                    isCurrent: true
-                }
-            });
-
-            // First, update all current book statuses to not current
-            await prisma.bookStatus.updateMany({
-                where: {
-                    bookId: bookId,
-                    isCurrent: true
-                },
-                data: {
-                    isCurrent: false,
-                    endDate: new Date()
-                }
-            });
-
-            // Create new book status
-            await prisma.bookStatus.create({
-                data: {
-                    book: { connect: { id: bookId } },
-                    definition: { connect: { id: minutesSentStatus.id } },
-                    startDate: new Date(),
-                    isCurrent: true
-                }
-            });
-        }
+        });
 
         // Log activity
         await prisma.userActivity.create({
@@ -1297,69 +1307,72 @@ export const updateComplianceReportDate = async (req, res, next) => {
             throw error;
         }
 
-        // Update book with compliance report date and actual topic
-        const updatedBook = await prisma.book.update({
-            where: { id: bookId },
-            data: {
-                complianceReportDate: new Date(complianceReportDate),
-                actualTopic: actualTopic
-            },
-            include: {
-                student: true
-            }
-        });
-
         // Find status definition for final dissertation & compliance report received
         const finalBookStatus = await prisma.statusDefinition.findFirst({
             where: { name: 'final dissertation & compliance report received' }
         });
 
-        if (finalBookStatus) {
-            // First, update all current statuses to not current for student
-            await prisma.studentStatus.updateMany({
-                where: {
-                    studentId: existingBook.student.id,
-                    isCurrent: true
+        let updatedBook;
+        await prisma.$transaction(async (tx) => {
+            if (finalBookStatus) {
+                // First, update all current statuses to not current for student
+                await tx.studentStatus.updateMany({
+                    where: {
+                        studentId: existingBook.student.id,
+                        isCurrent: true
+                    },
+                    data: {
+                        isCurrent: false,
+                        endDate: new Date()
+                    }
+                });
+
+                // Update student status
+                await tx.studentStatus.create({
+                    data: {
+                        student: { connect: { id: existingBook.student.id } },
+                        definition: { connect: { id: finalBookStatus.id } },
+                        startDate: new Date(),
+                        isCurrent: true
+                    }
+                });
+
+                // First, update all current book statuses to not current
+                await tx.bookStatus.updateMany({
+                    where: {
+                        bookId: bookId,
+                        isCurrent: true
+                    },
+                    data: {
+                        isCurrent: false,
+                        endDate: new Date()
+                    }
+                });
+
+                // Create new book status
+                await tx.bookStatus.create({
+                    data: {
+                        book: { connect: { id: bookId } },
+                        definition: { connect: { id: finalBookStatus.id } },
+                        startDate: new Date(),
+                        endDate: new Date(),
+                        isCurrent: true
+                    }
+                });
+            }
+
+            // Update book with compliance report date and actual topic
+            updatedBook = await tx.book.update({
+                where: { id: bookId },
+                data: {
+                    complianceReportDate: new Date(complianceReportDate),
+                    actualTopic: actualTopic
                 },
-                data: {
-                    isCurrent: false,
-                    endDate: new Date()
+                include: {
+                    student: true
                 }
             });
-
-            // Update student status
-            await prisma.studentStatus.create({
-                data: {
-                    student: { connect: { id: existingBook.student.id } },
-                    definition: { connect: { id: finalBookStatus.id } },
-                    startDate: new Date(),
-                    isCurrent: true
-                }
-            });
-
-            // First, update all current book statuses to not current
-            await prisma.bookStatus.updateMany({
-                where: {
-                    bookId: bookId,
-                    isCurrent: true
-                },
-                data: {
-                    isCurrent: false,
-                    endDate: new Date()
-                }
-            });
-
-            // Create new book status
-            await prisma.bookStatus.create({
-                data: {
-                    book: { connect: { id: bookId } },
-                    definition: { connect: { id: finalBookStatus.id } },
-                    startDate: new Date(),
-                    endDate: new Date(),
-                    isCurrent: true
-                }
-            });
-        }
+        });
 
         // Log activity
         await prisma.userActivity.create({
@@ -1417,14 +1430,6 @@ export const updateResultsApprovalDate = async (req, res, next) => {
             throw error;
         }
 
-        // Update the student with the results approval date
-        const updatedStudent = await prisma.student.update({
-            where: { id: studentId },
-            data: {
-                resultsApprovedDate: new Date(resultsApprovedDate)
-            }
-        });
-
         // Check if we need to update student status
         const currentStatus = student.statuses[0];
 
@@ -1435,29 +1440,41 @@ export const updateResultsApprovalDate = async (req, res, next) => {
             }
         });
 
-        if (resultsApprovedStatus && (!currentStatus || currentStatus.definition.name !== "results approved")) {
-            // First, update all current statuses to not current
-            await prisma.studentStatus.updateMany({
-                where: {
-                    studentId: studentId,
-                    isCurrent: true
-                },
+        let updatedStudent;
+        await prisma.$transaction(async (tx) => {
+            // Update the student with the results approval date
+            updatedStudent = await tx.student.update({
+                where: { id: studentId },
                 data: {
-                    isCurrent: false,
-                    endDate: new Date()
+                    resultsApprovedDate: new Date(resultsApprovedDate)
                 }
             });
+            if (resultsApprovedStatus && (!currentStatus || currentStatus.definition.name !== "results approved")) {
+                // First, update all current statuses to not current
+                await tx.studentStatus.updateMany({
+                    where: {
+                        studentId: studentId,
+                        isCurrent: true
+                    },
+                    data: {
+                        isCurrent: false,
+                        endDate: new Date()
+                    }
+                });
 
-            // Create new student status
-            await prisma.studentStatus.create({
-                data: {
-                    student: { connect: { id: studentId } },
-                    definition: { connect: { id: resultsApprovedStatus.id } },
-                    startDate: new Date(),
-                    isCurrent: true
-                }
-            });
-        }
+                // Create new student status
+                await tx.studentStatus.create({
+                    data: {
+                        student: { connect: { id: studentId } },
+                        definition: { connect: { id: resultsApprovedStatus.id } },
+                        startDate: new Date(),
+                        isCurrent: true
+                    }
+                });
+            }
+
+
+        });
 
         // Log activity
         await prisma.userActivity.create({
@@ -1509,14 +1526,6 @@ export const updateResultsSentDate = async (req, res, next) => {
             throw error;
         }
 
-        // Update the student with the results sent date
-        const updatedStudent = await prisma.student.update({
-            where: { id: studentId },
-            data: {
-                resultsSentDate: new Date(resultsSentDate)
-            }
-        });
-
         // Find the "results sent to schools" status definition
         const resultsSentStatus = await prisma.statusDefinition.findFirst({
             where: {
@@ -1535,30 +1544,41 @@ export const updateResultsSentDate = async (req, res, next) => {
             }
         });
 
-        // Update student status if the status definition exists and it's not already the current status
-        if (resultsSentStatus && (!currentStatus || currentStatus.definition.name !== "results sent")) {
-            // First, update all current statuses to not current
-            await prisma.studentStatus.updateMany({
-                where: {
-                    studentId: studentId,
-                    isCurrent: true
-                },
-                data: {
-                    isCurrent: false,
-                    endDate: new Date()
-                }
-            });
+        let updatedStudent;
+        await prisma.$transaction(async (tx) => {
+            // Update student status if the status definition exists and it's not already the current status
+            if (resultsSentStatus && (!currentStatus || currentStatus.definition.name !== "results sent to schools")) {
+                // First, update all current statuses to not current
+                await tx.studentStatus.updateMany({
+                    where: {
+                        studentId: studentId,
+                        isCurrent: true
+                    },
+                    data: {
+                        isCurrent: false,
+                        endDate: new Date()
+                    }
+                });
 
-            // Create new student status
-            await prisma.studentStatus.create({
+                // Create new student status
+                await tx.studentStatus.create({
+                    data: {
+                        student: { connect: { id: studentId } },
+                        definition: { connect: { id: resultsSentStatus.id } },
+                        startDate: new Date(),
+                        isCurrent: true
+                    }
+                });
+            }
+
+            // Update the student with the results sent date
+            updatedStudent = await tx.student.update({
+                where: { id: studentId },
                 data: {
-                    student: { connect: { id: studentId } },
-                    definition: { connect: { id: resultsSentStatus.id } },
-                    startDate: new Date(),
-                    isCurrent: true
+                    resultsSentDate: new Date(resultsSentDate)
                 }
             });
-        }
+        });
 
         // Log activity
         await prisma.userActivity.create({
@@ -1616,14 +1636,6 @@ export const updateSenateApprovalDate = async (req, res, next) => {
             throw error;
         }
 
-        // Update the student with the senate approval date
-        const updatedStudent = await prisma.student.update({
-            where: { id: studentId },
-            data: {
-                senateApprovalDate: new Date(senateApprovalDate)
-            }
-        });
-
         // Find the "results approved by senate" status definition
         const senateApprovedStatus = await prisma.statusDefinition.findFirst({
             where: {
@@ -1633,30 +1645,41 @@ export const updateSenateApprovalDate = async (req, res, next) => {
 
         const currentStatus = student.statuses[0];
 
-        // Update student status if the status definition exists and it's not already the current status
-        if (senateApprovedStatus && (!currentStatus || currentStatus.definition.name !== "results approved by senate")) {
-            // First, update all current statuses to not current
-            await prisma.studentStatus.updateMany({
-                where: {
-                    studentId: studentId,
-                    isCurrent: true
-                },
-                data: {
-                    isCurrent: false,
-                    endDate: new Date()
-                }
-            });
+        let updatedStudent;
+        await prisma.$transaction(async (tx) => {
+            // Update student status if the status definition exists and it's not already the current status
+            if (senateApprovedStatus && (!currentStatus || currentStatus.definition.name !== "results approved by senate")) {
+                // First, update all current statuses to not current
+                await tx.studentStatus.updateMany({
+                    where: {
+                        studentId: studentId,
+                        isCurrent: true
+                    },
+                    data: {
+                        isCurrent: false,
+                        endDate: new Date()
+                    }
+                });
 
-            // Create new student status
-            await prisma.studentStatus.create({
+                // Create new student status
+                await tx.studentStatus.create({
+                    data: {
+                        student: { connect: { id: studentId } },
+                        definition: { connect: { id: senateApprovedStatus.id } },
+                        startDate: new Date(),
+                        isCurrent: true
+                    }
+                });
+            }
+
+            // Update the student with the senate approval date
+            updatedStudent = await tx.student.update({
+                where: { id: studentId },
                 data: {
-                    student: { connect: { id: studentId } },
-                    definition: { connect: { id: senateApprovedStatus.id } },
-                    startDate: new Date(),
-                    isCurrent: true
+                    senateApprovalDate: new Date(senateApprovalDate)
                 }
             });
-        }
+        });
 
         // Log activity
         await prisma.userActivity.create({

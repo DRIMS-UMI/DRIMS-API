@@ -423,90 +423,94 @@ export const submitProposal = async (req, res, next) => {
       "0"
     )}`;
 
-    // If student has a current proposal, update it to not be current
-    if (student.proposals && student.proposals.length > 0) {
-      await prisma.proposal.update({
-        where: { id: student.proposals[0].id },
-        data: { isCurrent: false },
-      });
-    }
+    const { proposal } = await prisma.$transaction(async (tx) => {
+      // If student has a current proposal, update it to not be current
+      if (student.proposals && student.proposals.length > 0) {
+        await tx.proposal.update({
+          where: { id: student.proposals[0].id },
+          data: { isCurrent: false },
+        });
+      }
 
-    // Create new proposal with file buffer
-    const proposal = await prisma.proposal.create({
-      data: {
-        proposalCode,
-        title,
-        description,
-        submissionDate: new Date(submissionDate),
-        researchArea,
-        // fileData: proposalFile.buffer,
-        // fileName: proposalFile.originalname,
-        // fileType: proposalFile.mimetype,
-        isCurrent: true,
-
-        student: {
-          connect: { id: studentId },
-        },
-        submittedBy: {
-          connect: { id: req.user.id },
-        },
-      },
-    });
-
-    // Update current status to not be current
-    if (student.statuses[0]) {
-      await prisma.studentStatus.update({
-        where: { id: student.statuses[0].id },
+      // Create new proposal with file buffer
+      const newProposal = await tx.proposal.create({
         data: {
-          isCurrent: false,
-          endDate: new Date(),
+          proposalCode,
+          title,
+          description,
+          submissionDate: new Date(submissionDate),
+          researchArea,
+          // fileData: proposalFile.buffer,
+          // fileName: proposalFile.originalname,
+          // fileType: proposalFile.mimetype,
+          isCurrent: true,
+
+          student: {
+            connect: { id: studentId },
+          },
+          submittedBy: {
+            connect: { id: req.user.id },
+          },
         },
       });
-    }
 
-    let statusDefinition = await prisma.statusDefinition.findUnique({
-      where: { name: "proposal received" },
-    });
+      // Update current status to not be current
+      if (student.statuses[0]) {
+        await tx.studentStatus.update({
+          where: { id: student.statuses[0].id },
+          data: {
+            isCurrent: false,
+            endDate: new Date(),
+          },
+        });
+      }
 
-    if (!statusDefinition) {
-      statusDefinition = await prisma.statusDefinition.create({
+      let statusDefinition = await tx.statusDefinition.findUnique({
+        where: { name: "proposal received" },
+      });
+
+      if (!statusDefinition) {
+        statusDefinition = await tx.statusDefinition.create({
+          data: {
+            name: "Proposal Received",
+            description: "Proposal has been received by the faculty member",
+          },
+        });
+      }
+
+      // Create new status record for proposal submission
+      await tx.studentStatus.create({
         data: {
-          name: "Proposal Received",
-          description: "Proposal has been received by the faculty member",
+          student: {
+            connect: { id: studentId },
+          },
+          definition: {
+            connect: { id: statusDefinition.id },
+          },
+          updatedBy: {
+            connect: { id: req.user.id },
+          },
+          startDate: new Date(),
+          isCurrent: true,
         },
       });
-    }
 
-    // Create new status record for proposal submission
-    await prisma.studentStatus.create({
-      data: {
-        student: {
-          connect: { id: studentId },
+      // Create initial proposal status
+      await tx.proposalStatus.create({
+        data: {
+          proposal: {
+            connect: { id: newProposal.id },
+          },
+          definition: {
+            connect: { id: statusDefinition.id },
+          },
+          startDate: new Date(),
+          isActive: true,
+          isCurrent: true,
         },
-        definition: {
-          connect: { id: statusDefinition.id },
-        },
-        updatedBy: {
-          connect: { id: req.user.id },
-        },
-        startDate: new Date(),
-        isCurrent: true,
-      },
-    });
+      });
 
-    // Create initial proposal status
-    await prisma.proposalStatus.create({
-      data: {
-        proposal: {
-          connect: { id: proposal.id },
-        },
-        definition: {
-          connect: { id: statusDefinition.id },
-        },
-        startDate: new Date(),
-        isActive: true,
-        isCurrent: true,
-      },
+      return { proposal: newProposal };
     });
 
     res.status(201).json({
@@ -777,33 +781,37 @@ export const gradeProposal = async (req, res, next) => {
       throw error;
     }
 
-    // Create grade for proposal
-    const gradedProposal = await prisma.proposalGrade.create({
-      data: {
-        grade,
-        feedback,
-        proposal: {
-          connect: { id: proposalId },
+    const { gradedProposal } = await prisma.$transaction(async (tx) => {
+      // Create grade for proposal
+      const newGrade = await tx.proposalGrade.create({
+        data: {
+          grade,
+          feedback,
+          proposal: {
+            connect: { id: proposalId },
+          },
+          gradedBy: {
+            connect: { id: req.user.id },
+          },
         },
-        gradedBy: {
-          connect: { id: req.user.id },
-        },
-      },
-    });
+      });
 
-    // Update student status
-    await prisma.studentStatus.create({
-      data: {
-        student: {
-          connect: { id: studentId },
+      // Update student status
+      await tx.studentStatus.create({
+        data: {
+          student: {
+            connect: { id: studentId },
+          },
+          definition: {
+            connect: { code: "PROPOSAL_GRADED" },
+          },
+          updatedBy: {
+            connect: { id: req.user.id },
+          },
         },
-        definition: {
-          connect: { code: "PROPOSAL_GRADED" },
-        },
-        updatedBy: {
-          connect: { id: req.user.id },
-        },
-      },
+      });
+
+      return { gradedProposal: newGrade };
     });
 
     res.status(200).json({
@@ -873,205 +881,191 @@ export const addReviewers = async (req, res, next) => {
     }
 
     // Process each reviewer - could be staff member ID or existing reviewer data (object)
-    const reviewerPromises = reviewers.map(async (reviewerData) => {
-      // Check if this is a staff member ID (string) or existing reviewer data (object)
-      if (typeof reviewerData === 'string') {
-        // This is a staff member ID
-        const staffMember = await prisma.staffMember.findUnique({
-          where: { id: reviewerData },
-          include: {
-            school: true,
-            department: true,
-            campus: true
-          }
-        });
-
-        if (!staffMember) {
-          throw new Error(`Staff member with ID ${reviewerData} not found`);
-        }
-
-        // Check if staff member already has a reviewer role
-        if (staffMember.reviewerId) {
-          // Staff member already has a reviewer role, use existing reviewer
-          const existingReviewer = await prisma.reviewer.findUnique({
-            where: { id: staffMember.reviewerId }
+    const { createdReviewers } = await prisma.$transaction(async (tx) => {
+      // Process each reviewer
+      const results = [];
+      for (const reviewerData of reviewers) {
+        if (typeof reviewerData === 'string') {
+          // This is a staff member ID
+          const staffMember = await tx.staffMember.findUnique({
+            where: { id: reviewerData },
           });
-          
-          if (!existingReviewer) {
-            throw new Error(`Reviewer for staff member ${staffMember.name} not found`);
+
+          if (!staffMember) {
+            throw new Error(`Staff member with ID ${reviewerData} not found`);
           }
-          
-          return existingReviewer;
-        } else {
-          // Staff member doesn't have a reviewer role, create one
-          // Create the reviewer directly (no user account needed)
-          const newReviewer = await prisma.reviewer.create({
-            data: {
-              name: staffMember.name,
-              email: staffMember.email,
-              primaryPhone: staffMember.phone,
-              institution: staffMember.isExternal ? staffMember.externalInstitution : 'Uganda Management Institute',
-              specialization: staffMember.specialization || 'Not specified',
-              campus: staffMember.campusId ? { connect: { id: staffMember.campusId } } : undefined
+          // Check if staff member already has a reviewer role
+          if (staffMember.reviewerId) {
+            // Staff member already has a reviewer role, use existing reviewer
+            const existingReviewer = await tx.reviewer.findUnique({
+              where: { id: staffMember.reviewerId }
+            });
+
+            if (!existingReviewer) {
+              throw new Error(`Reviewer for staff member ${staffMember.name} not found`);
             }
+
+            results.push(existingReviewer);
+          } else {
+            // Staff member doesn't have a reviewer role, create one
+            // Create the reviewer directly (no user account needed)
+            const newReviewer = await tx.reviewer.create({
+              data: {
+                name: staffMember.name,
+                email: staffMember.email,
+                primaryPhone: staffMember.phone,
+                institution: staffMember.isExternal ? staffMember.externalInstitution : 'Uganda Management Institute',
+                specialization: staffMember.specialization || 'Not specified',
+                campus: staffMember.campusId ? { connect: { id: staffMember.campusId } } : undefined
+              }
+            });
+
+            await tx.staffMember.update({
+              where: { id: staffMember.id },
+              data: { reviewerId: newReviewer.id }
+            });
+
+            // Send email notification to the new reviewer
+            // try {
+            //   const reviewerEmailTemplate = `
+            //     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            //       <h2 style="color: #2563eb;">Welcome to UMI Research Management System</h2>
+            //       <p>Dear ${staffMember.name},</p>
+            //       <p>You have been assigned as a reviewer in the UMI Research Management System.</p>
+            //       <p>You will be notified when proposals are assigned to you for review.</p>
+            //       <p>Best regards,<br>UMI Research Management Team</p>
+            //     </div>
+            //   `;
+
+            //   await emailService.sendEmail({
+            //     to: staffMember.email,
+            //     subject: 'Reviewer Assignment - UMI Research Management System',
+            //     htmlContent: reviewerEmailTemplate
+            //   });
+
+            //   console.log(`Email sent to new reviewer: ${staffMember.email}`);
+            // } catch (emailError) {
+            //   console.error('Error sending reviewer assignment email:', emailError);
+            //   // Don't fail the request if email fails
+            // }
+
+            results.push(newReviewer);
+          }
+        } else {
+          const { name, email } = reviewerData;
+          if (!name || !email) {
+            throw new Error("Each reviewer must have name and email");
+          }
+
+          const reviewer = await tx.reviewer.upsert({
+            where: { email },
+            update: {
+              name,
+              proposals: {
+                connect: { id: proposalId },
+              },
+              campus: {
+                connect: { id: faculty.campusId },
+              },
+            },
+            create: {
+              email,
+              name,
+              proposals: {
+                connect: { id: proposalId },
+              },
+              campus: {
+                connect: { id: faculty.campusId },
+              },
+            },
           });
-
-          // Connect the reviewer to the staff member
-          await prisma.staffMember.update({
-            where: { id: staffMember.id },
-            data: { reviewerId: newReviewer.id }
-          });
-
-          // Send email notification to the new reviewer
-          // try {
-          //   const reviewerEmailTemplate = `
-          //     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          //       <h2 style="color: #2563eb;">Welcome to UMI Research Management System</h2>
-          //       <p>Dear ${staffMember.name},</p>
-          //       <p>You have been assigned as a reviewer in the UMI Research Management System.</p>
-          //       <p>You will be notified when proposals are assigned to you for review.</p>
-          //       <p>Best regards,<br>UMI Research Management Team</p>
-          //     </div>
-          //   `;
-
-          //   await emailService.sendEmail({
-          //     to: staffMember.email,
-          //     subject: 'Reviewer Assignment - UMI Research Management System',
-          //     htmlContent: reviewerEmailTemplate
-          //   });
-
-          //   console.log(`Email sent to new reviewer: ${staffMember.email}`);
-          // } catch (emailError) {
-          //   console.error('Error sending reviewer assignment email:', emailError);
-          //   // Don't fail the request if email fails
-          // }
-
-          return newReviewer;
+          results.push(reviewer);
         }
-      } else {
-        // This is existing reviewer data (name, email, etc.)
-        const { name, email } = reviewerData;
-        
-        if (!name || !email) {
-          throw new Error("Each reviewer must have name and email");
-        }
-
-        // Use upsert to create or update reviewer
-        const reviewer = await prisma.reviewer.upsert({
-          where: { email },
-          update: {
-            name,
-            proposals: {
-              connect: { id: proposalId },
-            },
-            campus: {
-              connect: { id: faculty.campusId },
-            },
-          },
-          create: {
-            email,
-            name,
-            proposals: {
-              connect: { id: proposalId },
-            },
-            campus: {
-              connect: { id: faculty.campusId },
-            },
-          },
-        });
-        return reviewer;
       }
-    });
 
-    const createdReviewers = await Promise.all(reviewerPromises);
-
-    // Update proposal with reviewer connections
-    await prisma.proposal.update({
-      where: { id: proposalId },
-      data: {
-        reviewers: {
-          connect: createdReviewers.map((r) => ({ id: r.id })),
+      // Update proposal with reviewer connections
+      await tx.proposal.update({
+        where: { id: proposalId },
+        data: {
+          reviewers: {
+            connect: results.map((r) => ({ id: r.id })),
+          },
         },
-      },
-    });
-
-    // Check if we need to update the proposal status
-    const needsStatusUpdate =
-      proposal.statuses.length === 0 ||
-      !proposal.statuses.some(
-        (status) =>
-          status.definition.name.toLowerCase() === "proposal in review"
-      );
-
-    if (needsStatusUpdate) {
-      // Find the status definition for 'proposal in review'
-      const statusDefinition = await prisma.statusDefinition.findUnique({
-        where: { name: "proposal in review" },
       });
 
-      if (!statusDefinition) {
-        const error = new Error("Status definition not found");
-        error.statusCode = 500;
-        throw error;
-      }
+      // Check if we need to update the proposal status
+      const needsStatusUpdate =
+        proposal.statuses.length === 0 ||
+        !proposal.statuses.some(
+          (status) =>
+            status.definition.name.toLowerCase() === "proposal in review"
+        );
 
-      const currentDate = new Date();
+      if (needsStatusUpdate) {
+        const statusDefinition = await tx.statusDefinition.findUnique({
+          where: { name: "proposal in review" },
+        });
 
-      // Set current status to false for all existing statuses and add end date
-      if (proposal.statuses.length > 0) {
-        await prisma.proposalStatus.updateMany({
-          where: { proposalId },
+        if (!statusDefinition) {
+          throw new Error("Status definition not found");
+        }
+
+        const currentDate = new Date();
+
+        if (proposal.statuses.length > 0) {
+          await tx.proposalStatus.updateMany({
+            where: { proposalId },
+            data: {
+              isCurrent: false,
+              endDate: currentDate,
+            },
+          });
+        }
+
+        await tx.studentStatus.updateMany({
+          where: {
+            studentId: proposal.student.id,
+            isCurrent: true,
+          },
           data: {
             isCurrent: false,
             endDate: currentDate,
           },
         });
+
+        await tx.proposalStatus.create({
+          data: {
+            proposal: {
+              connect: { id: proposalId },
+            },
+            definition: {
+              connect: { id: statusDefinition.id },
+            },
+            startDate: new Date(),
+            isActive: true,
+            isCurrent: true,
+          },
+        });
+
+        await tx.studentStatus.create({
+          data: {
+            student: {
+              connect: { id: proposal.student.id },
+            },
+            definition: {
+              connect: { id: statusDefinition.id },
+            },
+            updatedBy: {
+              connect: { id: req.user.id },
+            },
+            startDate: new Date(),
+            isCurrent: true,
+          },
+        });
       }
 
-      // Update previous student statuses to not current and set end date
-      await prisma.studentStatus.updateMany({
-        where: {
-          studentId: proposal.student.id,
-          isCurrent: true,
-        },
-        data: {
-          isCurrent: false,
-          endDate: currentDate,
-        },
-      });
-
-      // Create new proposal status
-      await prisma.proposalStatus.create({
-        data: {
-          proposal: {
-            connect: { id: proposalId },
-          },
-          definition: {
-            connect: { id: statusDefinition.id },
-          },
-          startDate: new Date(),
-          isActive: true,
-          isCurrent: true,
-        },
-      });
-
-      // Update student status using the student from the proposal
-      await prisma.studentStatus.create({
-        data: {
-          student: {
-            connect: { id: proposal.student.id },
-          },
-          definition: {
-            connect: { id: statusDefinition.id },
-          },
-          updatedBy: {
-            connect: { id: req.user.id },
-          },
-          startDate: new Date(),
-          isCurrent: true,
-        },
-      });
-    }
+      return { createdReviewers: results };
+    });
 
     res.status(200).json({
       message: "Reviewers added successfully",
@@ -1151,7 +1145,7 @@ export const addReviewerMark = async (req, res, next) => {
     const submittedById = req.user.id;
 
     // Validate input
-    if (!proposalId || !reviewerId || verdict === undefined ) {
+    if (!proposalId || !reviewerId || verdict === undefined) {
       const error = new Error("Invalid input data");
       error.statusCode = 400;
       throw error;
@@ -1320,7 +1314,7 @@ export const addReviewerMark = async (req, res, next) => {
       grade: updatedOrNewGrade,
     });
   } catch (error) {
-    
+
     if (!error.statusCode) {
       error.statusCode = 500;
     }
@@ -2770,9 +2764,9 @@ export const generateDefenseReport = async (req, res) => {
     // Log activity
     await prisma.userActivity.create({
       data: {
-                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
-                deviceId: req?.headers['x-device-id'] || 'Unknown',
-                browserAgent: req?.headers['user-agent'] || 'Unknown',
+        ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+        deviceId: req?.headers['x-device-id'] || 'Unknown',
+        browserAgent: req?.headers['user-agent'] || 'Unknown',
         userId: req.user.id,
         action: `Generated defense report for ${studentName} (${regNo})`,
         entityType: "DefenseReport",
@@ -2882,7 +2876,7 @@ export const downloadDefenseReport = async (req, res) => {
     res.setHeader(
       "Content-Type",
       report.fileType ||
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     );
     res.setHeader(
       "Content-Disposition",
@@ -3145,7 +3139,7 @@ export const assignExaminersToBook = async (req, res, next) => {
 
     // Process staff member IDs to create examiners if needed
     let finalExaminerIds = [];
-    
+
     // Add direct examiner IDs if provided
     if (examinerIds && Array.isArray(examinerIds)) {
       finalExaminerIds = [...finalExaminerIds, ...examinerIds];
@@ -3184,15 +3178,15 @@ export const assignExaminersToBook = async (req, res, next) => {
               primaryPhone: staffMember.phone,
               designation: staffMember.designation,
               specialization: staffMember.specialization,
-            
+
               institution: staffMember.isExternal ? staffMember.externalInstitution : 'Uganda Management Institute',
               type: staffMember.isExternal ? "External" : "Internal",
 
               // For internal staff members
               campus: staffMember.campusId ? { connect: { id: staffMember.campusId } } : undefined,
-                            school: staffMember.schoolId ? { connect: { id: staffMember.schoolId } } : undefined,
-                            department: staffMember.departmentId ? { connect: { id: staffMember.departmentId } } : undefined,
-              
+              school: staffMember.schoolId ? { connect: { id: staffMember.schoolId } } : undefined,
+              department: staffMember.departmentId ? { connect: { id: staffMember.departmentId } } : undefined,
+
             }
           });
 
@@ -3264,11 +3258,11 @@ export const assignExaminersToBook = async (req, res, next) => {
     // Check if the current status is already "Under Examination"
     const isAlreadyUnderExamination = book.statuses.some(
       (status) =>
-          status.isCurrent &&
-          status.definition &&
-          status.definition.name &&
-          status.definition.name.toLowerCase() === "under examination"
-  );
+        status.isCurrent &&
+        status.definition &&
+        status.definition.name &&
+        status.definition.name.toLowerCase() === "under examination"
+    );
 
     // Only update statuses if not already under examination
     if (!isAlreadyUnderExamination) {
@@ -4210,13 +4204,12 @@ export const scheduleProposalDefense = async (req, res, next) => {
     // Log activity
     await prisma.userActivity.create({
       data: {
-                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
-                deviceId: req?.headers['x-device-id'] || 'Unknown',
-                browserAgent: req?.headers['user-agent'] || 'Unknown',
+        ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+        deviceId: req?.headers['x-device-id'] || 'Unknown',
+        browserAgent: req?.headers['user-agent'] || 'Unknown',
         userId: req.user.id,
-        action: `Scheduled proposal defense for ${
-          existingProposal.student?.fullName || "Unknown Student"
-        }`,
+        action: `Scheduled proposal defense for ${existingProposal.student?.fullName || "Unknown Student"
+          }`,
         entityId: proposalDefense.id,
         entityType: "Proposal Defense",
       },
@@ -4252,24 +4245,24 @@ export const scheduleProposalDefense = async (req, res, next) => {
       // Add chairperson if exists
       ...(proposalDefense.chairperson
         ? [
-            {
-              category: "CHAIRPERSON",
-              id: proposalDefense.chairperson.id,
-              email: proposalDefense.chairperson.workEmail,
-              name: proposalDefense.chairperson.name,
-            },
-          ]
+          {
+            category: "CHAIRPERSON",
+            id: proposalDefense.chairperson.id,
+            email: proposalDefense.chairperson.workEmail,
+            name: proposalDefense.chairperson.name,
+          },
+        ]
         : []),
       // Add minutes secretary if exists
       ...(proposalDefense.minutesSecretary
         ? [
-            {
-              category: "MINUTES_SECRETARY",
-              id: proposalDefense.minutesSecretary.id,
-              email: proposalDefense.minutesSecretary.email,
-              name: proposalDefense.minutesSecretary.name,
-            },
-          ]
+          {
+            category: "MINUTES_SECRETARY",
+            id: proposalDefense.minutesSecretary.id,
+            email: proposalDefense.minutesSecretary.email,
+            name: proposalDefense.minutesSecretary.name,
+          },
+        ]
         : []),
       // Add panelists
       ...proposalDefense.panelists.map((panelist) => ({
@@ -4592,13 +4585,12 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
     // Log activity
     await prisma.userActivity.create({
       data: {
-                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
-                deviceId: req?.headers['x-device-id'] || 'Unknown',
-                browserAgent: req?.headers['user-agent'] || 'Unknown',
+        ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+        deviceId: req?.headers['x-device-id'] || 'Unknown',
+        browserAgent: req?.headers['user-agent'] || 'Unknown',
         userId: req.user.id,
-        action: `Recorded proposal defense verdict (${verdict}) for ${
-          existingDefense.proposal.student?.fullName || "Unknown Student"
-        }`,
+        action: `Recorded proposal defense verdict (${verdict}) for ${existingDefense.proposal.student?.fullName || "Unknown Student"
+          }`,
         entityId: updatedDefense.id,
         entityType: "Proposal Defense",
       },
@@ -4665,16 +4657,15 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
                 <li>Verdict: ${verdict}</li>
                 ${comments ? `<li>Comments: ${comments}</li>` : ""}
               </ul>
-              ${
-                correctionMessage
-                  ? `
+              ${correctionMessage
+                ? `
                 <p><strong>Corrections Information:</strong></p>
                 <ul>
                   <li>Type of corrections: ${correctionMessage}</li>
                   <li>Compliance report due: ${formattedComplianceDate}</li>
                 </ul>
               `
-                  : ""
+                : ""
               }
               <p>Best regards,</p>
               <p>UMI System</p>
@@ -4687,9 +4678,8 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
           type: "EMAIL",
           statusType: "PENDING",
           title: "Proposal Defense Result",
-          message: `Congratulations! You have successfully defended your proposal${
-            correctionMessage ? ` with ${correctionMessage}` : ""
-          }.`,
+          message: `Congratulations! You have successfully defended your proposal${correctionMessage ? ` with ${correctionMessage}` : ""
+            }.`,
           recipientCategory: "STUDENT",
           recipientId: student.id,
           recipientEmail: student.email,
@@ -4704,9 +4694,8 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
                 <li>Verdict: ${verdict}</li>
                 ${comments ? `<li>Comments: ${comments}</li>` : ""}
               </ul>
-              ${
-                correctionMessage
-                  ? `
+              ${correctionMessage
+                ? `
                 <p><strong>Important:</strong></p>
                 <ul>
                   <li>You are required to submit a compliance report by ${formattedComplianceDate}</li>
@@ -4714,7 +4703,7 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
                   <li>Please work closely with your supervisor on the corrections</li>
                 </ul>
               `
-                  : ""
+                : ""
               }
               <p>Best regards,</p>
               <p>UMI System</p>
@@ -4728,9 +4717,8 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
             type: "EMAIL",
             statusType: "PENDING",
             title: "Student Proposal Defense Result",
-            message: `Your student ${student.fullName} has successfully defended their proposal${
-              correctionMessage ? ` with ${correctionMessage}` : ""
-            }.`,
+            message: `Your student ${student.fullName} has successfully defended their proposal${correctionMessage ? ` with ${correctionMessage}` : ""
+              }.`,
             recipientCategory: "SUPERVISOR",
             recipientId: supervisor.id,
             recipientEmail: supervisor.email,
@@ -4745,9 +4733,8 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
                   <li>Verdict: ${verdict}</li>
                   ${comments ? `<li>Comments: ${comments}</li>` : ""}
                 </ul>
-                ${
-                  correctionMessage
-                    ? `
+                ${correctionMessage
+                  ? `
                   <p><strong>Supervisor Action Required:</strong></p>
                   <ul>
                     <li>Please guide the student in addressing the corrections</li>
@@ -4755,7 +4742,7 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
                     <li>You will need to review and approve the compliance report</li>
                   </ul>
                 `
-                    : ""
+                  : ""
                 }
                 <p>Best regards,</p>
                 <p>UMI System</p>
@@ -5670,9 +5657,9 @@ export const getStudentStatusReport = async (req, res, next) => {
           expectedDurationDays: status.definition.expectedDurationDays,
           actualDurationDays: status.endDate
             ? Math.floor(
-                (new Date(status.endDate) - new Date(status.startDate)) /
-                  (1000 * 60 * 60 * 24)
-              )
+              (new Date(status.endDate) - new Date(status.startDate)) /
+              (1000 * 60 * 60 * 24)
+            )
             : null,
         })),
     };
@@ -6391,9 +6378,9 @@ export const assignStudentsToSupervisor = async (req, res, next) => {
     // Track this activity
     await prisma.userActivity.create({
       data: {
-                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
-                deviceId: req?.headers['x-device-id'] || 'Unknown',
-                browserAgent: req?.headers['user-agent'] || 'Unknown',
+        ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+        deviceId: req?.headers['x-device-id'] || 'Unknown',
+        browserAgent: req?.headers['user-agent'] || 'Unknown',
         user: { connect: { id: req.user?.id } },
         action: "ASSIGN_STUDENTS",
         entityType: "Supervisor",
@@ -6547,9 +6534,9 @@ export const changeStudentSupervisor = async (req, res, next) => {
     // Track this activity
     await prisma.userActivity.create({
       data: {
-                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
-                deviceId: req?.headers['x-device-id'] || 'Unknown',
-                browserAgent: req?.headers['user-agent'] || 'Unknown',
+        ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+        deviceId: req?.headers['x-device-id'] || 'Unknown',
+        browserAgent: req?.headers['user-agent'] || 'Unknown',
         user: { connect: { id: req.user?.id } },
         action: "CHANGE_SUPERVISOR",
         entityType: "Student",
@@ -6633,386 +6620,386 @@ export const changeStudentSupervisor = async (req, res, next) => {
 
 // Get staff members for faculty client
 export const getStaffMembers = async (req, res, next) => {
-    try {
-        const { role, isActive, search, isExternal, schoolId, departmentId, campusId } = req.query;
+  try {
+    const { role, isActive, search, isExternal, schoolId, departmentId, campusId } = req.query;
 
-        const where = {};
+    const where = {};
 
-        // Filter by role if specified (check if staff member has any of the specified roles)
-        if (role && role !== 'all') {
-            where.OR = [
-                { supervisorId: { not: null } },
-                { examinerId: { not: null } },
-                { reviewerId: { not: null } },
-                { panelistId: { not: null } }
-            ];
-        }
-
-        if (isActive !== undefined) {
-            where.isActive = isActive === 'true';
-        }
-
-        // Filter by internal/external status
-        if (isExternal !== undefined) {
-            where.isExternal = isExternal === 'true';
-        }
-
-        // Filter by institutional affiliations
-        if (schoolId) {
-            where.schoolId = schoolId;
-        }
-        if (departmentId) {
-            where.departmentId = departmentId;
-        }
-        if (campusId) {
-            where.campusId = campusId;
-        }
-
-        if (search) {
-            where.OR = [
-                { name: { contains: search, mode: 'insensitive' } },
-                { email: { contains: search, mode: 'insensitive' } },
-                { designation: { contains: search, mode: 'insensitive' } },
-                { specialization: { contains: search, mode: 'insensitive' } },
-                { externalInstitution: { contains: search, mode: 'insensitive' } },
-                { externalDepartment: { contains: search, mode: 'insensitive' } }
-            ];
-        }
-
-        const staffMembers = await prisma.staffMember.findMany({
-            where,
-            include: {
-                supervisor: true,
-                examiner: true,
-                reviewer: true,
-                panelist: true,
-                school: true,
-                department: true,
-                campus: true,
-                createdBy: {
-                    select: {
-                        id: true,
-                        name: true,
-                        email: true
-                    }
-                },
-                updatedBy: {
-                    select: {
-                        id: true,
-                        name: true,
-                        email: true
-                    }
-                }
-            },
-            orderBy: {
-                createdAt: 'desc'
-            }
-        });
-
-        res.status(200).json({
-            message: 'Staff members retrieved successfully',
-            staffMembers
-        });
-
-    } catch (error) {
-        console.error('Error in getStaffMembers:', error);
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
+    // Filter by role if specified (check if staff member has any of the specified roles)
+    if (role && role !== 'all') {
+      where.OR = [
+        { supervisorId: { not: null } },
+        { examinerId: { not: null } },
+        { reviewerId: { not: null } },
+        { panelistId: { not: null } }
+      ];
     }
+
+    if (isActive !== undefined) {
+      where.isActive = isActive === 'true';
+    }
+
+    // Filter by internal/external status
+    if (isExternal !== undefined) {
+      where.isExternal = isExternal === 'true';
+    }
+
+    // Filter by institutional affiliations
+    if (schoolId) {
+      where.schoolId = schoolId;
+    }
+    if (departmentId) {
+      where.departmentId = departmentId;
+    }
+    if (campusId) {
+      where.campusId = campusId;
+    }
+
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+        { designation: { contains: search, mode: 'insensitive' } },
+        { specialization: { contains: search, mode: 'insensitive' } },
+        { externalInstitution: { contains: search, mode: 'insensitive' } },
+        { externalDepartment: { contains: search, mode: 'insensitive' } }
+      ];
+    }
+
+    const staffMembers = await prisma.staffMember.findMany({
+      where,
+      include: {
+        supervisor: true,
+        examiner: true,
+        reviewer: true,
+        panelist: true,
+        school: true,
+        department: true,
+        campus: true,
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        },
+        updatedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+
+    res.status(200).json({
+      message: 'Staff members retrieved successfully',
+      staffMembers
+    });
+
+  } catch (error) {
+    console.error('Error in getStaffMembers:', error);
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
 };
 
 // Get staff members for reviewer creation (those without reviewerId and internal)
 export const getStaffMembersForReviewer = async (req, res, next) => {
-    try {
-        // Get all internal, active staff members who don't have a reviewerId
-        const staffMembers = await prisma.staffMember.findMany({
-            where: {
-                isExternal: false,   // Internal staff only
-                isActive: true,      // Active staff only
-                reviewerId: undefined     // No existing reviewer role
-            },
-            include: {
-                school: true,
-                department: true,
-                campus: true,
-                createdBy: {
-                    select: {
-                        id: true,
-                        name: true,
-                        email: true
-                    }
-                },
-                updatedBy: {
-                    select: {
-                        id: true,
-                        name: true,
-                        email: true
-                    }
-                }
-            },
-            orderBy: {
-                name: 'asc'
-            }
-        });
-
-        res.status(200).json({
-            message: 'Staff members for reviewer creation retrieved successfully',
-            staffMembers
-        });
-
-    } catch (error) {
-        console.error('Error in getStaffMembersForReviewer:', error);
-        if (!error.statusCode) {
-            error.statusCode = 500;
+  try {
+    // Get all internal, active staff members who don't have a reviewerId
+    const staffMembers = await prisma.staffMember.findMany({
+      where: {
+        isExternal: false,   // Internal staff only
+        isActive: true,      // Active staff only
+        reviewerId: undefined     // No existing reviewer role
+      },
+      include: {
+        school: true,
+        department: true,
+        campus: true,
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        },
+        updatedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
         }
-        next(error);
+      },
+      orderBy: {
+        name: 'asc'
+      }
+    });
+
+    res.status(200).json({
+      message: 'Staff members for reviewer creation retrieved successfully',
+      staffMembers
+    });
+
+  } catch (error) {
+    console.error('Error in getStaffMembersForReviewer:', error);
+    if (!error.statusCode) {
+      error.statusCode = 500;
     }
+    next(error);
+  }
 };
 
 // Create reviewer from staff member
 export const createReviewerFromStaff = async (req, res, next) => {
-    try {
-        const { staffMemberId } = req.params;
+  try {
+    const { staffMemberId } = req.params;
 
-        // Find the staff member
-        const staffMember = await prisma.staffMember.findUnique({
-            where: { id: staffMemberId },
-            include: {
-                school: true,
-                department: true,
-                campus: true
-            }
-        });
+    // Find the staff member
+    const staffMember = await prisma.staffMember.findUnique({
+      where: { id: staffMemberId },
+      include: {
+        school: true,
+        department: true,
+        campus: true
+      }
+    });
 
-        if (!staffMember) {
-            const error = new Error('Staff member not found');
-            error.statusCode = 404;
-            throw error;
-        }
-
-        // Check if staff member already has a reviewer role
-        if (staffMember.reviewerId) {
-            const error = new Error('Staff member already has a reviewer role');
-            error.statusCode = 400;
-            throw error;
-        }
-
-        // Check if staff member is internal
-        if (staffMember.isExternal) {
-            const error = new Error('External staff members cannot be assigned as reviewers');
-            error.statusCode = 400;
-            throw error;
-        }
-
-        // Create the reviewer without user account
-        const newReviewer = await prisma.reviewer.create({
-            data: {
-                name: staffMember.name,
-                email: staffMember.email,
-                primaryPhone: staffMember.phone,
-                institution: staffMember.isExternal ? staffMember.externalInstitution : 'Uganda Management Institute',
-                specialization: staffMember.specialization,
-                campus: staffMember.campusId ? { connect: { id: staffMember.campusId } } : undefined
-            }
-        });
-
-        // Connect the reviewer to the staff member
-        await prisma.staffMember.update({
-            where: { id: staffMember.id },
-            data: { reviewerId: newReviewer.id }
-        });
-
-        res.status(201).json({
-            message: 'Reviewer created successfully from staff member',
-            reviewer: {
-                id: newReviewer.id,
-                name: newReviewer.name,
-                email: newReviewer.email,
-                specialization: newReviewer.specialization,
-                institution: newReviewer.institution
-            }
-        });
-
-    } catch (error) {
-        console.error('Error in createReviewerFromStaff:', error);
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
+    if (!staffMember) {
+      const error = new Error('Staff member not found');
+      error.statusCode = 404;
+      throw error;
     }
+
+    // Check if staff member already has a reviewer role
+    if (staffMember.reviewerId) {
+      const error = new Error('Staff member already has a reviewer role');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // Check if staff member is internal
+    if (staffMember.isExternal) {
+      const error = new Error('External staff members cannot be assigned as reviewers');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // Create the reviewer without user account
+    const newReviewer = await prisma.reviewer.create({
+      data: {
+        name: staffMember.name,
+        email: staffMember.email,
+        primaryPhone: staffMember.phone,
+        institution: staffMember.isExternal ? staffMember.externalInstitution : 'Uganda Management Institute',
+        specialization: staffMember.specialization,
+        campus: staffMember.campusId ? { connect: { id: staffMember.campusId } } : undefined
+      }
+    });
+
+    // Connect the reviewer to the staff member
+    await prisma.staffMember.update({
+      where: { id: staffMember.id },
+      data: { reviewerId: newReviewer.id }
+    });
+
+    res.status(201).json({
+      message: 'Reviewer created successfully from staff member',
+      reviewer: {
+        id: newReviewer.id,
+        name: newReviewer.name,
+        email: newReviewer.email,
+        specialization: newReviewer.specialization,
+        institution: newReviewer.institution
+      }
+    });
+
+  } catch (error) {
+    console.error('Error in createReviewerFromStaff:', error);
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
 };
 
 // Create a new staff member
 export const createStaffMember = async (req, res, next) => {
-    try {
-        const {
-            name,
-            title,
-            email,
-            phone,
-            designation,
-            specialization,
-            qualifications,
-            experience,
-            bio,
-            profileImage,
-            // Institutional affiliations
-            schoolId,
-            departmentId,
-            campusId,
-            // External institution information
-            externalInstitution,
-            externalDepartment,
-            externalLocation,
-            isExternal,
-        } = req.body;
+  try {
+    const {
+      name,
+      title,
+      email,
+      phone,
+      designation,
+      specialization,
+      qualifications,
+      experience,
+      bio,
+      profileImage,
+      // Institutional affiliations
+      schoolId,
+      departmentId,
+      campusId,
+      // External institution information
+      externalInstitution,
+      externalDepartment,
+      externalLocation,
+      isExternal,
+    } = req.body;
 
-        // Check if staff member with email already exists
-        const existingStaffMember = await prisma.staffMember.findUnique({
-            where: { email }
-        });
+    // Check if staff member with email already exists
+    const existingStaffMember = await prisma.staffMember.findUnique({
+      where: { email }
+    });
 
-        if (existingStaffMember) {
-            const error = new Error('Staff member with this email already exists.');
-            error.statusCode = 400;
-            throw error;
-        }
-
-        // Prepare institutional connections
-        const institutionalConnections = {};
-        if (!isExternal) {
-            // Internal staff member - use institutional relations
-            if (schoolId) {
-                institutionalConnections.school = { connect: { id: schoolId } };
-            }
-            if (departmentId) {
-                institutionalConnections.department = { connect: { id: departmentId } };
-            }
-            if (campusId) {
-                institutionalConnections.campus = { connect: { id: campusId } };
-            }
-        } else {
-            // External staff member - use external institution fields
-            institutionalConnections.externalInstitution = externalInstitution;
-            institutionalConnections.externalDepartment = externalDepartment;
-            institutionalConnections.externalLocation = externalLocation;
-            institutionalConnections.isExternal = true;
-        }
-
-        // Create staff member
-        const staffMember = await prisma.staffMember.create({
-            data: {
-                name,
-                title,
-                email,
-                phone,
-                designation,
-                specialization,
-                qualifications,
-                experience,
-                bio,
-                profileImage,
-                isActive: true,
-                createdBy: { connect: { id: req.user.id } },
-                ...institutionalConnections,
-            },
-            include: {
-                supervisor: true,
-                examiner: true,
-                reviewer: true,
-                panelist: true,
-                school: true,
-                department: true,
-                campus: true,
-                createdBy: {
-                    select: {
-                        id: true,
-                        name: true,
-                        email: true
-                    }
-                }
-            }
-        });
-
-        res.status(201).json({
-            message: 'Staff member created successfully',
-            staffMember
-        });
-
-    } catch (error) {
-        console.error('Error in createStaffMember:', error);
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
+    if (existingStaffMember) {
+      const error = new Error('Staff member with this email already exists.');
+      error.statusCode = 400;
+      throw error;
     }
+
+    // Prepare institutional connections
+    const institutionalConnections = {};
+    if (!isExternal) {
+      // Internal staff member - use institutional relations
+      if (schoolId) {
+        institutionalConnections.school = { connect: { id: schoolId } };
+      }
+      if (departmentId) {
+        institutionalConnections.department = { connect: { id: departmentId } };
+      }
+      if (campusId) {
+        institutionalConnections.campus = { connect: { id: campusId } };
+      }
+    } else {
+      // External staff member - use external institution fields
+      institutionalConnections.externalInstitution = externalInstitution;
+      institutionalConnections.externalDepartment = externalDepartment;
+      institutionalConnections.externalLocation = externalLocation;
+      institutionalConnections.isExternal = true;
+    }
+
+    // Create staff member
+    const staffMember = await prisma.staffMember.create({
+      data: {
+        name,
+        title,
+        email,
+        phone,
+        designation,
+        specialization,
+        qualifications,
+        experience,
+        bio,
+        profileImage,
+        isActive: true,
+        createdBy: { connect: { id: req.user.id } },
+        ...institutionalConnections,
+      },
+      include: {
+        supervisor: true,
+        examiner: true,
+        reviewer: true,
+        panelist: true,
+        school: true,
+        department: true,
+        campus: true,
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      }
+    });
+
+    res.status(201).json({
+      message: 'Staff member created successfully',
+      staffMember
+    });
+
+  } catch (error) {
+    console.error('Error in createStaffMember:', error);
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
 };
 
 // Create panelist from staff member
 export const createPanelistFromStaff = async (req, res, next) => {
-    try {
-        const { staffMemberId } = req.params;
+  try {
+    const { staffMemberId } = req.params;
 
-        // Find the staff member
-        const staffMember = await prisma.staffMember.findUnique({
-            where: { id: staffMemberId },
-            include: {
-                school: true,
-                department: true,
-                campus: true
-            }
-        });
+    // Find the staff member
+    const staffMember = await prisma.staffMember.findUnique({
+      where: { id: staffMemberId },
+      include: {
+        school: true,
+        department: true,
+        campus: true
+      }
+    });
 
-        if (!staffMember) {
-            const error = new Error('Staff member not found');
-            error.statusCode = 404;
-            throw error;
-        }
-
-        // Check if staff member already has a panelist role
-        if (staffMember.panelistId) {
-            const error = new Error('Staff member already has a panelist role');
-            error.statusCode = 400;
-            throw error;
-        }
-
-        // Check if staff member is internal
-        if (staffMember.isExternal) {
-            const error = new Error('External staff members cannot be assigned as panelists');
-            error.statusCode = 400;
-            throw error;
-        }
-
-        // Create the panelist directly (no user account needed)
-        const newPanelist = await prisma.panelist.create({
-            data: {
-                name: staffMember.name,
-                email: staffMember.email,
-                institution: staffMember.isExternal ? staffMember.externalInstitution : 'Uganda Management Institute',
-                campus: staffMember.campusId ? { connect: { id: staffMember.campusId } } : undefined
-            }
-        });
-
-        // Update the staff member to link to the panelist
-        await prisma.staffMember.update({
-            where: { id: staffMemberId },
-            data: {
-                panelistId: newPanelist.id
-            }
-        });
-
-        res.status(201).json({
-            message: 'Staff member converted to panelist successfully',
-            panelist: newPanelist
-        });
-
-    } catch (error) {
-        console.error('Error in createPanelistFromStaff:', error);
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
+    if (!staffMember) {
+      const error = new Error('Staff member not found');
+      error.statusCode = 404;
+      throw error;
     }
+
+    // Check if staff member already has a panelist role
+    if (staffMember.panelistId) {
+      const error = new Error('Staff member already has a panelist role');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // Check if staff member is internal
+    if (staffMember.isExternal) {
+      const error = new Error('External staff members cannot be assigned as panelists');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // Create the panelist directly (no user account needed)
+    const newPanelist = await prisma.panelist.create({
+      data: {
+        name: staffMember.name,
+        email: staffMember.email,
+        institution: staffMember.isExternal ? staffMember.externalInstitution : 'Uganda Management Institute',
+        campus: staffMember.campusId ? { connect: { id: staffMember.campusId } } : undefined
+      }
+    });
+
+    // Update the staff member to link to the panelist
+    await prisma.staffMember.update({
+      where: { id: staffMemberId },
+      data: {
+        panelistId: newPanelist.id
+      }
+    });
+
+    res.status(201).json({
+      message: 'Staff member converted to panelist successfully',
+      panelist: newPanelist
+    });
+
+  } catch (error) {
+    console.error('Error in createPanelistFromStaff:', error);
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
 };

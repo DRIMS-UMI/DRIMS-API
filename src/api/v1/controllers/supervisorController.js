@@ -1469,43 +1469,47 @@ export const uploadReviewedDocument = async (req, res, next) => {
       throw error;
     }
 
-    // Create reviewed document
-    const reviewedDocument = await prisma.studentDocument.create({
-      data: {
-        title: `Reviewed: ${originalDocument.title}`,
-        description: reviewComments || `Reviewed version of ${originalDocument.title}`,
-        type: 'REVIEWED',
-        fileName: file.originalname,
-        fileType: file.mimetype,
-        fileSize: file.size,
-        fileData: file.buffer,
-        student: {
-          connect: { id: originalDocument.studentId }
-        },
-        supervisor: {
-          connect: { id: supervisorId }
-        },
-        uploadedBy: {
-          connect: { id: supervisorId }
-        },
-        reviewedBy: {
-          connect: { id: supervisorId }
-        },
-        reviewedAt: new Date(),
-        reviewComments: reviewComments
-      }
-    });
+    const { reviewedDocument } = await prisma.$transaction(async (tx) => {
+      // Create reviewed document
+      const newReviewedDoc = await tx.studentDocument.create({
+        data: {
+          title: `Reviewed: ${originalDocument.title}`,
+          description: reviewComments || `Reviewed version of ${originalDocument.title}`,
+          type: 'REVIEWED',
+          fileName: file.originalname,
+          fileType: file.mimetype,
+          fileSize: file.size,
+          fileData: file.buffer,
+          student: {
+            connect: { id: originalDocument.studentId }
+          },
+          supervisor: {
+            connect: { id: supervisorId }
+          },
+          uploadedBy: {
+            connect: { id: supervisorId }
+          },
+          reviewedBy: {
+            connect: { id: supervisorId }
+          },
+          reviewedAt: new Date(),
+          reviewComments: reviewComments
+        }
+      });
 
-    // Update original document to mark as reviewed
-    await prisma.studentDocument.update({
-      where: { id: documentId },
-      data: {
-        reviewedAt: new Date(),
-        reviewedBy: {
-          connect: { id: supervisorId }
-        },
-        reviewComments: reviewComments
-      }
+      // Update original document to mark as reviewed
+      await tx.studentDocument.update({
+        where: { id: documentId },
+        data: {
+          reviewedAt: new Date(),
+          reviewedBy: {
+            connect: { id: supervisorId }
+          },
+          reviewComments: reviewComments
+        }
+      });
+
+      return { reviewedDocument: newReviewedDoc };
     });
 
     res.status(201).json({

@@ -1711,44 +1711,68 @@ export const bookResearchClinicSession = async (req, res, next) => {
             throw error;
         }
 
-        // Create booking
-        const booking = await prisma.researchClinicBooking.create({
-            data: {
-                studentId,
-                clinicDayId,
-                notes,
-                status: 'PENDING',
-                createdById: req.user.id
-            },
-            include: {
-                student: {
-                    include: {
-                        user: {
-                            select: {
-                                id: true,
-                                name: true,
-                                email: true
-                            }
+        const { booking } = await prisma.$transaction(async (tx) => {
+            // Re-check capacity within transaction to prevent race conditions
+            const latestClinicDay = await tx.researchClinicDay.findUnique({
+                where: { id: clinicDayId },
+                include: {
+                    _count: {
+                        select: {
+                            bookings: true
                         }
                     }
+                }
+            });
+
+            if (!latestClinicDay) {
+                throw new Error('Clinic day not found');
+            }
+
+            if (latestClinicDay._count.bookings >= latestClinicDay.maxBookings) {
+                throw new Error('Clinic day is full');
+            }
+
+            // Create booking
+            const newBooking = await tx.researchClinicBooking.create({
+                data: {
+                    studentId,
+                    clinicDayId,
+                    notes,
+                    status: 'PENDING',
+                    createdById: req.user.id
                 },
-                clinicDay: true,
-                createdBy: {
-                    select: {
-                        id: true,
-                        name: true,
-                        email: true
+                include: {
+                    student: {
+                        include: {
+                            user: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    email: true
+                                }
+                            }
+                        }
+                    },
+                    clinicDay: true,
+                    createdBy: {
+                        select: {
+                            id: true,
+                            name: true,
+                            email: true
+                        }
                     }
                 }
-            }
-        });
+            });
 
-        // Update clinic day booking count
-        await prisma.researchClinicDay.update({
-            where: { id: clinicDayId },
-            data: {
-                currentBookings: clinicDay._count.bookings + 1
-            }
+            // Update clinic day booking count
+            await tx.researchClinicDay.update({
+                where: { id: clinicDayId },
+                data: {
+                    currentBookings: latestClinicDay._count.bookings + 1
+                }
+            });
+
+            return { booking: newBooking };
         });
 
         res.status(201).json({
