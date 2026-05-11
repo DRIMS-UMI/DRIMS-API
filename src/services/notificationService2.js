@@ -1,13 +1,13 @@
 import axios from 'axios';
 import prisma from '../utils/db.mjs';
-import {scheduleJob, cancelJob} from 'node-schedule';
+import { scheduleJob, cancelJob } from 'node-schedule';
 
 class NotificationService {
     constructor() {
         // Netlify function configuration
-        this.netlifyFunctionUrl = process.env.NETLIFY_FUNCTION_URL ;
+        this.netlifyFunctionUrl = process.env.NETLIFY_FUNCTION_URL;
         this.apiKey = process.env.NETLIFY_API_KEY;
-        
+
         this.activeJobs = new Map();
     }
 
@@ -138,7 +138,7 @@ class NotificationService {
                     return {
                         id: recipient.id,
                         email: recipient.email,
-                        name: `${recipient.firstName} ${recipient.lastName}`
+                        name: `${recipient.fullName}`
                     };
                 }
                 break;
@@ -244,7 +244,7 @@ class NotificationService {
             const currentStatus = await prisma.studentStatus.findUnique({
                 where: { id: notification.studentStatus.id }
             });
-            
+
             if (!currentStatus || !currentStatus.isCurrent) {
                 console.log(`Skipping notification ${notificationId} because the student status is no longer current`);
                 await prisma.notification.update({
@@ -290,7 +290,7 @@ class NotificationService {
     // Send email notification via Netlify Function
     async sendEmail(notification) {
         const template = this.generateEmailTemplate(notification);
-        
+
         const emailData = {
             to: notification.recipientEmail,
             subject: notification.title,
@@ -309,7 +309,7 @@ class NotificationService {
     // Send reminder notification via Netlify Function
     async sendReminder(notification) {
         const template = this.generateEmailTemplate(notification);
-        
+
         const emailData = {
             to: notification.recipientEmail,
             subject: `REMINDER: ${notification.title}`,
@@ -361,17 +361,17 @@ class NotificationService {
     // Generate content template based on notification type
     getContentTemplate(notification) {
         let content = `<p>${notification.message}</p>`;
-        
+
         // Add metadata-specific content
         if (notification.metadata.additionalContent) {
             content += notification.metadata.additionalContent;
         }
-        
+
         // Add action buttons if needed
         if (notification.metadata.actionUrl) {
             content += `<p><a href="${notification.metadata.actionUrl}" class="button">Take Action</a></p>`;
         }
-        
+
         return content;
     }
 
@@ -379,7 +379,7 @@ class NotificationService {
     generateEmailTemplate(notification) {
         const baseTemplate = this.getBaseTemplate();
         const contentTemplate = this.getContentTemplate(notification);
-        
+
         return baseTemplate
             .replace(/{{title}}/g, notification.title)
             .replace(/{{recipientName}}/g, notification.recipientName)
@@ -426,16 +426,23 @@ class NotificationService {
     async initializeScheduledNotifications() {
         const pendingNotifications = await prisma.notification.findMany({
             where: {
-                statusType: 'PENDING',
-                scheduledFor: {
-                    gte: new Date()
-                }
+                statusType: 'PENDING'
             }
         });
 
-        pendingNotifications.forEach(notification => {
-            this.scheduleJob(notification);
-        });
+        const now = new Date();
+        for (const notification of pendingNotifications) {
+            const scheduledTime = new Date(notification.scheduledFor);
+            
+            if (scheduledTime <= now) {
+                // If the scheduled time has already passed (server was down), send it immediately
+                console.log(`Processing missed notification window for: ${notification.id} (Scheduled for: ${notification.scheduledFor})`);
+                await this.sendNotification(notification.id);
+            } else {
+                // Schedule for the future
+                this.scheduleJob(notification);
+            }
+        }
     }
 
     // Cancel a scheduled notification
@@ -484,7 +491,7 @@ class NotificationService {
             recipientCategory: 'STUDENT',
             recipientId: viva.studentId,
             scheduledFor: new Date(),
-            metadata: { 
+            metadata: {
                 vivaId: viva.id,
                 additionalContent: `<p>Your viva voce examination has been scheduled. Please ensure you are prepared.</p>
                                   <p><strong>Date:</strong> ${viva.date}</p>
@@ -502,8 +509,8 @@ class NotificationService {
                 recipientCategory: 'EXAMINER',
                 recipientId: examiner.id,
                 scheduledFor: new Date(),
-                metadata: { 
-                    vivaId: viva.id, 
+                metadata: {
+                    vivaId: viva.id,
                     role: examiner.role,
                     additionalContent: `<p>You have been assigned as ${examiner.role} for a viva voce examination.</p>
                                       <p><strong>Date:</strong> ${viva.date}</p>
@@ -525,8 +532,8 @@ class NotificationService {
                     recipientEmail: participant.email,
                     recipientName: participant.name,
                     scheduledFor: new Date(),
-                    metadata: { 
-                        vivaId: viva.id, 
+                    metadata: {
+                        vivaId: viva.id,
                         role: participant.role,
                         additionalContent: `<p>You have been invited to participate in a viva voce examination as ${participant.role}.</p>
                                           <p><strong>Date:</strong> ${viva.date}</p>
@@ -573,6 +580,86 @@ class NotificationService {
             console.error('Error sending immediate notification:', error);
             throw error;
         }
+    }
+
+    // Start the cron job for workflow escalations
+    startWorkflowEscalationCron() {
+        console.log('Initializing Workflow Escalation Cron (Daily at Midnight)');
+
+        // Run daily at midnight
+        scheduleJob('0 0 * * *', async () => {
+            try {
+                console.log('Running Workshop Escalation Check...');
+                const fourteenDaysAgo = new Date();
+                fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+
+                // Find all students currently in 'workshop' status that started > 14 days ago
+                const workshopStatuses = await prisma.studentStatus.findMany({
+                    where: {
+                        isCurrent: true,
+                        definition: {
+                            name: 'workshop'
+                        },
+                        startDate: {
+                            lte: fourteenDaysAgo
+                        }
+                    },
+                    include: {
+                        student: {
+                            include: {
+                                supervisors: true
+                            }
+                        }
+                    }
+                });
+
+                for (const status of workshopStatuses) {
+                    const student = status.student;
+                    if (!student) continue;
+
+                    // Check if supervisors list is empty
+                    if (!student.supervisors || student.supervisors.length === 0) {
+
+                        // Deduplication: Ensure we haven't already notified the admin for this specific status
+                        const existingNotification = await prisma.notification.findFirst({
+                            where: {
+                                studentStatusId: status.id,
+                                title: 'Supervisor Allocation Required'
+                            }
+                        });
+
+                        if (!existingNotification) {
+                            console.log(`Triggering Supervisor Allocation Escalation for student: ${student.fullName}`);
+
+                            // Find Research Admin(s)
+                            const researchAdmins = await prisma.user.findMany({
+                                where: { role: 'RESEARCH_ADMIN' }
+                            });
+
+                            for (const admin of researchAdmins) {
+                                await this.scheduleNotification({
+                                    type: 'EMAIL',
+                                    statusType: 'PENDING',
+                                    title: 'Supervisor Allocation Required',
+                                    message: `Student ${student.fullName} (${student.registrationNumber || student.email}) has been in the Workshop stage for over 14 days without an assigned supervisor. Please allocate a supervisor as soon as possible.`,
+                                    recipientCategory: 'USER',
+                                    recipientId: admin.id,
+                                    scheduledFor: new Date(),
+                                    studentStatus: { connect: { id: status.id } },
+                                    metadata: {
+                                        studentId: student.id,
+                                        studentName: student.fullName,
+                                        workshopStartDate: status.startDate
+                                    }
+                                });
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error running workflow escalation cron:', error);
+            }
+        });
     }
 }
 

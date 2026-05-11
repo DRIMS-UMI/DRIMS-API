@@ -3582,7 +3582,19 @@ export const assignSupervisorsToStudent = async (req, res, next) => {
     export const updateStatusDefinition = async (req, res, next) => {
         try {
             const { id } = req.params;
-            const { name, stepOrder, isFailure } = req.body;
+            const { 
+                name, 
+                description, 
+                expectedDuration, 
+                warningDays, 
+                criticalDays, 
+                delayDays, 
+                notifyRoles, 
+                color, 
+                isActive, 
+                stepOrder, 
+                isFailure 
+            } = req.body;
 
             const statusDefinition = await prisma.statusDefinition.update({
                 where: {
@@ -3590,7 +3602,15 @@ export const assignSupervisorsToStudent = async (req, res, next) => {
                 },
                 data: {
                     name: name,
-                    stepOrder: stepOrder !== undefined ? (stepOrder === null ? null : parseInt(stepOrder)) : undefined,
+                    description: description,
+                    expectedDuration: expectedDuration !== undefined ? (expectedDuration === "" || expectedDuration === null ? null : parseInt(expectedDuration)) : undefined,
+                    warningDays: warningDays !== undefined ? (warningDays === "" || warningDays === null ? null : parseInt(warningDays)) : undefined,
+                    criticalDays: criticalDays !== undefined ? (criticalDays === "" || criticalDays === null ? null : parseInt(criticalDays)) : undefined,
+                    delayDays: delayDays !== undefined ? (delayDays === "" || delayDays === null ? null : parseInt(delayDays)) : undefined,
+                    notifyRoles: notifyRoles,
+                    color: color,
+                    isActive: isActive !== undefined ? isActive : undefined,
+                    stepOrder: stepOrder !== undefined ? (stepOrder === "" || stepOrder === null ? null : parseInt(stepOrder)) : undefined,
                     isFailure: isFailure !== undefined ? isFailure : undefined
                 }
             });
