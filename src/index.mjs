@@ -24,6 +24,8 @@ app.start = async () => {
 
     // Initialize notification service
     await notificationService.initializeScheduledNotifications();
+    notificationService.startWorkflowEscalationCron();
+    notificationService.startStudentDeadlineMonitor();
 
     const server = http.createServer(app);
 

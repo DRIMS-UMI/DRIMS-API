@@ -661,6 +661,96 @@ class NotificationService {
             }
         });
     }
+
+    // Start global student deadline monitor (Daily at 1 AM)
+    startStudentDeadlineMonitor() {
+        console.log('Initializing Student Deadline Monitor (Daily at 1 AM)');
+
+        scheduleJob('0 1 * * *', async () => {
+            try {
+                console.log('Running Student Deadline Check...');
+                const now = new Date();
+                
+                // Only monitor active students with an expected completion date
+                const students = await prisma.student.findMany({
+                    where: {
+                        isActive: true,
+                        expectedCompletionDate: { not: null },
+                        admissionDate: { not: null }
+                    }
+                });
+
+                for (const student of students) {
+                    const admissionDate = new Date(student.admissionDate);
+                    const expectedDate = new Date(student.expectedCompletionDate);
+                    
+                    const totalDurationMs = expectedDate.getTime() - admissionDate.getTime();
+                    const halfwayDate = new Date(admissionDate.getTime() + totalDurationMs / 2);
+                    
+                    // 1. Halfway Warning
+                    if (this.isSameDay(now, halfwayDate)) {
+                        await this.sendDeadlineWarning(student, 'HALFWAY', `You are halfway through your research timeline. Keep up the good work!`);
+                    }
+
+                    // 2. 6 Months Remaining
+                    const sixMonthsBefore = new Date(expectedDate);
+                    sixMonthsBefore.setMonth(sixMonthsBefore.getMonth() - 6);
+                    if (this.isSameDay(now, sixMonthsBefore)) {
+                        await this.sendDeadlineWarning(student, '6_MONTH_WARNING', `Your research completion deadline is in 6 months (${expectedDate.toDateString()}).`);
+                    }
+
+                    // 3. 1 Month Remaining
+                    const oneMonthBefore = new Date(expectedDate);
+                    oneMonthBefore.setMonth(oneMonthBefore.getMonth() - 1);
+                    if (this.isSameDay(now, oneMonthBefore)) {
+                        await this.sendDeadlineWarning(student, '1_MONTH_CRITICAL', `URGENT: Your research completion deadline is in only 1 month (${expectedDate.toDateString()}).`);
+                    }
+                }
+            } catch (error) {
+                console.error('Error in student deadline monitor:', error);
+            }
+        });
+    }
+
+    // Helper to check if two dates are the same day
+    isSameDay(d1, d2) {
+        return d1.getFullYear() === d2.getFullYear() &&
+               d1.getMonth() === d2.getMonth() &&
+               d1.getDate() === d2.getDate();
+    }
+
+    // Send warning email to student
+    async sendDeadlineWarning(student, type, message) {
+        // Check if we already sent this type of warning recently to avoid duplicates
+        const existing = await prisma.notification.findFirst({
+            where: {
+                recipientId: student.id,
+                title: { contains: 'Research Deadline' },
+                metadata: {
+                    path: ['warningType'],
+                    equals: type
+                }
+            }
+        });
+
+        if (!existing) {
+            await this.scheduleNotification({
+                type: 'EMAIL',
+                statusType: 'PENDING',
+                title: `Research Deadline Warning - ${type.replace(/_/g, ' ')}`,
+                message: `Dear ${student.fullName}, \n\n${message}\n\nPlease ensure you are on track with your research milestones.`,
+                recipientCategory: 'STUDENT',
+                recipientId: student.id,
+                recipientEmail: student.email,
+                recipientName: student.fullName,
+                scheduledFor: new Date(),
+                metadata: {
+                    warningType: type,
+                    expectedCompletionDate: student.expectedCompletionDate
+                }
+            });
+        }
+    }
 }
 
 export const notificationService = new NotificationService();

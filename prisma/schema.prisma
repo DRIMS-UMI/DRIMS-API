@@ -199,6 +199,7 @@ model student {
   
   admissionDate        DateTime       @default(now())
   expectedCompletionDate DateTime?
+  extensionYears       Int?           // Number of years extension granted
   totalDuration        Int?           // Total duration in days since admission
   currentStatus        String?        // Current status of the student
   isActive            Boolean        @default(true)
@@ -214,6 +215,7 @@ model student {
   notifications        notification[]    @relation("StudentNotifications")
   supervisorIds        String[]       @db.ObjectId
   supervisors          supervisor[]     @relation(fields: [supervisorIds], references:[id])
+  supervisorRoles      Json?          // Maps supervisorId to role e.g. {"id": "MAIN"}
   
   books                book[]         
   researchRequests     researchRequest[] // Research requests made by the student
@@ -242,6 +244,8 @@ model statusDefinition {
   notifyRoles     Role[]   // Which roles to notify
   color           String?   // Color for UI display
   isActive        Boolean  @default(true)
+  stepOrder       Int?     // Sequence step order from 1 to 24
+  isFailure       Boolean  @default(false) // Marks failure states for loopbacks
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   studentStatuses studentStatus[] // All student statuses using this definition

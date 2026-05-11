@@ -12,6 +12,10 @@ export const validateStatusTransition = (currentStatusDef, newStatusDef) => {
     if (currentStatusDef.stepOrder == null || newStatusDef.stepOrder == null) return;
     if (newStatusDef.isFailure) return;
 
+    // Administrative and terminal statuses are exempt from sequential validation
+    const administrativeStatuses = ['deregistered', 'graduated', 'withdrawn', 'deceased', 'suspended'];
+    if (administrativeStatuses.includes(newStatusDef.name.toLowerCase())) return;
+
     // The golden rule: A student cannot skip forward.
     // They can stay on the same step, go backwards (loopbacks), or go to the immediate next step (+1).
     if (newStatusDef.stepOrder > currentStatusDef.stepOrder + 1) {
