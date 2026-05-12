@@ -1,9 +1,11 @@
 import axios from 'axios';
 
 class EmailService {
-    constructor () {
+    constructor() {
         // Netlify function URL - update with your actual Netlify site URL
-        this.netlifyFunctionUrl = process.env.NETLIFY_FUNCTION_URL || 'https://your-site.netlify.app/.netlify/functions/email-service';
+        // this.netlifyFunctionUrl = process.env.NETLIFY_FUNCTION_URL || 'https://your-site.netlify.app/.netlify/functions/email-service';
+        this.netlifyFunctionUrl = process.env.NETLIFY_FUNCTION_URL || '';
+
         this.apiKey = process.env.NETLIFY_API_KEY;
     }
 
@@ -17,7 +19,7 @@ class EmailService {
         studentCount,
         excelBuffer,
         fileName
-    }){
+    }) {
         try {
             const emailTemplate = this.generateResultsEmailTemplate({
                 schoolName,
@@ -46,7 +48,7 @@ class EmailService {
 
             return { success: true, messageId: response.messageId };
         } catch (error) {
-            console.error('Error sending results email via Netlify Functions:',error.response?.data || error.message )
+            console.error('Error sending results email via Netlify Functions:', error.response?.data || error.message)
             throw new Error(`Failed to send email: ${error.response?.data?.error || error.message}`);
         }
     }
@@ -96,7 +98,7 @@ class EmailService {
                 subject: subject,
                 ...(htmlContent && { html: htmlContent }),
                 ...(textContent && { text: textContent }),
-                ...(attachments.length > 0 && { 
+                ...(attachments.length > 0 && {
                     attachments: attachments.map(att => ({
                         filename: att.filename || `attachment-${Date.now()}`,
                         content: att.content.toString('base64'),
@@ -132,8 +134,8 @@ class EmailService {
 
             return response.data;
         } catch (error) {
-             // Enhanced error handling
-             if (error.response) {
+            // Enhanced error handling
+            if (error.response) {
                 // The request was made and the server responded with a status code
                 // that falls out of the range of 2xx
                 const errorMessage = error.response.data?.error || error.response.data?.message || 'Unknown error';
@@ -148,8 +150,8 @@ class EmailService {
         }
     }
 
-      // Test Netlify function connection
-      async testConnection() {
+    // Test Netlify function connection
+    async testConnection() {
         try {
             // Send a test email to verify connection
             const testData = {
@@ -168,8 +170,8 @@ class EmailService {
         }
     }
 
-     // Generate HTML email template for results (keep your existing template)
-     generateResultsEmailTemplate({ schoolName, academicYear, studentCount, message }) {
+    // Generate HTML email template for results (keep your existing template)
+    generateResultsEmailTemplate({ schoolName, academicYear, studentCount, message }) {
         return `
         <!DOCTYPE html>
         <html>
@@ -270,7 +272,7 @@ class EmailService {
     // Generate email template for message notifications (keep your existing template)
     generateMessageNotificationTemplate({ recipientName, senderName, messageText, conversationUrl }) {
         const truncatedMessage = messageText.length > 200 ? messageText.substring(0, 200) + '...' : messageText;
-        
+
         return `
             <html>
                 <head>

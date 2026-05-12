@@ -243,7 +243,7 @@ export const getStudent = async (req, res, next) => {
         school: true,
         campus: true,
         department: true,
-        user: true,
+        studentUser: true,
       },
     });
 
@@ -288,7 +288,7 @@ export const getAllStudents = async (req, res, next) => {
         school: true,
         campus: true,
         department: true,
-        user: true,
+        studentUser: true,
       },
     });
 
@@ -5403,8 +5403,36 @@ export const getProgressTrends = async (req, res, next) => {
 // Controller to get notifications
 export const getNotifications = async (req, res, next) => {
   try {
-    // Get all notifications with student status information
+    const { schoolId, campusId } = req.user;
+
+    // 1. Get all student IDs under this faculty member's school & campus
+    const schoolStudents = await prisma.student.findMany({
+      where: {
+        ...(schoolId ? { schoolId } : {}),
+        ...(campusId ? { campusId } : {}),
+      },
+      select: { id: true },
+    });
+    const studentIds = schoolStudents.map((s) => s.id);
+
+    // 2. Get all studentStatus IDs for those students
+    const statuses = await prisma.studentStatus.findMany({
+      where: { studentId: { in: studentIds } },
+      select: { id: true },
+    });
+    const statusIds = statuses.map((s) => s.id);
+
+    // 3. Fetch notifications scoped to these students
+    //    Either directly linked via studentId OR via studentStatusId
     const notifications = await prisma.notification.findMany({
+      where: {
+        OR: [
+          { studentId: { in: studentIds } },
+          ...(statusIds.length > 0
+            ? [{ studentStatusId: { in: statusIds } }]
+            : []),
+        ],
+      },
       include: {
         studentStatus: {
           include: {
@@ -5422,8 +5450,6 @@ export const getNotifications = async (req, res, next) => {
         scheduledFor: "desc",
       },
     });
-
-    console.log("notifications", notifications);
 
     res.status(200).json({
       notifications,
@@ -6346,10 +6372,22 @@ export const assignStudentsToSupervisor = async (req, res, next) => {
         },
       });
 
+      // Get existing roles
+      const student = await prisma.student.findUnique({
+        where: { id: studentId },
+        select: { supervisorRoles: true }
+      });
+      
+      const existingRoles = typeof student.supervisorRoles === 'object' && student.supervisorRoles !== null ? student.supervisorRoles : {};
+      const updatedRolesMap = { ...existingRoles, [supervisorId]: req.body.role || 'MAIN' };
+
       // Assign supervisor
       return prisma.student.update({
         where: { id: studentId },
-        data: { supervisors: { connect: { id: supervisorId } } },
+        data: { 
+          supervisorRoles: updatedRolesMap,
+          supervisors: { connect: { id: supervisorId } } 
+        },
       });
     });
 
@@ -6465,7 +6503,7 @@ export const changeStudentSupervisor = async (req, res, next) => {
       where: { id: studentId },
       include: {
         supervisors: true,
-        user: true,
+        studentUser: true,
       },
     });
 
@@ -6511,9 +6549,20 @@ export const changeStudentSupervisor = async (req, res, next) => {
     });
 
     // Update student's supervisors (remove old, add new)
+    const existingRoles = typeof student.supervisorRoles === 'object' && student.supervisorRoles !== null ? student.supervisorRoles : {};
+    const updatedRolesMap = { ...existingRoles };
+    
+    // Remove old supervisor role
+    delete updatedRolesMap[oldSupervisorId];
+    
+    // Add new supervisor role (preserving the same role type if possible, or default to MAIN if it was primary)
+    const oldRole = existingRoles[oldSupervisorId] || (req.body.isPrimary ? 'MAIN' : 'CO_SUPERVISOR');
+    updatedRolesMap[newSupervisorId] = req.body.role || oldRole;
+
     const updatedStudent = await prisma.student.update({
       where: { id: studentId },
       data: {
+        supervisorRoles: updatedRolesMap,
         supervisors: {
           disconnect: { id: oldSupervisorId },
           connect: { id: newSupervisorId },
