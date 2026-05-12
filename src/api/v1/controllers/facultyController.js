@@ -513,7 +513,7 @@ export const submitProposal = async (req, res, next) => {
       });
 
       return { proposal: newProposal, studentStatus: newStatus, statusDefinition, oldStatusId };
-    });
+    }, { timeout: 15000 });
 
     // Cleanup old status notifications
     if (oldStatusId) {
@@ -958,7 +958,7 @@ export const gradeProposal = async (req, res, next) => {
       });
 
       return { gradedProposal: newGrade };
-    });
+    }, { timeout: 15000 });
 
     res.status(200).json({
       message: "Proposal graded successfully",
@@ -1026,9 +1026,32 @@ export const addReviewers = async (req, res, next) => {
       throw error;
     }
 
+    // Fetch Administrators and Managers for notifications
+    const [schoolAdmins, researchAdmins, managers] = await Promise.all([
+      prisma.user.findMany({
+        where: {
+          isActive: true,
+          role: "SCHOOL_ADMIN",
+          OR: [
+            { facultyMember: { schoolId: proposal.student.schoolId } },
+            { supervisor: { schoolId: proposal.student.schoolId } },
+          ],
+        },
+      }),
+      prisma.user.findMany({
+        where: { isActive: true, role: "RESEARCH_ADMIN" },
+      }),
+      prisma.user.findMany({
+        where: { isActive: true, role: "MANAGER" },
+      }),
+    ]);
+
     // Process each reviewer - could be staff member ID or existing reviewer data (object)
-    const { createdReviewers, proposalStatus, oldStatusId } = await prisma.$transaction(async (tx) => {
+    const { createdReviewers, proposalStatus, oldStatusId, studentStatus, statusDefinition: activeStatusDef, isNewPhase } = await prisma.$transaction(async (tx) => {
       let oldStatusId = null;
+      let activeStatus = null;
+      let activeDef = null;
+      let isNewPhase = false;
       // Process each reviewer
       const results = [];
       for (const reviewerData of reviewers) {
@@ -1052,7 +1075,9 @@ export const addReviewers = async (req, res, next) => {
               throw new Error(`Reviewer for staff member ${staffMember.name} not found`);
             }
 
-            results.push(existingReviewer);
+            if (!results.some(r => r.id === existingReviewer.id)) {
+              results.push(existingReviewer);
+            }
           } else {
             // Staff member doesn't have a reviewer role, create one
             // Create the reviewer directly (no user account needed)
@@ -1096,7 +1121,9 @@ export const addReviewers = async (req, res, next) => {
             //   // Don't fail the request if email fails
             // }
 
-            results.push(newReviewer);
+            if (!results.some(r => r.id === newReviewer.id)) {
+              results.push(newReviewer);
+            }
           }
         } else {
           const { name, email } = reviewerData;
@@ -1126,7 +1153,10 @@ export const addReviewers = async (req, res, next) => {
               },
             },
           });
-          results.push(reviewer);
+          
+          if (!results.some(r => r.id === reviewer.id)) {
+            results.push(reviewer);
+          }
         }
       }
 
@@ -1201,7 +1231,8 @@ export const addReviewers = async (req, res, next) => {
           },
         });
 
-        await tx.studentStatus.create({
+        activeDef = statusDefinition;
+        activeStatus = await tx.studentStatus.create({
           data: {
             student: {
               connect: { id: proposal.student.id },
@@ -1216,12 +1247,24 @@ export const addReviewers = async (req, res, next) => {
             isCurrent: true,
           },
         });
+        isNewPhase = true;
 
-        return { createdReviewers: results, proposalStatus, oldStatusId };
+        return { createdReviewers: results, proposalStatus, oldStatusId, studentStatus: activeStatus, statusDefinition: activeDef, isNewPhase };
+      } else {
+        // Phase already started, find current status
+        activeStatus = await tx.studentStatus.findFirst({
+          where: {
+            studentId: proposal.student.id,
+            isCurrent: true,
+            definition: { name: "proposal in review" }
+          },
+          include: { definition: true }
+        });
+        activeDef = activeStatus?.definition;
       }
 
-      return { createdReviewers: results, oldStatusId };
-    });
+      return { createdReviewers: results, oldStatusId, studentStatus: activeStatus, statusDefinition: activeDef, isNewPhase };
+    }, { timeout: 15000 });
 
     // Cleanup old status notifications
     if (oldStatusId) {
@@ -1232,24 +1275,110 @@ export const addReviewers = async (req, res, next) => {
         }
     }
 
-    // Notify Reviewers
+    // Notify Reviewers and Administrators (Multi-tiered notifications)
     try {
-      for (const reviewer of createdReviewers) {
-        await notificationService.scheduleNotification({
-          type: "EMAIL",
-          statusType: "PENDING",
-          title: "New Proposal Assignment",
-          message: `Dear ${reviewer.name}, you have been assigned as a reviewer for the proposal: "${proposal.title}" by ${proposal.student.fullName}.`,
-          recipientCategory: "REVIEWER",
-          recipientId: reviewer.id,
-          recipientEmail: reviewer.email,
-          recipientName: reviewer.name,
-          scheduledFor: new Date(),
-          metadata: {
-            proposalId: proposal.id,
-            studentId: proposal.student.id,
+      const studentStatusId = studentStatus?.id;
+      const statusDef = activeStatusDef;
+
+      if (studentStatusId && statusDef) {
+        const startDate = new Date();
+        const expDur = statusDef.expectedDuration || 14;
+        const warnDays = statusDef.warningDays || 7;
+        const critDays = statusDef.criticalDays || 10;
+        const delayDays = statusDef.delayDays || 21;
+
+        const warningDate = new Date(startDate.getTime() + (warnDays * 24 * 60 * 60 * 1000));
+        const criticalDate = new Date(startDate.getTime() + (critDays * 24 * 60 * 60 * 1000));
+        const escalationDate = new Date(startDate.getTime() + ((expDur + 2) * 24 * 60 * 60 * 1000));
+        const delayDate = new Date(startDate.getTime() + (delayDays * 24 * 60 * 60 * 1000));
+
+        for (const reviewer of createdReviewers) {
+          // Check if reviewer was already assigned to this proposal before this request
+          const wasAlreadyAssigned = proposal.reviewers.some(r => r.id === reviewer.id);
+          if (wasAlreadyAssigned) continue;
+
+          // 1. Immediate Assignment (Always for newly added reviewers)
+          await notificationService.scheduleNotification({
+            type: "EMAIL",
+            statusType: "PENDING",
+            title: "New Proposal Assignment",
+            message: `Dear ${reviewer.name}, you have been assigned as a reviewer for the proposal: "${proposal.title}" by ${proposal.student.fullName}. We look forward to receiving your feedback.`,
+            recipientCategory: "REVIEWER",
+            recipientId: reviewer.id,
+            recipientEmail: reviewer.email,
+            recipientName: reviewer.name,
+            scheduledFor: new Date(),
+            studentStatus: { connect: { id: studentStatusId } },
+            metadata: { proposalId: proposal.id, studentId: proposal.student.id }
+          });
+
+          // 2. Warning Reminder (7 days from now)
+          await notificationService.scheduleNotification({
+            type: "EMAIL",
+            statusType: "PENDING",
+            title: "Reminder: Proposal Review Pending",
+            message: `Dear ${reviewer.name}, this is a friendly reminder that the proposal review for "${proposal.title}" by ${proposal.student.fullName} is pending. We would appreciate receiving your feedback by the expected deadline.`,
+            recipientCategory: "REVIEWER",
+            recipientId: reviewer.id,
+            recipientEmail: reviewer.email,
+            recipientName: reviewer.name,
+            scheduledFor: warningDate,
+            studentStatus: { connect: { id: studentStatusId } },
+            metadata: { proposalId: proposal.id, studentId: proposal.student.id }
+          });
+
+          // 3. Critical Alert (10 days from now)
+          await notificationService.scheduleNotification({
+            type: "EMAIL",
+            statusType: "PENDING",
+            title: "CRITICAL: Proposal Review Deadline Approaching",
+            message: `Dear ${reviewer.name}, URGENT: The deadline for reviewing the proposal "${proposal.title}" is approaching. We would appreciate receiving your feedback as soon as possible.`,
+            recipientCategory: "REVIEWER",
+            recipientId: reviewer.id,
+            recipientEmail: reviewer.email,
+            recipientName: reviewer.name,
+            scheduledFor: criticalDate,
+            studentStatus: { connect: { id: studentStatusId } },
+            metadata: { proposalId: proposal.id, studentId: proposal.student.id }
+          });
+        }
+
+        // 4. Admin notifications (ONLY if it's a NEW phase)
+        if (isNewPhase) {
+          // Escalation for Administrators (School & Research)
+          for (const admin of [...schoolAdmins, ...researchAdmins]) {
+            await notificationService.scheduleNotification({
+              type: "EMAIL",
+              statusType: "PENDING",
+              title: "ESCALATION: Proposal Review Overdue",
+              message: `The proposal review phase for "${proposal.title}" (Student: ${proposal.student.fullName}) has exceeded the expected duration. Escalation milestone (${expDur + 2} days) has been reached.`,
+              recipientCategory: "USER",
+              recipientId: admin.id,
+              recipientEmail: admin.email,
+              recipientName: admin.name,
+              scheduledFor: escalationDate,
+              studentStatus: { connect: { id: studentStatusId } },
+              metadata: { proposalId: proposal.id, studentId: proposal.student.id }
+            });
           }
-        });
+
+          // Delay Alert for Managers
+          for (const manager of managers) {
+            await notificationService.scheduleNotification({
+              type: "EMAIL",
+              statusType: "PENDING",
+              title: "DELAY ALERT: Proposal Review",
+              message: `There is a significant delay in the review process for proposal "${proposal.title}" (${delayDays} days reached). Managerial intervention may be required to expedite the process.`,
+              recipientCategory: "USER",
+              recipientId: manager.id,
+              recipientEmail: manager.email,
+              recipientName: manager.name,
+              scheduledFor: delayDate,
+              studentStatus: { connect: { id: studentStatusId } },
+              metadata: { proposalId: proposal.id, studentId: proposal.student.id }
+            });
+          }
+        }
       }
     } catch (notifError) {
       console.error("Error sending reviewer assignment notifications:", notifError);
@@ -1385,110 +1514,72 @@ export const addReviewerMark = async (req, res, next) => {
       throw error;
     }
 
-    let updatedOrNewGrade;
-    // Create or update the review grade
-    const existingGrade = proposal.reviewGrades.find(
-      (grade) => grade.gradedById === reviewerId
-    );
+    // Process the review mark in a transaction
+    const { updatedOrNewGrade, oldStatusId, newStatus, wasUpdate } = await prisma.$transaction(async (tx) => {
+      let updatedOrNewGrade;
+      // Create or update the review grade
+      const existingGrade = proposal.reviewGrades.find(
+        (grade) => grade.gradedById === reviewerId
+      );
 
-    if (existingGrade) {
-      // Update existing grade
-      updatedOrNewGrade = await prisma.proposalReviewGrade.update({
-        where: { id: existingGrade.id },
-        data: {
-          verdict,
-          feedback,
-          updatedBy: { connect: { id: submittedById } },
-        },
-      });
-    } else {
-      // Create new grade
-      updatedOrNewGrade = await prisma.proposalReviewGrade.create({
-        data: {
-          proposal: { connect: { id: proposalId } },
-          gradedBy: { connect: { id: reviewerId } },
-          verdict,
-          feedback,
-          submittedBy: { connect: { id: submittedById } },
-        },
-      });
-    }
-
-    // Get updated proposal data
-    const updatedProposal = await prisma.proposal.findUnique({
-      where: { id: proposalId },
-      include: {
-        reviewGrades: true,
-        reviewers: true,
-        student: true,
-        statuses: {
-          include: {
-            definition: true,
-          },
-        },
-      },
-    });
-
-    // Check if current status is already "Proposal Review Finished"
-    const currentStatus = updatedProposal.statuses.find(
-      (status) => status.isCurrent
-    );
-    const isAlreadyFinished =
-      currentStatus?.definition?.name === "proposal review finished" ||
-      currentStatus?.definition?.name === "passed-proposal review finished" ||
-      currentStatus?.definition?.name === "failed-proposal review finished";
-
-    // Only update status if not already finished and all reviewers have submitted grades
-    if (
-      !isAlreadyFinished &&
-      updatedProposal.reviewGrades.length === updatedProposal.reviewers.length
-    ) {
-      // Update proposal status
-      await prisma.proposalStatus.updateMany({
-        where: {
-          proposalId,
-          isCurrent: true,
-        },
-        data: {
-          isCurrent: false,
-          endDate: new Date(),
-        },
-      });
-
-      // Determine the status based on verdict
-      let statusName = "proposal review finished";
-      if (verdict.toLowerCase().includes("pass")) {
-        statusName = "passed-proposal review finished";
-      } else if (verdict.toLowerCase().includes("fail")) {
-        statusName = "failed-proposal review finished";
-      }
-
-      // Get the status definition ID for the appropriate status
-      const proposalReviewFinishedStatus =
-        await prisma.statusDefinition.findFirst({
-          where: {
-            name: statusName,
+      if (existingGrade) {
+        // Update existing grade
+        updatedOrNewGrade = await tx.proposalReviewGrade.update({
+          where: { id: existingGrade.id },
+          data: {
+            verdict,
+            feedback,
+            updatedBy: { connect: { id: submittedById } },
           },
         });
-
-      if (!proposalReviewFinishedStatus) {
-        throw new Error("Status definition not found");
+      } else {
+        // Create new grade
+        updatedOrNewGrade = await tx.proposalReviewGrade.create({
+          data: {
+            proposal: { connect: { id: proposalId } },
+            gradedBy: { connect: { id: reviewerId } },
+            verdict,
+            feedback,
+            submittedBy: { connect: { id: submittedById } },
+          },
+        });
       }
 
-      await prisma.proposalStatus.create({
-        data: {
-          proposal: { connect: { id: proposalId } },
-          definition: { connect: { id: proposalReviewFinishedStatus.id } },
-          isCurrent: true,
-          startDate: new Date(),
+      // Get updated proposal data within the transaction to check status
+      const updatedProposal = await tx.proposal.findUnique({
+        where: { id: proposalId },
+        include: {
+          reviewGrades: true,
+          reviewers: true,
+          student: true,
+          statuses: {
+            include: {
+              definition: true,
+            },
+          },
         },
       });
 
-      // Update student status if proposal passed review
-      if (updatedProposal.student) {
-        await prisma.studentStatus.updateMany({
+      // Check if current status is already "Proposal Review Finished"
+      const currentStatus = updatedProposal.statuses.find(
+        (status) => status.isCurrent
+      );
+      const isAlreadyFinished =
+        currentStatus?.definition?.name === "proposal review finished" ||
+        currentStatus?.definition?.name === "passed-proposal review finished" ||
+        currentStatus?.definition?.name === "failed-proposal review finished";
+
+      let oldStatusId = null;
+
+      // Only update status if not already finished and all reviewers have submitted grades
+      if (
+        !isAlreadyFinished &&
+        updatedProposal.reviewGrades.length === updatedProposal.reviewers.length
+      ) {
+        // Update proposal status
+        await tx.proposalStatus.updateMany({
           where: {
-            studentId: updatedProposal.student.id,
+            proposalId,
             isCurrent: true,
           },
           data: {
@@ -1497,15 +1588,204 @@ export const addReviewerMark = async (req, res, next) => {
           },
         });
 
-        await prisma.studentStatus.create({
+        // Determine the status based on verdict
+        let statusName = "proposal review finished";
+        if (verdict.toLowerCase().includes("pass")) {
+          statusName = "passed-proposal review finished";
+        } else if (verdict.toLowerCase().includes("fail")) {
+          statusName = "failed-proposal review finished";
+        }
+
+        // Get the status definition ID for the appropriate status
+        const proposalReviewFinishedStatus =
+          await tx.statusDefinition.findFirst({
+            where: {
+              name: statusName,
+            },
+          });
+
+        if (!proposalReviewFinishedStatus) {
+          throw new Error("Status definition not found");
+        }
+
+        await tx.proposalStatus.create({
           data: {
-            student: { connect: { id: updatedProposal.student.id } },
+            proposal: { connect: { id: proposalId } },
             definition: { connect: { id: proposalReviewFinishedStatus.id } },
             isCurrent: true,
             startDate: new Date(),
-            updatedBy: { connect: { id: submittedById } },
           },
         });
+
+        // Update student status if proposal passed review
+        if (updatedProposal.student) {
+          const currentStudentStatus = await tx.studentStatus.findFirst({
+            where: {
+              studentId: updatedProposal.student.id,
+              isCurrent: true,
+            },
+          });
+
+          if (currentStudentStatus) {
+            oldStatusId = currentStudentStatus.id;
+            await tx.studentStatus.update({
+              where: { id: oldStatusId },
+              data: {
+                isCurrent: false,
+                endDate: new Date(),
+              },
+            });
+          }
+
+          await tx.studentStatus.create({
+            data: {
+              student: { connect: { id: updatedProposal.student.id } },
+              definition: { connect: { id: proposalReviewFinishedStatus.id } },
+              isCurrent: true,
+              startDate: new Date(),
+              updatedBy: { connect: { id: submittedById } },
+            },
+          });
+        }
+      }
+
+      // Fetch new student status to get definition and student info for notifications
+      const newStatus = await tx.studentStatus.findFirst({
+        where: { studentId: proposal.student.id, isCurrent: true },
+        include: { definition: true, student: true }
+      });
+
+      return { updatedOrNewGrade, oldStatusId, newStatus, wasUpdate: !!existingGrade };
+    }, { timeout: 15000 });
+
+    // Cleanup old status notifications if phase changed
+    if (oldStatusId) {
+      try {
+        await notificationService.cancelNotificationsByStatus(oldStatusId);
+      } catch (cleanupError) {
+        console.error("Error cleaning up old notifications:", cleanupError);
+      }
+    }
+
+    // Notify School Administrators if proposal passed review and phase changed
+    if (oldStatusId && newStatus?.definition?.name === "passed-proposal review finished") {
+      try {
+        const student = newStatus.student;
+        const [schoolAdmins, researchAdmins, managers] = await Promise.all([
+          prisma.user.findMany({
+            where: {
+              role: "SCHOOL_ADMIN",
+              isActive: true,
+              OR: [
+                { facultyMember: { schoolId: student.schoolId } },
+                { supervisor: { schoolId: student.schoolId } },
+              ],
+            },
+          }),
+          prisma.user.findMany({
+            where: { role: "RESEARCH_ADMIN", isActive: true }
+          }),
+          prisma.user.findMany({
+            where: { role: "MANAGER", isActive: true }
+          })
+        ]);
+
+        const statusDef = newStatus.definition;
+        const startDate = new Date();
+        const expDur = statusDef.expectedDuration || 14;
+        const warnDays = statusDef.warningDays || 7;
+        const critDays = statusDef.criticalDays || 10;
+        const delayDays = statusDef.delayDays || 21;
+
+        const warningDate = new Date(startDate.getTime() + (warnDays * 24 * 60 * 60 * 1000));
+        const criticalDate = new Date(startDate.getTime() + (critDays * 24 * 60 * 60 * 1000));
+        const escalationDate = new Date(startDate.getTime() + ((expDur + 2) * 24 * 60 * 60 * 1000));
+        const delayDate = new Date(startDate.getTime() + (delayDays * 24 * 60 * 60 * 1000));
+
+        // 1. Immediate and Warning for School Admins
+        for (const admin of schoolAdmins) {
+          // Immediate notification
+          await notificationService.scheduleNotification({
+            type: "EMAIL",
+            statusType: "PENDING",
+            title: "Proposal Defense Scheduling Required",
+            message: `The proposal titled "${proposal.title}" for student ${student.fullName} (${student.registrationNumber}) has passed the review phase. Please log in and schedule the proposal defense.`,
+            recipientCategory: "USER",
+            recipientId: admin.id,
+            recipientEmail: admin.email,
+            recipientName: admin.name,
+            scheduledFor: new Date(),
+            studentStatus: { connect: { id: newStatus.id } },
+            metadata: { proposalId: proposal.id, studentId: student.id, studentName: student.fullName, action: "SCHEDULE_DEFENSE" }
+          });
+
+          // Warning notification
+          await notificationService.scheduleNotification({
+            type: "EMAIL",
+            statusType: "PENDING",
+            title: "Warning: Proposal Defense Scheduling Pending",
+            message: `The proposal defense scheduling for ${student.fullName} (${student.registrationNumber}) has been pending for ${warnDays} days. Please ensure it is scheduled promptly.`,
+            recipientCategory: "USER",
+            recipientId: admin.id,
+            recipientEmail: admin.email,
+            recipientName: admin.name,
+            scheduledFor: warningDate,
+            studentStatus: { connect: { id: newStatus.id } },
+            metadata: { proposalId: proposal.id, studentId: student.id, studentName: student.fullName }
+          });
+        }
+
+        // 2. Critical Alerts and Escalation for Research Admins
+        for (const admin of researchAdmins) {
+          // Critical Alert
+          await notificationService.scheduleNotification({
+            type: "EMAIL",
+            statusType: "PENDING",
+            title: "CRITICAL: Proposal Defense Scheduling Required",
+            message: `URGENT: ${student.fullName} (${student.registrationNumber}) has reached the critical limit (${critDays} days) without a proposal defense being scheduled.`,
+            recipientCategory: "USER",
+            recipientId: admin.id,
+            recipientEmail: admin.email,
+            recipientName: admin.name,
+            scheduledFor: criticalDate,
+            studentStatus: { connect: { id: newStatus.id } },
+            metadata: { proposalId: proposal.id, studentId: student.id, studentName: student.fullName }
+          });
+
+          // Final Escalation
+          await notificationService.scheduleNotification({
+            type: "EMAIL",
+            statusType: "PENDING",
+            title: "ESCALATION: Proposal Defense Scheduling Overdue",
+            message: `The proposal defense scheduling for ${student.fullName} (${student.registrationNumber}) is now overdue (Escalation limit reached).`,
+            recipientCategory: "USER",
+            recipientId: admin.id,
+            recipientEmail: admin.email,
+            recipientName: admin.name,
+            scheduledFor: escalationDate,
+            studentStatus: { connect: { id: newStatus.id } },
+            metadata: { proposalId: proposal.id, studentId: student.id, studentName: student.fullName }
+          });
+        }
+
+        // 3. Delay Alert for Managers
+        for (const manager of managers) {
+          await notificationService.scheduleNotification({
+            type: "EMAIL",
+            statusType: "PENDING",
+            title: "DELAY ALERT: Proposal Defense Scheduling",
+            message: `The proposal defense for ${student.fullName} (${student.registrationNumber}) is significantly delayed in scheduling (${delayDays} days reached). Managerial intervention may be required.`,
+            recipientCategory: "USER",
+            recipientId: manager.id,
+            recipientEmail: manager.email,
+            recipientName: manager.name,
+            scheduledFor: delayDate,
+            studentStatus: { connect: { id: newStatus.id } },
+            metadata: { proposalId: proposal.id, studentId: student.id, studentName: student.fullName }
+          });
+        }
+      } catch (notifError) {
+        console.error("Error sending defense scheduling notifications:", notifError);
       }
     }
 
@@ -1516,15 +1796,15 @@ export const addReviewerMark = async (req, res, next) => {
         deviceId: req?.headers['x-device-id'] || 'Unknown',
         browserAgent: req?.headers['user-agent'] || 'Unknown',
         userId: req.user.id,
-        action: `${existingGrade ? 'Updated' : 'Submitted'} review mark for proposal: "${proposal.title}"`,
+        action: `${wasUpdate ? 'Updated' : 'Submitted'} review mark for proposal: "${proposal.title}"`,
         entityType: "ProposalReviewGrade",
         entityId: updatedOrNewGrade.id,
         details: `Student: ${proposal.student.fullName}, Verdict: ${verdict}`,
       },
     });
 
-    res.status(existingGrade ? 200 : 201).json({
-      message: existingGrade
+    res.status(wasUpdate ? 200 : 201).json({
+      message: wasUpdate
         ? "Reviewer mark updated successfully"
         : "Reviewer mark added successfully",
       grade: updatedOrNewGrade,
