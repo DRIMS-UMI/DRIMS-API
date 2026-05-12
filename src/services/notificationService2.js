@@ -445,6 +445,74 @@ class NotificationService {
         }
     }
 
+    // Cancel and delete all notifications for a specific student
+    // This also cleans up notifications linked to the student's statuses
+    // (e.g. notifications sent to supervisors/examiners about this student)
+    async cancelNotificationsByStudent(studentId) {
+        try {
+            // 1. Get all studentStatus IDs for this student
+            const studentStatuses = await prisma.studentStatus.findMany({
+                where: { studentId: studentId },
+                select: { id: true }
+            });
+            const statusIds = studentStatuses.map(s => s.id);
+
+            // 2. Find ALL pending notifications linked to this student
+            //    either directly via studentId OR via any of their studentStatusIds
+            const pendingNotifications = await prisma.notification.findMany({
+                where: {
+                    statusType: 'PENDING',
+                    OR: [
+                        { studentId: studentId },
+                        ...(statusIds.length > 0 ? [{ studentStatusId: { in: statusIds } }] : [])
+                    ]
+                }
+            });
+
+            // 3. Cancel all in-memory scheduled jobs
+            for (const notification of pendingNotifications) {
+                const job = this.activeJobs.get(notification.id);
+                if (job) {
+                    job.cancel();
+                    this.activeJobs.delete(notification.id);
+                }
+            }
+
+            // 4. Delete ALL notifications linked to this student (any status, not just PENDING)
+            const deleted = await prisma.notification.deleteMany({
+                where: {
+                    OR: [
+                        { studentId: studentId },
+                        ...(statusIds.length > 0 ? [{ studentStatusId: { in: statusIds } }] : [])
+                    ]
+                }
+            });
+
+            console.log(`Cleaned up ${deleted.count} notifications for student ${studentId} (including ${statusIds.length} status-linked sets)`);
+        } catch (error) {
+            console.error(`Error cleaning up notifications for student ${studentId}:`, error);
+        }
+    }
+
+    // Cancel all pending notifications for a specific student status
+    async cancelNotificationsByStatus(studentStatusId) {
+        try {
+            const notifications = await prisma.notification.findMany({
+                where: {
+                    studentStatusId: studentStatusId,
+                    statusType: 'PENDING'
+                }
+            });
+
+            for (const notification of notifications) {
+                await this.cancelNotification(notification.id);
+            }
+            console.log(`Cancelled ${notifications.length} pending notifications for status ${studentStatusId}`);
+        } catch (error) {
+            console.error(`Error cancelling notifications for status ${studentStatusId}:`, error);
+        }
+    }
+
     // Cancel a scheduled notification
     async cancelNotification(notificationId) {
         const job = this.activeJobs.get(notificationId);
@@ -583,83 +651,11 @@ class NotificationService {
     }
 
     // Start the cron job for workflow escalations
+    // DEPRECATED: This logic is now handled by proactive scheduled notifications in 
+    // managementController.js (registerStudent and assignSupervisorsToStudent)
     startWorkflowEscalationCron() {
-        console.log('Initializing Workflow Escalation Cron (Daily at Midnight)');
-
-        // Run daily at midnight
-        scheduleJob('0 0 * * *', async () => {
-            try {
-                console.log('Running Workshop Escalation Check...');
-                const fourteenDaysAgo = new Date();
-                fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
-
-                // Find all students currently in 'workshop' status that started > 14 days ago
-                const workshopStatuses = await prisma.studentStatus.findMany({
-                    where: {
-                        isCurrent: true,
-                        definition: {
-                            name: 'workshop'
-                        },
-                        startDate: {
-                            lte: fourteenDaysAgo
-                        }
-                    },
-                    include: {
-                        student: {
-                            include: {
-                                supervisors: true
-                            }
-                        }
-                    }
-                });
-
-                for (const status of workshopStatuses) {
-                    const student = status.student;
-                    if (!student) continue;
-
-                    // Check if supervisors list is empty
-                    if (!student.supervisors || student.supervisors.length === 0) {
-
-                        // Deduplication: Ensure we haven't already notified the admin for this specific status
-                        const existingNotification = await prisma.notification.findFirst({
-                            where: {
-                                studentStatusId: status.id,
-                                title: 'Supervisor Allocation Required'
-                            }
-                        });
-
-                        if (!existingNotification) {
-                            console.log(`Triggering Supervisor Allocation Escalation for student: ${student.fullName}`);
-
-                            // Find Research Admin(s)
-                            const researchAdmins = await prisma.user.findMany({
-                                where: { role: 'RESEARCH_ADMIN' }
-                            });
-
-                            for (const admin of researchAdmins) {
-                                await this.scheduleNotification({
-                                    type: 'EMAIL',
-                                    statusType: 'PENDING',
-                                    title: 'Supervisor Allocation Required',
-                                    message: `Student ${student.fullName} (${student.registrationNumber || student.email}) has been in the Workshop stage for over 14 days without an assigned supervisor. Please allocate a supervisor as soon as possible.`,
-                                    recipientCategory: 'USER',
-                                    recipientId: admin.id,
-                                    scheduledFor: new Date(),
-                                    studentStatus: { connect: { id: status.id } },
-                                    metadata: {
-                                        studentId: student.id,
-                                        studentName: student.fullName,
-                                        workshopStartDate: status.startDate
-                                    }
-                                });
-                            }
-                        }
-                    }
-                }
-            } catch (error) {
-                console.error('Error running workflow escalation cron:', error);
-            }
-        });
+        console.log('Workflow Escalation Cron is DEPRECATED and disabled.');
+        // Logic is now handled by targeted scheduled notifications
     }
 
     // Start global student deadline monitor (Daily at 1 AM)

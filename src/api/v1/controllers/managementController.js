@@ -1666,10 +1666,13 @@ export const assignSupervisorsToStudent = async (req, res, next) => {
         const processedSupervisors = [];
         const newSupervisorsWithPasswords = [];
         let updatedStudent;
+        let newStatus;
+        let normalProgressDef;
+        let oldStatusId;
 
         console.log('Processing staff member IDs:', supervisorIds);
 
-        await prisma.$transaction(async (tx) => {
+        const txResult = await prisma.$transaction(async (tx) => {
             for (const staffMemberId of supervisorIds) {
                 console.log(`Processing staff member ID: ${staffMemberId}`);
 
@@ -1678,7 +1681,7 @@ export const assignSupervisorsToStudent = async (req, res, next) => {
                 const role = assignment?.role || 'CO_SUPERVISOR';
 
                 // Check if it's a staff member
-                const staffMember = await tx.staffMember.findUnique({
+                const staffMember = await prisma.staffMember.findUnique({
                     where: { id: staffMemberId },
                 });
 
@@ -1694,7 +1697,7 @@ export const assignSupervisorsToStudent = async (req, res, next) => {
                 if (staffMember.supervisorId) {
                     console.log(`Staff member ${staffMember.name} already has supervisor ID: ${staffMember.supervisorId}`);
                     // Staff member already has a supervisor record, check if it exists
-                    const supervisor = await tx.supervisor.findUnique({
+                    const supervisor = await prisma.supervisor.findUnique({
                         where: { id: staffMember.supervisorId },
                         include: { user: true }
                     });
@@ -1741,9 +1744,9 @@ export const assignSupervisorsToStudent = async (req, res, next) => {
                             workEmail: staffMember.email,
                             primaryPhone: staffMember.phone,
                             facultyType: 'supervisor',
-                            school: { connect: { id: staffMember.schoolId } },
-                            campus: { connect: { id: staffMember.campusId } },
-                            department: { connect: { id: staffMember.departmentId } },
+                            school: staffMember.schoolId ? { connect: { id: staffMember.schoolId } } : undefined,
+                            campus: staffMember.campusId ? { connect: { id: staffMember.campusId } } : undefined,
+                            department: staffMember.departmentId ? { connect: { id: staffMember.departmentId } } : undefined,
                             user: { connect: { id: newUser.id } }
                         },
                         include: { user: true }
@@ -1815,7 +1818,7 @@ export const assignSupervisorsToStudent = async (req, res, next) => {
             });
 
             // Check if student is in workshop status and change to normal progress if needed
-            const currentStatus = await tx.studentStatus.findFirst({
+            const currentStatus = await prisma.studentStatus.findFirst({
                 where: {
                     studentId: studentId,
                     isCurrent: true
@@ -1826,6 +1829,7 @@ export const assignSupervisorsToStudent = async (req, res, next) => {
             });
 
             if (currentStatus?.definition?.name === "workshop") {
+                oldStatusId = currentStatus.id;
                 // Set current workshop status to inactive
                 await tx.studentStatus.update({
                     where: { id: currentStatus.id },
@@ -1833,13 +1837,13 @@ export const assignSupervisorsToStudent = async (req, res, next) => {
                 });
 
                 // Find the "NORMAL_PROGRESS" status definition
-                const normalProgressDef = await tx.statusDefinition.findFirst({
+                normalProgressDef = await prisma.statusDefinition.findFirst({
                     where: { name: "normal progress" }
                 });
 
                 if (normalProgressDef) {
                     // Create new normal progress status
-                    await tx.studentStatus.create({
+                    newStatus = await tx.studentStatus.create({
                         data: {
                             student: { connect: { id: studentId } },
                             definition: { connect: { id: normalProgressDef.id } },
@@ -1850,7 +1854,128 @@ export const assignSupervisorsToStudent = async (req, res, next) => {
                     });
                 }
             }
-        });
+            return { updatedStudent, newStatus, normalProgressDef, oldStatusId };
+        }, { timeout: 30000 });
+
+        updatedStudent = txResult.updatedStudent;
+        newStatus = txResult.newStatus;
+        normalProgressDef = txResult.normalProgressDef;
+        oldStatusId = txResult.oldStatusId;
+
+        // Cancel pending notifications for the old status
+        if (oldStatusId) {
+            await notificationService.cancelNotificationsByStatus(oldStatusId);
+        }
+
+        // Schedule milestone notifications for Normal Progress phase
+        if (newStatus && normalProgressDef) {
+            try {
+                // Fetch Research Admins and Managers
+                const [researchAdmins, managers] = await Promise.all([
+                    prisma.user.findMany({
+                        where: { isActive: true, role: "RESEARCH_ADMIN" }
+                    }),
+                    prisma.user.findMany({
+                        where: { isActive: true, role: "MANAGER" }
+                    })
+                ]);
+
+                // Get scheduling parameters
+                const startDate = new Date();
+                const expDur = normalProgressDef.expectedDuration || 90; // Default to 90 days for normal progress
+                const warnDays = normalProgressDef.warningDays || 30;
+                const critDays = normalProgressDef.criticalDays || 60;
+                const delayDays = normalProgressDef.delayDays || 100;
+
+                // Calculate scheduled dates
+                const warningDate = new Date(startDate.getTime() + (warnDays * 24 * 60 * 60 * 1000));
+                const criticalDate = new Date(startDate.getTime() + (critDays * 24 * 60 * 60 * 1000));
+                const escalationDate = new Date(startDate.getTime() + ((expDur + 2) * 24 * 60 * 60 * 1000));
+                const delayDate = new Date(startDate.getTime() + (delayDays * 24 * 60 * 60 * 1000));
+
+                // 1. Warning & Critical Alerts for Student
+                await notificationService.scheduleNotification({
+                    type: "EMAIL",
+                    statusType: "PENDING",
+                    title: "Research Progress: Proposal Submission Warning",
+                    message: `Dear ${updatedStudent.fullName}, this is a reminder that you are expected to submit your research proposal soon. You have reached the ${warnDays} day milestone.`,
+                    recipientCategory: "STUDENT",
+                    recipientId: updatedStudent.id,
+                    recipientEmail: updatedStudent.email,
+                    recipientName: updatedStudent.fullName,
+                    scheduledFor: warningDate,
+                    studentStatus: { connect: { id: newStatus.id } },
+                    metadata: { studentId: updatedStudent.id, goal: "Proposal Submission" }
+                });
+
+                await notificationService.scheduleNotification({
+                    type: "EMAIL",
+                    statusType: "PENDING",
+                    title: "CRITICAL: Proposal Submission Deadline Approaching",
+                    message: `Dear ${updatedStudent.fullName}, URGENT: You have reached the ${critDays} day milestone. Please ensure your proposal is submitted to avoid delays.`,
+                    recipientCategory: "STUDENT",
+                    recipientId: updatedStudent.id,
+                    recipientEmail: updatedStudent.email,
+                    recipientName: updatedStudent.fullName,
+                    scheduledFor: criticalDate,
+                    studentStatus: { connect: { id: newStatus.id } },
+                    metadata: { studentId: updatedStudent.id, goal: "Proposal Submission" }
+                });
+
+                // 2. Critical Alert for Supervisors
+                for (const supervisor of updatedStudent.supervisors) {
+                    await notificationService.scheduleNotification({
+                        type: "EMAIL",
+                        statusType: "PENDING",
+                        title: "Student Progress Critical: Proposal Submission Required",
+                        message: `Your student, ${updatedStudent.fullName}, has reached the ${critDays} day critical milestone for proposal submission. Please follow up.`,
+                        recipientCategory: "SUPERVISOR",
+                        recipientId: supervisor.id,
+                        recipientEmail: supervisor.user.email,
+                        recipientName: supervisor.user.name,
+                        scheduledFor: criticalDate,
+                        studentStatus: { connect: { id: newStatus.id } },
+                        metadata: { studentId: updatedStudent.id, studentName: updatedStudent.fullName }
+                    });
+                }
+
+                // 3. Escalation for Research Admins
+                for (const admin of researchAdmins) {
+                    await notificationService.scheduleNotification({
+                        type: "EMAIL",
+                        statusType: "PENDING",
+                        title: "ESCALATION: Proposal Submission Overdue",
+                        message: `The student ${updatedStudent.fullName} (${updatedStudent.registrationNumber}) is overdue for proposal submission (Expected duration + 2 days reached).`,
+                        recipientCategory: "USER",
+                        recipientId: admin.id,
+                        recipientEmail: admin.email,
+                        recipientName: admin.name,
+                        scheduledFor: escalationDate,
+                        studentStatus: { connect: { id: newStatus.id } },
+                        metadata: { studentId: updatedStudent.id, studentName: updatedStudent.fullName }
+                    });
+                }
+
+                // 4. Delay Alert for Managers
+                for (const manager of managers) {
+                    await notificationService.scheduleNotification({
+                        type: "EMAIL",
+                        statusType: "PENDING",
+                        title: "DELAY ALERT: Proposal Submission Delay",
+                        message: `The student ${updatedStudent.fullName} (${updatedStudent.registrationNumber}) is significantly delayed in proposal submission (${delayDays} days).`,
+                        recipientCategory: "USER",
+                        recipientId: manager.id,
+                        recipientEmail: manager.email,
+                        recipientName: manager.name,
+                        scheduledFor: delayDate,
+                        studentStatus: { connect: { id: newStatus.id } },
+                        metadata: { studentId: updatedStudent.id, studentName: updatedStudent.fullName }
+                    });
+                }
+            } catch (notifyError) {
+                console.error('Error scheduling normal progress notifications:', notifyError);
+            }
+        }
 
         // Send emails after transaction commit
         for (const item of newSupervisorsWithPasswords) {
@@ -2662,7 +2787,8 @@ export const createStudent = async (req, res, next) => {
 
         let student;
         let workshopStatus;
-        await prisma.$transaction(async (tx) => {
+        let workshopStatusDefinition;
+        const result = await prisma.$transaction(async (tx) => {
             // Create studentUser first
             const studentUser = await tx.studentUser.create({
                 data: {
@@ -2767,7 +2893,7 @@ export const createStudent = async (req, res, next) => {
             if (!workshopStatusDefinition) {
                 workshopStatusDefinition = await tx.statusDefinition.create({
                     data: {
-                        name: "WORKSHOP",
+                        name: "workshop",
                         description: "Student is in workshop phase"
                     }
                 });
@@ -2805,50 +2931,100 @@ export const createStudent = async (req, res, next) => {
 
             // Add the statuses to the student object for the response
             student.studentStatuses = [admittedStatus, workshopStatus];
+
+            return { student, admittedStatus, workshopStatus, workshopStatusDefinition };
         }, { timeout: 15000 });
 
-        // Find superadmin and Research_Admin users to notify
-        const adminUsers = await prisma.user.findMany({
-            where: {
-                isActive: true,
-                role: {
-                    in: ["SUPERADMIN", "RESEARCH_ADMIN"]
-                }
-            },
-            take: 2
-        });
+        student = result.student;
+        workshopStatus = result.workshopStatus;
+        workshopStatusDefinition = result.workshopStatusDefinition;
 
+        // Fetch Research Admins and Managers for scheduled notifications
+        const [researchAdmins, managers] = await Promise.all([
+            prisma.user.findMany({
+                where: { isActive: true, role: "RESEARCH_ADMIN" }
+            }),
+            prisma.user.findMany({
+                where: { isActive: true, role: "MANAGER" }
+            })
+        ]);
 
+        // Get scheduling parameters from the status definition (with fallbacks)
+        const startDate = new Date();
+        const expDur = workshopStatus.definition?.expectedDuration || workshopStatusDefinition.expectedDuration || 14;
+        const warnDays = workshopStatus.definition?.warningDays || workshopStatusDefinition.warningDays || 7;
+        const critDays = workshopStatus.definition?.criticalDays || workshopStatusDefinition.criticalDays || 10;
+        const delayDays = workshopStatus.definition?.delayDays || workshopStatusDefinition.delayDays || 21;
 
-        // enum NotificationRecipientType {  // Renamed to avoid conflicts
-        //     USER
-        //     STUDENT
-        //     EXAMINER
-        //     SUPERVISOR
-        //     PANELIST
-        //     EXTERNAL
-        //   }
+        // Calculate scheduled dates
+        const warningDate = new Date(startDate.getTime() + (warnDays * 24 * 60 * 60 * 1000));
+        const criticalDate = new Date(startDate.getTime() + (critDays * 24 * 60 * 60 * 1000));
+        const escalationDate = new Date(startDate.getTime() + ((expDur + 2) * 24 * 60 * 60 * 1000));
+        const delayDate = new Date(startDate.getTime() + (delayDays * 24 * 60 * 60 * 1000));
 
-        // Schedule notifications for admin users about new student in workshop phase
-        for (const admin of adminUsers) {
+        // 1. Schedule notifications for Research Admins (Milestone Warning, Critical Alert, Escalation)
+        for (const admin of researchAdmins) {
+            // Milestone Warning
             await notificationService.scheduleNotification({
                 type: "EMAIL",
                 statusType: "PENDING",
-                title: "New Student in Workshop Phase",
-                message: `A new student, ${fullName}, has been added to the system and is currently in the Workshop phase.`,
+                title: "Workshop Phase - Supervisor Allocation Warning",
+                message: `The student ${fullName} (${registrationNumber}) has been in the Workshop phase for ${warnDays} days. Please ensure supervisor allocation is in progress.`,
                 recipientCategory: "USER",
                 recipientId: admin.id,
                 recipientEmail: admin.email,
                 recipientName: admin.name,
-                scheduledFor: new Date(Date.now() + 1000 * 60 * 5), // Schedule for 5 minutes from now
-                metadata: {
-                    studentId: student.id,
-                    statusName: "WORKSHOP",
-                    statusId: workshopStatus.id
-                },
-                studentStatus: {
-                    connect: { id: workshopStatus.id }
-                }
+                //scheduledFor: new Date(Date.now() + 1000 * 60 * 5),
+                scheduledFor: warningDate,
+                studentStatus: { connect: { id: workshopStatus.id } },
+                metadata: { studentId: student.id, studentName: fullName }
+            });
+
+            // Critical Alert
+            await notificationService.scheduleNotification({
+                type: "EMAIL",
+                statusType: "PENDING",
+                title: "CRITICAL: Workshop Phase - Supervisor Allocation Required",
+                message: `URGENT: ${fullName} (${registrationNumber}) has reached the critical limit (${critDays} days) in the Workshop phase without supervisor assignment.`,
+                recipientCategory: "USER",
+                recipientId: admin.id,
+                recipientEmail: admin.email,
+                recipientName: admin.name,
+                scheduledFor: criticalDate,
+                studentStatus: { connect: { id: workshopStatus.id } },
+                metadata: { studentId: student.id, studentName: fullName }
+            });
+
+            // Final Escalation
+            await notificationService.scheduleNotification({
+                type: "EMAIL",
+                statusType: "PENDING",
+                title: "ESCALATION: Workshop Phase Expired",
+                message: `The Workshop phase for ${fullName} (${registrationNumber}) has expired. Supervisor allocation is overdue.`,
+                recipientCategory: "USER",
+                recipientId: admin.id,
+                recipientEmail: admin.email,
+                recipientName: admin.name,
+                scheduledFor: escalationDate,
+                studentStatus: { connect: { id: workshopStatus.id } },
+                metadata: { studentId: student.id, studentName: fullName }
+            });
+        }
+
+        // 2. Schedule Delay Alert for Managers
+        for (const manager of managers) {
+            await notificationService.scheduleNotification({
+                type: "EMAIL",
+                statusType: "PENDING",
+                title: "DELAY ALERT: Workshop Phase - Supervisor Allocation",
+                message: `The student ${fullName} (${registrationNumber}) is significantly delayed in the Workshop phase (${delayDays} days). Manager intervention may be required.`,
+                recipientCategory: "USER",
+                recipientId: manager.id,
+                recipientEmail: manager.email,
+                recipientName: manager.name,
+                scheduledFor: delayDate,
+                studentStatus: { connect: { id: workshopStatus.id } },
+                metadata: { studentId: student.id, studentName: fullName }
             });
         }
 
@@ -3262,19 +3438,37 @@ export const deleteStudent = async (req, res, next) => {
             throw error;
         }
 
-        // Delete student's user account if it exists
+        // 1. Clean up notifications FIRST (before deleting statuses or student)
+        //    This handles both studentId-linked and studentStatusId-linked notifications
+        await notificationService.cancelNotificationsByStudent(studentId);
+
+        // 2. Get all status IDs for this student to clean up notificationLogs
+        const studentStatuses = await prisma.studentStatus.findMany({
+            where: { studentId: studentId },
+            select: { id: true }
+        });
+        const statusIds = studentStatuses.map(s => s.id);
+
+        // 3. Delete notificationLog records linked to student's statuses
+        if (statusIds.length > 0) {
+            await prisma.notificationLog.deleteMany({
+                where: { statusId: { in: statusIds } }
+            });
+        }
+
+        // 4. Delete student's statuses (safe now that notifications/logs are gone)
+        await prisma.studentStatus.deleteMany({
+            where: { studentId: studentId }
+        });
+
+        // 5. Delete student's user account if it exists
         if (student.studentUser) {
             await prisma.studentUser.delete({
                 where: { id: student.studentUser.id }
             });
         }
 
-        // Delete student's statuses
-        await prisma.studentStatus.deleteMany({
-            where: { studentId: studentId }
-        });
-
-        // Delete student record
+        // 6. Delete student record
         await prisma.student.delete({
             where: { id: studentId }
         });
@@ -3290,13 +3484,16 @@ export const deleteStudent = async (req, res, next) => {
                 entityId: studentId,
                 userId: req.user?.id,
                 details: JSON.stringify({
-                    message: "Student, associated user account, and statuses were deleted"
+                    message: "Student, associated user account, statuses, and all notifications were deleted"
                 })
             }
         });
 
+        // Emit real-time update
+        req.app.get('io').emit('student_updated', { action: 'deleted', studentId });
+
         res.status(200).json({
-            message: 'Student, associated user account, and statuses deleted successfully'
+            message: 'Student, associated user account, statuses, and all notifications deleted successfully'
         });
     } catch (error) {
         if (!error.statusCode) {
