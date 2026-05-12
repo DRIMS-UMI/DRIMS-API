@@ -517,11 +517,11 @@ export const submitProposal = async (req, res, next) => {
 
     // Cleanup old status notifications
     if (oldStatusId) {
-        try {
-            await notificationService.cancelNotificationsByStatus(oldStatusId);
-        } catch (cleanupError) {
-            console.error("Error cleaning up old notifications:", cleanupError);
-        }
+      try {
+        await notificationService.cancelNotificationsByStatus(oldStatusId);
+      } catch (cleanupError) {
+        console.error("Error cleaning up old notifications:", cleanupError);
+      }
     }
 
     // Notify School Administrators, Research Admins and Managers
@@ -1153,7 +1153,7 @@ export const addReviewers = async (req, res, next) => {
               },
             },
           });
-          
+
           if (!results.some(r => r.id === reviewer.id)) {
             results.push(reviewer);
           }
@@ -1268,11 +1268,11 @@ export const addReviewers = async (req, res, next) => {
 
     // Cleanup old status notifications
     if (oldStatusId) {
-        try {
-            await notificationService.cancelNotificationsByStatus(oldStatusId);
-        } catch (cleanupError) {
-            console.error("Error cleaning up old notifications:", cleanupError);
-        }
+      try {
+        await notificationService.cancelNotificationsByStatus(oldStatusId);
+      } catch (cleanupError) {
+        console.error("Error cleaning up old notifications:", cleanupError);
+      }
     }
 
     // Notify Reviewers and Administrators (Multi-tiered notifications)
@@ -1307,7 +1307,7 @@ export const addReviewers = async (req, res, next) => {
             recipientId: reviewer.id,
             recipientEmail: reviewer.email,
             recipientName: reviewer.name,
-            scheduledFor: new Date(),
+            scheduledFor: new Date(Date.now() + 1000 * 60 * 5), // 5minutes from now
             studentStatus: { connect: { id: studentStatusId } },
             metadata: { proposalId: proposal.id, studentId: proposal.student.id }
           });
@@ -1705,19 +1705,19 @@ export const addReviewerMark = async (req, res, next) => {
         // 1. Immediate and Warning for School Admins
         for (const admin of schoolAdmins) {
           // Immediate notification
-          await notificationService.scheduleNotification({
-            type: "EMAIL",
-            statusType: "PENDING",
-            title: "Proposal Defense Scheduling Required",
-            message: `The proposal titled "${proposal.title}" for student ${student.fullName} (${student.registrationNumber}) has passed the review phase. Please log in and schedule the proposal defense.`,
-            recipientCategory: "USER",
-            recipientId: admin.id,
-            recipientEmail: admin.email,
-            recipientName: admin.name,
-            scheduledFor: new Date(),
-            studentStatus: { connect: { id: newStatus.id } },
-            metadata: { proposalId: proposal.id, studentId: student.id, studentName: student.fullName, action: "SCHEDULE_DEFENSE" }
-          });
+          // await notificationService.scheduleNotification({
+          //   type: "EMAIL",
+          //   statusType: "PENDING",
+          //   title: "Proposal Defense Scheduling Required",
+          //   message: `The proposal titled "${proposal.title}" for student ${student.fullName} (${student.registrationNumber}) has passed the review phase. Please log in and schedule the proposal defense.`,
+          //   recipientCategory: "USER",
+          //   recipientId: admin.id,
+          //   recipientEmail: admin.email,
+          //   recipientName: admin.name,
+          //   scheduledFor: new Date(Date.now() + 1000 * 60 * 5), // 5minutes from now
+          //   studentStatus: { connect: { id: newStatus.id } },
+          //   metadata: { proposalId: proposal.id, studentId: student.id, studentName: student.fullName, action: "SCHEDULE_DEFENSE" }
+          // });
 
           // Warning notification
           await notificationService.scheduleNotification({
@@ -1786,6 +1786,54 @@ export const addReviewerMark = async (req, res, next) => {
         }
       } catch (notifError) {
         console.error("Error sending defense scheduling notifications:", notifError);
+      }
+    }
+
+    // Notify Supervisors and Student if proposal failed review and phase changed
+    if (oldStatusId && newStatus?.definition?.name === "failed-proposal review finished") {
+      try {
+        const student = newStatus.student;
+        const studentSupervisors = await prisma.studentSupervisor.findMany({
+          where: { studentId: student.id, isActive: true },
+          include: { supervisor: { include: { user: true } } }
+        });
+
+        // 1. Notify Student
+        await notificationService.scheduleNotification({
+          type: "EMAIL",
+          statusType: "PENDING",
+          title: "Proposal Review Outcome: Resubmission Required",
+          message: `Dear ${student.fullName}, your proposal titled "${proposal.title}" has been reviewed and requires resubmission. Please check the system for feedback and consult your supervisors for guidance on the required revisions.`,
+          recipientCategory: "STUDENT",
+          recipientId: student.id,
+          recipientEmail: student.email,
+          recipientName: student.fullName,
+          scheduledFor: new Date(),
+          studentStatus: { connect: { id: newStatus.id } },
+          metadata: { proposalId: proposal.id, studentId: student.id, action: "RESUBMIT_PROPOSAL" }
+        });
+
+        // 2. Notify Supervisors
+        for (const ss of studentSupervisors) {
+          const supervisorUser = ss.supervisor?.user;
+          if (supervisorUser) {
+            await notificationService.scheduleNotification({
+              type: "EMAIL",
+              statusType: "PENDING",
+              title: "Student Proposal Resubmission Required",
+              message: `The proposal titled "${proposal.title}" by your student ${student.fullName} (${student.registrationNumber}) has failed the review phase and requires resubmission. Please provide the necessary guidance to the student for their next submission.`,
+              recipientCategory: "USER",
+              recipientId: supervisorUser.id,
+              recipientEmail: supervisorUser.email,
+              recipientName: supervisorUser.name,
+              scheduledFor: new Date(Date.now() + 1000 * 60 * 5), // 5minutes from now
+              studentStatus: { connect: { id: newStatus.id } },
+              metadata: { proposalId: proposal.id, studentId: student.id }
+            });
+          }
+        }
+      } catch (notifError) {
+        console.error("Error sending failure notifications:", notifError);
       }
     }
 
@@ -6525,9 +6573,6 @@ export const getAllFacultyMembers = async (req, res, next) => {
     });
     const [supervisors] = await Promise.all([
       prisma.supervisor.findMany({
-        where: {
-          schoolId: schoolFacultyMember?.schoolId,
-        },
         include: {
           school: true,
           campus: true,
