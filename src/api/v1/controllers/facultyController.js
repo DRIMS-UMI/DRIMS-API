@@ -423,7 +423,7 @@ export const submitProposal = async (req, res, next) => {
       "0"
     )}`;
 
-    const { proposal } = await prisma.$transaction(async (tx) => {
+    const { proposal, studentStatus, statusDefinition, oldStatusId } = await prisma.$transaction(async (tx) => {
       // If student has a current proposal, update it to not be current
       if (student.proposals && student.proposals.length > 0) {
         await tx.proposal.update({
@@ -455,9 +455,11 @@ export const submitProposal = async (req, res, next) => {
       });
 
       // Update current status to not be current
+      let oldStatusId = null;
       if (student.statuses[0]) {
+        oldStatusId = student.statuses[0].id;
         await tx.studentStatus.update({
-          where: { id: student.statuses[0].id },
+          where: { id: oldStatusId },
           data: {
             isCurrent: false,
             endDate: new Date(),
@@ -465,8 +467,8 @@ export const submitProposal = async (req, res, next) => {
         });
       }
 
-      let statusDefinition = await tx.statusDefinition.findUnique({
-        where: { name: "proposal received" },
+      let statusDefinition = await tx.statusDefinition.findFirst({
+        where: { name: { in: ["proposal received", "Proposal Received"] } },
       });
 
       if (!statusDefinition) {
@@ -479,7 +481,7 @@ export const submitProposal = async (req, res, next) => {
       }
 
       // Create new status record for proposal submission
-      await tx.studentStatus.create({
+      const newStatus = await tx.studentStatus.create({
         data: {
           student: {
             connect: { id: studentId },
@@ -510,7 +512,151 @@ export const submitProposal = async (req, res, next) => {
         },
       });
 
-      return { proposal: newProposal };
+      return { proposal: newProposal, studentStatus: newStatus, statusDefinition, oldStatusId };
+    });
+
+    // Cleanup old status notifications
+    if (oldStatusId) {
+        try {
+            await notificationService.cancelNotificationsByStatus(oldStatusId);
+        } catch (cleanupError) {
+            console.error("Error cleaning up old notifications:", cleanupError);
+        }
+    }
+
+    // Notify School Administrators, Research Admins and Managers
+    try {
+      // Fetch Recipients
+      const [schoolAdmins, researchAdmins, managers] = await Promise.all([
+        prisma.user.findMany({
+          where: {
+            role: "SCHOOL_ADMIN",
+            isActive: true,
+            OR: [
+              { facultyMember: { schoolId: student.schoolId } },
+              { supervisor: { schoolId: student.schoolId } },
+            ],
+          },
+        }),
+        prisma.user.findMany({
+          where: { role: "RESEARCH_ADMIN", isActive: true }
+        }),
+        prisma.user.findMany({
+          where: { role: "MANAGER", isActive: true }
+        })
+      ]);
+
+      // Get scheduling parameters from the status definition (with fallbacks)
+      const startDate = new Date();
+      const expDur = statusDefinition?.expectedDuration || 14;
+      const warnDays = statusDefinition?.warningDays || 7;
+      const critDays = statusDefinition?.criticalDays || 10;
+      const delayDays = statusDefinition?.delayDays || 21;
+
+      // Calculate scheduled dates
+      const warningDate = new Date(startDate.getTime() + (warnDays * 24 * 60 * 60 * 1000));
+      const criticalDate = new Date(startDate.getTime() + (critDays * 24 * 60 * 60 * 1000));
+      const escalationDate = new Date(startDate.getTime() + ((expDur + 2) * 24 * 60 * 60 * 1000));
+      const delayDate = new Date(startDate.getTime() + (delayDays * 24 * 60 * 60 * 1000));
+
+      // 1. Immediate Notification for School Admins
+      for (const admin of schoolAdmins) {
+        // await notificationService.scheduleNotification({
+        //     type: "SYSTEM",
+        //     statusType: "PENDING",
+        //     title: "New Proposal Received",
+        //     message: `A new proposal titled "${title}" has been submitted by ${student.fullName} (${student.registrationNumber}). Please assign reviewers.`,
+        //     recipientCategory: "USER",
+        //     recipientId: admin.id,
+        //     recipientEmail: admin.email,
+        //     recipientName: admin.name,
+        //     scheduledFor: new Date(),
+        //     studentStatus: { connect: { id: studentStatus.id } },
+        //     metadata: { proposalId: proposal.id, studentId: student.id, studentName: student.fullName, action: "ASSIGN_REVIEWERS" }
+        // });
+
+        // 2. Warning Notification for School Admins
+        await notificationService.scheduleNotification({
+          type: "EMAIL",
+          statusType: "PENDING",
+          title: "Proposal Reviewer Assignment Warning",
+          message: `The proposal from ${student.fullName} (${student.registrationNumber}) has been pending reviewer assignment for ${warnDays} days. Please ensure reviewers are assigned.`,
+          recipientCategory: "USER",
+          recipientId: admin.id,
+          recipientEmail: admin.email,
+          recipientName: admin.name,
+          scheduledFor: warningDate,
+          studentStatus: { connect: { id: studentStatus.id } },
+          metadata: { proposalId: proposal.id, studentId: student.id, studentName: student.fullName }
+        });
+      }
+
+      // 3. Critical Alerts for Research Admins
+      for (const admin of researchAdmins) {
+        // Critical Alert
+        await notificationService.scheduleNotification({
+          type: "EMAIL",
+          statusType: "PENDING",
+          title: "CRITICAL: Proposal Reviewer Assignment Required",
+          message: `URGENT: ${student.fullName} (${student.registrationNumber}) has reached the critical limit (${critDays} days) without reviewer assignment.`,
+          recipientCategory: "USER",
+          recipientId: admin.id,
+          recipientEmail: admin.email,
+          recipientName: admin.name,
+          scheduledFor: criticalDate,
+          studentStatus: { connect: { id: studentStatus.id } },
+          metadata: { proposalId: proposal.id, studentId: student.id, studentName: student.fullName }
+        });
+
+        // Final Escalation
+        await notificationService.scheduleNotification({
+          type: "EMAIL",
+          statusType: "PENDING",
+          title: "ESCALATION: Proposal Reviewer Assignment Overdue",
+          message: `The reviewer assignment for ${student.fullName} (${student.registrationNumber}) has expired. Reviewer assignment is overdue.`,
+          recipientCategory: "USER",
+          recipientId: admin.id,
+          recipientEmail: admin.email,
+          recipientName: admin.name,
+          scheduledFor: escalationDate,
+          studentStatus: { connect: { id: studentStatus.id } },
+          metadata: { proposalId: proposal.id, studentId: student.id, studentName: student.fullName }
+        });
+      }
+
+      // 4. Delay Alert for Managers
+      for (const manager of managers) {
+        await notificationService.scheduleNotification({
+          type: "EMAIL",
+          statusType: "PENDING",
+          title: "DELAY ALERT: Proposal Reviewer Assignment",
+          message: `The proposal for ${student.fullName} (${student.registrationNumber}) is significantly delayed in reviewer assignment (${delayDays} days). Manager intervention may be required.`,
+          recipientCategory: "USER",
+          recipientId: manager.id,
+          recipientEmail: manager.email,
+          recipientName: manager.name,
+          scheduledFor: delayDate,
+          studentStatus: { connect: { id: studentStatus.id } },
+          metadata: { proposalId: proposal.id, studentId: student.id, studentName: student.fullName }
+        });
+      }
+
+    } catch (notifError) {
+      console.error("Error sending proposal submission notifications:", notifError);
+    }
+
+    // Log activity
+    await prisma.userActivity.create({
+      data: {
+        ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+        deviceId: req?.headers['x-device-id'] || 'Unknown',
+        browserAgent: req?.headers['user-agent'] || 'Unknown',
+        userId: req.user.id,
+        action: `Submitted research proposal: "${title}"`,
+        entityType: "Proposal",
+        entityId: proposal.id,
+        details: `Student: ${student.fullName} (${student.registrationNumber}), Proposal Code: ${proposal.proposalCode}`,
+      },
     });
 
     res.status(201).json({
@@ -881,7 +1027,8 @@ export const addReviewers = async (req, res, next) => {
     }
 
     // Process each reviewer - could be staff member ID or existing reviewer data (object)
-    const { createdReviewers } = await prisma.$transaction(async (tx) => {
+    const { createdReviewers, proposalStatus, oldStatusId } = await prisma.$transaction(async (tx) => {
+      let oldStatusId = null;
       // Process each reviewer
       const results = [];
       for (const reviewerData of reviewers) {
@@ -1022,18 +1169,25 @@ export const addReviewers = async (req, res, next) => {
           });
         }
 
-        await tx.studentStatus.updateMany({
+        const currentStatus = await tx.studentStatus.findFirst({
           where: {
             studentId: proposal.student.id,
             isCurrent: true,
           },
-          data: {
-            isCurrent: false,
-            endDate: currentDate,
-          },
         });
 
-        await tx.proposalStatus.create({
+        if (currentStatus) {
+          oldStatusId = currentStatus.id;
+          await tx.studentStatus.update({
+            where: { id: oldStatusId },
+            data: {
+              isCurrent: false,
+              endDate: currentDate,
+            },
+          });
+        }
+
+        const proposalStatus = await tx.proposalStatus.create({
           data: {
             proposal: {
               connect: { id: proposalId },
@@ -1062,9 +1216,57 @@ export const addReviewers = async (req, res, next) => {
             isCurrent: true,
           },
         });
+
+        return { createdReviewers: results, proposalStatus, oldStatusId };
       }
 
-      return { createdReviewers: results };
+      return { createdReviewers: results, oldStatusId };
+    });
+
+    // Cleanup old status notifications
+    if (oldStatusId) {
+        try {
+            await notificationService.cancelNotificationsByStatus(oldStatusId);
+        } catch (cleanupError) {
+            console.error("Error cleaning up old notifications:", cleanupError);
+        }
+    }
+
+    // Notify Reviewers
+    try {
+      for (const reviewer of createdReviewers) {
+        await notificationService.scheduleNotification({
+          type: "EMAIL",
+          statusType: "PENDING",
+          title: "New Proposal Assignment",
+          message: `Dear ${reviewer.name}, you have been assigned as a reviewer for the proposal: "${proposal.title}" by ${proposal.student.fullName}.`,
+          recipientCategory: "REVIEWER",
+          recipientId: reviewer.id,
+          recipientEmail: reviewer.email,
+          recipientName: reviewer.name,
+          scheduledFor: new Date(),
+          metadata: {
+            proposalId: proposal.id,
+            studentId: proposal.student.id,
+          }
+        });
+      }
+    } catch (notifError) {
+      console.error("Error sending reviewer assignment notifications:", notifError);
+    }
+
+    // Log activity
+    await prisma.userActivity.create({
+      data: {
+        ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+        deviceId: req?.headers['x-device-id'] || 'Unknown',
+        browserAgent: req?.headers['user-agent'] || 'Unknown',
+        userId: req.user.id,
+        action: `Assigned reviewers to proposal: "${proposal.title}"`,
+        entityType: "Proposal",
+        entityId: proposal.id,
+        details: `Student: ${proposal.student.fullName}, Reviewers: ${createdReviewers.map(r => r.name).join(", ")}`,
+      },
     });
 
     res.status(200).json({
@@ -1306,6 +1508,20 @@ export const addReviewerMark = async (req, res, next) => {
         });
       }
     }
+
+    // Log activity
+    await prisma.userActivity.create({
+      data: {
+        ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+        deviceId: req?.headers['x-device-id'] || 'Unknown',
+        browserAgent: req?.headers['user-agent'] || 'Unknown',
+        userId: req.user.id,
+        action: `${existingGrade ? 'Updated' : 'Submitted'} review mark for proposal: "${proposal.title}"`,
+        entityType: "ProposalReviewGrade",
+        entityId: updatedOrNewGrade.id,
+        details: `Student: ${proposal.student.fullName}, Verdict: ${verdict}`,
+      },
+    });
 
     res.status(existingGrade ? 200 : 201).json({
       message: existingGrade
@@ -2311,6 +2527,20 @@ export const addDefenseDate = async (req, res, next) => {
       },
     });
 
+    // Log activity
+    await prisma.userActivity.create({
+      data: {
+        ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+        deviceId: req?.headers['x-device-id'] || 'Unknown',
+        browserAgent: req?.headers['user-agent'] || 'Unknown',
+        userId: req.user.id,
+        action: `Set defense date for proposal: "${proposal.title}"`,
+        entityType: "Proposal",
+        entityId: proposal.id,
+        details: `Student: ${proposal.student.fullName}, Defense Date: ${defenseDate}`,
+      },
+    });
+
     res.status(200).json({
       message: "Defense date added successfully",
       proposal: updatedProposal,
@@ -2417,6 +2647,20 @@ export const addComplianceReportDate = async (req, res, next) => {
       where: { id: proposalId },
       data: {
         complianceReportDate: new Date(complianceReportDate),
+      },
+    });
+
+    // Log activity
+    await prisma.userActivity.create({
+      data: {
+        ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+        deviceId: req?.headers['x-device-id'] || 'Unknown',
+        browserAgent: req?.headers['user-agent'] || 'Unknown',
+        userId: req.user.id,
+        action: `Set compliance report date for proposal: "${proposal.title}"`,
+        entityType: "Proposal",
+        entityId: proposal.id,
+        details: `Student: ${proposal.student.fullName}, Compliance Report Date: ${complianceReportDate}`,
       },
     });
 
@@ -2557,6 +2801,20 @@ export const updateFieldLetterDate = async (req, res, next) => {
       },
     });
 
+    // Log activity
+    await prisma.userActivity.create({
+      data: {
+        ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+        deviceId: req?.headers['x-device-id'] || 'Unknown',
+        browserAgent: req?.headers['user-agent'] || 'Unknown',
+        userId: req.user.id,
+        action: `Issued field letter for proposal: "${proposal.title}"`,
+        entityType: "Proposal",
+        entityId: proposal.id,
+        details: `Student: ${proposal.student.fullName}, Field Letter Date: ${fieldLetterDate}`,
+      },
+    });
+
     res.status(200).json({
       message: "Field letter date updated successfully",
       proposal: updatedProposal,
@@ -2671,6 +2929,20 @@ export const updateEthicsCommitteeDate = async (req, res, next) => {
         ethicsCommitteeDate: new Date(ethicsCommitteeDate),
       },
     });
+    // Log activity
+    await prisma.userActivity.create({
+      data: {
+        ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+        deviceId: req?.headers['x-device-id'] || 'Unknown',
+        browserAgent: req?.headers['user-agent'] || 'Unknown',
+        userId: req.user.id,
+        action: `Set ethics committee date for proposal: "${proposal.title}"`,
+        entityType: "Proposal",
+        entityId: proposal.id,
+        details: `Student: ${proposal.student.fullName}, Ethics Committee Date: ${ethicsCommitteeDate}`,
+      },
+    });
+
     res.status(200).json({
       message: "ETHICS COMMITTEE DATE ISSUED",
       proposal: updatedProposal,
@@ -4427,6 +4699,20 @@ export const scheduleProposalDefense = async (req, res, next) => {
       });
     }
 
+    // Log activity
+    await prisma.userActivity.create({
+      data: {
+        ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+        deviceId: req?.headers['x-device-id'] || 'Unknown',
+        browserAgent: req?.headers['user-agent'] || 'Unknown',
+        userId: req.user.id,
+        action: `Scheduled defense for proposal: "${proposal.title}"`,
+        entityType: "ProposalDefense",
+        entityId: proposalDefense.id,
+        details: `Student: ${proposal.student.fullName}, Date: ${proposalDefense.date}, Venue: ${proposalDefense.venue}`,
+      },
+    });
+
     res.status(201).json({
       message: "Proposal defense scheduled successfully",
       proposalDefense: proposalDefense,
@@ -4868,6 +5154,20 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
         }
       }
     }
+
+    // Log activity
+    await prisma.userActivity.create({
+      data: {
+        ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+        deviceId: req?.headers['x-device-id'] || 'Unknown',
+        browserAgent: req?.headers['user-agent'] || 'Unknown',
+        userId: req.user.id,
+        action: `Recorded defense verdict for proposal: "${student.proposals[0].title}"`,
+        entityType: "ProposalDefense",
+        entityId: updatedDefense.id,
+        details: `Student: ${student.fullName}, Verdict: ${verdict}`,
+      },
+    });
 
     res.status(200).json({
       message: "Proposal defense verdict recorded successfully",
@@ -6377,16 +6677,16 @@ export const assignStudentsToSupervisor = async (req, res, next) => {
         where: { id: studentId },
         select: { supervisorRoles: true }
       });
-      
+
       const existingRoles = typeof student.supervisorRoles === 'object' && student.supervisorRoles !== null ? student.supervisorRoles : {};
       const updatedRolesMap = { ...existingRoles, [supervisorId]: req.body.role || 'MAIN' };
 
       // Assign supervisor
       return prisma.student.update({
         where: { id: studentId },
-        data: { 
+        data: {
           supervisorRoles: updatedRolesMap,
-          supervisors: { connect: { id: supervisorId } } 
+          supervisors: { connect: { id: supervisorId } }
         },
       });
     });
@@ -6551,10 +6851,10 @@ export const changeStudentSupervisor = async (req, res, next) => {
     // Update student's supervisors (remove old, add new)
     const existingRoles = typeof student.supervisorRoles === 'object' && student.supervisorRoles !== null ? student.supervisorRoles : {};
     const updatedRolesMap = { ...existingRoles };
-    
+
     // Remove old supervisor role
     delete updatedRolesMap[oldSupervisorId];
-    
+
     // Add new supervisor role (preserving the same role type if possible, or default to MAIN if it was primary)
     const oldRole = existingRoles[oldSupervisorId] || (req.body.isPrimary ? 'MAIN' : 'CO_SUPERVISOR');
     updatedRolesMap[newSupervisorId] = req.body.role || oldRole;
