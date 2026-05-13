@@ -45,7 +45,7 @@ class EmailService {
                 attachments: [
                     {
                         attachmentName: fileName,
-                        content: excelBuffer.toString('base64'),
+                        content: typeof excelBuffer === 'string' ? excelBuffer : excelBuffer.toString('base64'),
                         contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
                     }
                 ]

@@ -35,7 +35,7 @@ class EmailService {
                 attachments: [
                     {
                         filename: fileName,
-                        content: excelBuffer.toString('base64'),
+                        content: typeof excelBuffer === 'string' ? excelBuffer : excelBuffer.toString('base64'),
                         contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                         encoding: 'base64'
                     }
@@ -101,7 +101,7 @@ class EmailService {
                 ...(attachments.length > 0 && {
                     attachments: attachments.map(att => ({
                         filename: att.filename || `attachment-${Date.now()}`,
-                        content: att.content.toString('base64'),
+                        content: typeof att.content === 'string' ? att.content : att.content.toString('base64'),
                         contentType: att.contentType || 'application/octet-stream',
                         encoding: 'base64'
                     }))

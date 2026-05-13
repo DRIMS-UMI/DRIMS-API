@@ -3952,6 +3952,9 @@ export const getAllBooks = async (req, res, next) => {
             id: true,
             fullName: true,
             email: true,
+            gender: true,
+            course: true,
+            academicYear: true,
             registrationNumber: true,
             supervisors: true,
             supervisorRoles: true,
@@ -4306,7 +4309,7 @@ export const assignExaminersToBook = async (req, res, next) => {
           });
 
           if (studentCurrentStatus) {
-              studentStatusId = studentCurrentStatus.id;
+            studentStatusId = studentCurrentStatus.id;
           }
 
           if (!studentCurrentStatus) {
