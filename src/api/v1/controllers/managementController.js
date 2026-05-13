@@ -6359,7 +6359,7 @@ export const submitStudentBook = async (req, res, next) => {
             });
 
             return { book: newBook };
-        });
+        }, { timeout: 20000 });
 
         res.status(201).json({
             message: 'dissertation submitted successfully',
@@ -6527,6 +6527,7 @@ export const getBook = async (req, res, next) => {
                     select: {
                         id: true,
                         fullName: true,
+                        registrationNumber: true,
                         email: true
                     }
                 },
@@ -6743,7 +6744,8 @@ export const assignExaminersToBook = async (req, res, next) => {
         // Get current date for assignment tracking
         const assignmentDate = new Date();
 
-        const { updatedBook } = await prisma.$transaction(async (tx) => {
+        const result = await prisma.$transaction(async (tx) => {
+            let studentStatusId = null;
             // Update the book with the examiner IDs
             const updated = await tx.book.update({
                 where: {
@@ -6803,7 +6805,7 @@ export const assignExaminersToBook = async (req, res, next) => {
                 });
 
                 // Create new student status "Under Examination"
-                await tx.studentStatus.create({
+                const newStudentStatus = await tx.studentStatus.create({
                     data: {
                         student: { connect: { id: book.student.id } },
                         definition: { connect: { id: underExaminationStatus.id } },
@@ -6813,6 +6815,13 @@ export const assignExaminersToBook = async (req, res, next) => {
                         updatedBy: { connect: { id: req.user.id } }
                     }
                 });
+                studentStatusId = newStudentStatus.id;
+            } else if (book.student) {
+                // If already under examination, find the current status ID
+                const currentStatus = await tx.studentStatus.findFirst({
+                    where: { studentId: book.student.id, isCurrent: true }
+                });
+                studentStatusId = currentStatus?.id;
             }
 
             // Create assignments for each examiner
@@ -6862,8 +6871,105 @@ export const assignExaminersToBook = async (req, res, next) => {
                 }
             }
 
-            return { updatedBook: updated };
-        });
+            return { updatedBook: updated, studentStatusId };
+        }, { maxWait: 15000, timeout: 15000 });
+
+        const studentStatusId = result.studentStatusId;
+        const updatedBook = result.updatedBook;
+
+        // 1. Fetch Research Admins and Managers for scheduled notifications
+        const [researchAdmins, managers] = await Promise.all([
+            prisma.user.findMany({
+                where: { isActive: true, role: "RESEARCH_ADMIN" }
+            }),
+            prisma.user.findMany({
+                where: { isActive: true, role: "MANAGER" }
+            })
+        ]);
+
+        // 2. Schedule notifications for each external examiner
+        try {
+            const expDur = underExaminationStatus.expectedDuration || 30;
+            const warnDays = underExaminationStatus.warningDays || 14;
+            const critDays = underExaminationStatus.criticalDays || 21;
+            const delayDays = underExaminationStatus.delayDays || 40;
+
+            const warningDate = new Date(assignmentDate.getTime() + (warnDays * 24 * 60 * 60 * 1000));
+            const criticalDate = new Date(assignmentDate.getTime() + (critDays * 24 * 60 * 60 * 1000));
+            const escalationDate = new Date(assignmentDate.getTime() + ((expDur + 2) * 24 * 60 * 60 * 1000));
+            const delayDate = new Date(assignmentDate.getTime() + (delayDays * 24 * 60 * 60 * 1000));
+
+            for (const examiner of updatedBook.examiners) {
+                if (examiner.type === "External") {
+                    // Polite Warning (Reminder 1)
+                    await notificationService.scheduleNotification({
+                        type: "EMAIL",
+                        statusType: "PENDING",
+                        title: `Reminder: Dissertation Examination Report - ${updatedBook.student?.fullName || 'Unknown Student'}`,
+                        message: `Dear ${examiner.name}, this is a polite reminder regarding the dissertation titled "${updatedBook.title}" for student ${updatedBook.student?.fullName || 'Unknown Student'} (${updatedBook.student?.registrationNumber || 'N/A'}) currently under your examination. We would appreciate receiving your marked dissertation and report. Thank you for your continued support.`,
+                        recipientCategory: "EXAMINER",
+                        recipientId: examiner.id,
+                        recipientEmail: examiner.primaryEmail || examiner.secondaryEmail,
+                        recipientName: examiner.name,
+                        scheduledFor: warningDate,
+                        studentStatus: studentStatusId ? { connect: { id: studentStatusId } } : undefined,
+                        metadata: { bookId: updatedBook.id, studentId: updatedBook.studentId }
+                    });
+
+                    // Critical Alert (Reminder 2)
+                    await notificationService.scheduleNotification({
+                        type: "EMAIL",
+                        statusType: "PENDING",
+                        title: `URGENT: Dissertation Examination Report Overdue - ${updatedBook.student?.fullName || 'Unknown Student'}`,
+                        message: `Dear ${examiner.name}, URGENT: You have reached the ${critDays} day milestone for the dissertation of ${updatedBook.student?.fullName || 'Unknown Student'} (${updatedBook.student?.registrationNumber || 'N/A'}). Please ensure the marked dissertation and report are submitted as soon as possible to avoid further delays in the student's progress.`,
+                        recipientCategory: "EXAMINER",
+                        recipientId: examiner.id,
+                        recipientEmail: examiner.primaryEmail || examiner.secondaryEmail,
+                        recipientName: examiner.name,
+                        scheduledFor: criticalDate,
+                        studentStatus: studentStatusId ? { connect: { id: studentStatusId } } : undefined,
+                        metadata: { bookId: updatedBook.id, studentId: updatedBook.studentId }
+                    });
+
+                    // Escalation for Research Admins
+                    for (const admin of researchAdmins) {
+                        await notificationService.scheduleNotification({
+                            type: "EMAIL",
+                            statusType: "PENDING",
+                            title: `ESCALATION: Dissertation Examination Overdue - ${updatedBook.student?.fullName || 'Unknown Student'}`,
+                            message: `The dissertation examination for student ${updatedBook.student?.fullName || 'Unknown Student'} (${updatedBook.student?.registrationNumber || 'N/A'}) is overdue. The assigned external examiner ${examiner.name} has exceeded the expected duration of ${expDur} days.`,
+                            recipientCategory: "USER",
+                            recipientId: admin.id,
+                            recipientEmail: admin.email,
+                            recipientName: admin.name,
+                            scheduledFor: escalationDate,
+                            studentStatus: studentStatusId ? { connect: { id: studentStatusId } } : undefined,
+                            metadata: { bookId: updatedBook.id, studentId: updatedBook.studentId, examinerName: examiner.name }
+                        });
+                    }
+
+                    // Delay Alert for Managers
+                    for (const manager of managers) {
+                        await notificationService.scheduleNotification({
+                            type: "EMAIL",
+                            statusType: "PENDING",
+                            title: `DELAY ALERT: Significant Delay in Dissertation Examination - ${updatedBook.student?.fullName || 'Unknown Student'}`,
+                            message: `There is a significant delay in the dissertation examination for ${updatedBook.student?.fullName || 'Unknown Student'} (${updatedBook.student?.registrationNumber || 'N/A'}). The external examiner ${examiner.name} has not submitted the report after ${delayDays} days.`,
+                            recipientCategory: "USER",
+                            recipientId: manager.id,
+                            recipientEmail: manager.email,
+                            recipientName: manager.name,
+                            scheduledFor: delayDate,
+                            studentStatus: studentStatusId ? { connect: { id: studentStatusId } } : undefined,
+                            metadata: { bookId: updatedBook.id, studentId: updatedBook.studentId, examinerName: examiner.name }
+                        });
+                    }
+                }
+            }
+        } catch (notifyError) {
+            console.error('Error scheduling examination notifications:', notifyError);
+        }
+
 
         res.status(200).json({
             message: 'Examiners assigned to book successfully and status updated to Under Examination',
@@ -6985,6 +7091,9 @@ export const updateExternalExaminerMark = async (req, res, next) => {
         let status = null;
         let averageMark = parsedMark;
 
+        let newlyFailed = false;
+        let studentWithSupervisors = null;
+
         const { updatedAssignment } = await prisma.$transaction(async (tx) => {
             // If examiner is external
             if (existingAssignment.examiner.type === "External") {
@@ -7002,7 +7111,9 @@ export const updateExternalExaminerMark = async (req, res, next) => {
                     where: {
                         id: existingAssignment.book.studentId,
                     },
+                    include: { supervisors: true }
                 });
+                studentWithSupervisors = student;
 
                 const resubmissionRequiredStatus =
                     await tx.statusDefinition.findFirst({
@@ -7025,6 +7136,17 @@ export const updateExternalExaminerMark = async (req, res, next) => {
                     throw new Error("Passed status definition not found");
                 }
 
+                // Check if the book status is already "failed & resubmission required"
+                const currentBookStatus = await tx.bookStatus.findFirst({
+                    where: {
+                        bookId: existingAssignment.bookId,
+                        isCurrent: true,
+                        definition: {
+                            id: resubmissionRequiredStatus.id,
+                        },
+                    },
+                });
+
                 // If mark is below 60%, status is failed
                 if (parsedMark < 60) {
                     status = "FAILED";
@@ -7042,8 +7164,10 @@ export const updateExternalExaminerMark = async (req, res, next) => {
                         });
                     }
 
-                    // Update the previous student status to not be current
-                    await tx.studentStatus.updateMany({
+                    if (!currentBookStatus) {
+                        newlyFailed = true;
+                        // Update the previous student status to not be current
+                        await tx.studentStatus.updateMany({
                         where: {
                             studentId: student.id,
                             isCurrent: true,
@@ -7078,16 +7202,17 @@ export const updateExternalExaminerMark = async (req, res, next) => {
                         },
                     });
 
-                    // Create new book status
-                    await tx.bookStatus.create({
-                        data: {
-                            book: { connect: { id: existingAssignment.bookId } },
-                            definition: { connect: { id: resubmissionRequiredStatus.id } },
-                            isActive: true,
-                            startDate: new Date(),
-                            isCurrent: true,
-                        },
-                    });
+                        // Create new book status
+                        await tx.bookStatus.create({
+                            data: {
+                                book: { connect: { id: existingAssignment.bookId } },
+                                definition: { connect: { id: resubmissionRequiredStatus.id } },
+                                isActive: true,
+                                startDate: new Date(),
+                                isCurrent: true,
+                            },
+                        });
+                    }
                 } else {
                     status = "PASSED";
                     // If internal examiner exists, calculate average
@@ -7152,6 +7277,8 @@ export const updateExternalExaminerMark = async (req, res, next) => {
                                 },
                             });
                         } else {
+                        if (!currentBookStatus) {
+                            newlyFailed = true;
                             // Update the previous student status to not be current
                             await tx.studentStatus.updateMany({
                                 where: {
@@ -7202,6 +7329,7 @@ export const updateExternalExaminerMark = async (req, res, next) => {
                     }
                 }
             }
+        }
 
             // Update the assignment with mark, comments and status
             const updated = await tx.examinerBookAssignment.update({
@@ -7217,7 +7345,79 @@ export const updateExternalExaminerMark = async (req, res, next) => {
             });
 
             return { updatedAssignment: updated };
-        });
+        }, { maxWait: 15000, timeout: 15000 });
+
+        try {
+            // Cancel notifications sent to this specific examiner
+            const examinerNotifications = await prisma.notification.findMany({
+                where: {
+                    statusType: "PENDING",
+                    recipientCategory: "EXAMINER",
+                    examinerId: existingAssignment.examinerId
+                }
+            });
+            for (const notif of examinerNotifications) {
+                if (notif.metadata && notif.metadata.bookId === existingAssignment.bookId) {
+                    await notificationService.cancelNotification(notif.id);
+                }
+            }
+
+            // Cancel escalation/delay notifications sent to users about this examiner
+            const userNotifications = await prisma.notification.findMany({
+                where: {
+                    statusType: "PENDING",
+                    recipientCategory: "USER"
+                }
+            });
+            for (const notif of userNotifications) {
+                if (
+                    notif.metadata &&
+                    notif.metadata.bookId === existingAssignment.bookId &&
+                    notif.metadata.examinerName === existingAssignment.examiner.name
+                ) {
+                    await notificationService.cancelNotification(notif.id);
+                }
+            }
+        } catch (cancelError) {
+            console.error("Error cancelling examination notifications:", cancelError);
+        }
+
+        if (newlyFailed && studentWithSupervisors) {
+            try {
+                // Send notifications to student and supervisor
+                await notificationService.scheduleNotification({
+                    type: "EMAIL",
+                    statusType: "PENDING",
+                    title: "Dissertation Resubmission Required",
+                    message: `Dear ${studentWithSupervisors.fullName}, your dissertation requires resubmission based on the recent examination results. Please contact your supervisor for further guidance.`,
+                    recipientCategory: "STUDENT",
+                    recipientId: studentWithSupervisors.id,
+                    recipientEmail: studentWithSupervisors.email,
+                    recipientName: studentWithSupervisors.fullName,
+                    scheduledFor: new Date(),
+                    metadata: { bookId: existingAssignment.bookId }
+                });
+
+                if (studentWithSupervisors.supervisors && studentWithSupervisors.supervisors.length > 0) {
+                    for (const supervisor of studentWithSupervisors.supervisors) {
+                        await notificationService.scheduleNotification({
+                            type: "EMAIL",
+                            statusType: "PENDING",
+                            title: `Student Dissertation Resubmission Required - ${studentWithSupervisors.fullName}`,
+                            message: `Dear ${supervisor.name}, your student ${studentWithSupervisors.fullName} requires a resubmission for their dissertation based on the recent examination results. Please review the feedback and guide the student accordingly.`,
+                            recipientCategory: "SUPERVISOR",
+                            recipientId: supervisor.id,
+                            recipientEmail: supervisor.workEmail || supervisor.personalEmail,
+                            recipientName: supervisor.name,
+                            scheduledFor: new Date(),
+                            metadata: { studentId: studentWithSupervisors.id, bookId: existingAssignment.bookId }
+                        });
+                    }
+                }
+            } catch (notifyError) {
+                console.error("Error managing resubmission notifications:", notifyError);
+            }
+        }
 
         res.status(200).json({
             message: "Examiner mark updated successfully",
