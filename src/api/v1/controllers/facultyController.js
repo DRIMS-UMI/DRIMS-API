@@ -770,8 +770,22 @@ export const getSchoolProposals = async (req, res, next) => {
             id: true,
             fullName: true,
             email: true,
+            registrationNumber: true,
+            supervisors: true,
+            supervisorRoles: true,
+            statuses: {
+              include: {
+                definition: true,
+              },
+              orderBy: {
+                updatedAt: "desc",
+              },
+            },
+            school: true,
+            campus: true,
           },
         },
+        defenses: true,
         reviewGrades: {
           select: {
             id: true,
@@ -3321,8 +3335,17 @@ export const generateDefenseReport = async (req, res) => {
     }
 
     // Check if proposal exists
+    // Check if proposal exists and fetch detailed student information
     const proposal = await prisma.proposal.findUnique({
       where: { id: proposalId },
+      include: {
+        student: {
+          include: {
+            supervisors: true,
+            school: true
+          }
+        }
+      }
     });
 
     if (!proposal) {
@@ -3331,8 +3354,24 @@ export const generateDefenseReport = async (req, res) => {
       });
     }
 
+    const student = proposal.student;
+    const finalStudentName = studentName || student.fullName;
+    const finalRegNo = regNo || student.registrationNumber;
+    const finalTopic = topic || proposal.title;
+    const finalDepartment = department || student.school?.name || "COLLEGE OF HUMANITIES AND SOCIAL SCIENCES";
+
+    // Format supervisors with their roles if not provided by frontend
+    let finalSupervisors = supervisors;
+    if (!finalSupervisors && student.supervisors && student.supervisors.length > 0) {
+      const roles = student.supervisorRoles || {};
+      finalSupervisors = student.supervisors.map(s => {
+        const role = roles[s.id] || "Supervisor";
+        return `${role}: ${s.name}`;
+      }).join(", ");
+    }
+
     // Sanitize student name for filename
-    const sanitizedName = studentName
+    const sanitizedName = finalStudentName
       .replace(/[^a-zA-Z0-9\s]/g, "") // Remove special characters
       .replace(/\s+/g, "_") // Replace spaces with underscores
       .toLowerCase(); // Convert to lowercase
@@ -3346,13 +3385,13 @@ export const generateDefenseReport = async (req, res) => {
         type: "defense_report",
         title,
         status: "completed",
-        studentName,
-        regNo,
-        topic,
-        supervisors: supervisors || "",
+        studentName: finalStudentName,
+        regNo: finalRegNo,
+        topic: finalTopic,
+        supervisors: finalSupervisors || "",
         verdict,
         reportDate,
-        department: department || "COLLEGE OF HUMANITIES AND SOCIAL SCIENCES",
+        department: finalDepartment,
         fileData: reportFile.buffer, // Store the file data as BLOB
         fileName: filename, // Use the sanitized filename
         fileType: reportFile.mimetype,
@@ -3440,6 +3479,62 @@ export const getProposalDefenseReports = async (req, res) => {
     });
   } catch (error) {
     console.error("Error in getProposalDefenseReports:", error);
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+/**
+ * Get all proposal defense reports for a school
+ * @route GET /api/v1/faculty/defense-reports
+ * @access Private (School Admin)
+ */
+export const getAllProposalDefenseReports = async (req, res, next) => {
+  try {
+    const { schoolId } = req.user;
+
+    const where = schoolId ? {
+      proposal: {
+        student: {
+          schoolId: schoolId
+        }
+      }
+    } : {};
+
+    const defenseReports = await prisma.proposalDefenseReport.findMany({
+      where,
+      orderBy: { generatedAt: "desc" },
+      include: {
+        generatedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        proposal: {
+          include: {
+            student: {
+              select: {
+                id: true,
+                fullName: true,
+                registrationNumber: true,
+                school: true
+              }
+            }
+          }
+        }
+      },
+    });
+
+    res.status(200).json({
+      message: "School defense reports retrieved successfully",
+      defenseReports,
+    });
+  } catch (error) {
+    console.error("Error in getAllProposalDefenseReports:", error);
     if (!error.statusCode) {
       error.statusCode = 500;
     }
@@ -3560,15 +3655,38 @@ export const getStudentBooks = async (req, res, next) => {
 // Get all books
 export const getAllBooks = async (req, res, next) => {
   try {
+    const { schoolId } = req.user;
+
+    const where = schoolId ? {
+      student: {
+        schoolId: schoolId
+      }
+    } : {};
+
     const books = await prisma.book.findMany({
+      where,
       include: {
         student: {
           select: {
             id: true,
             fullName: true,
             email: true,
+            registrationNumber: true,
+            supervisors: true,
+            supervisorRoles: true,
+            statuses: {
+              include: {
+                definition: true,
+              },
+              orderBy: {
+                updatedAt: "desc",
+              },
+            },
+            school: true,
+            campus: true,
           },
         },
+        vivaHistory: true,
         statuses: {
           include: {
             definition: true,
@@ -5068,6 +5186,7 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
             },
           },
         },
+        chairperson: true,
       },
     });
 
@@ -5260,42 +5379,44 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
         }
 
         // Send immediate notification to chairperson (only initial verdict)
-        await notificationService.scheduleNotification({
-          type: "EMAIL",
-          statusType: "PENDING",
-          title: "Proposal Defense Verdict Recorded",
-          message: `The verdict for the proposal defense you chaired has been recorded.`,
-          recipientCategory: "CHAIRPERSON",
-          recipientId: chairperson.id,
-          recipientEmail: chairperson.email,
-          recipientName: chairperson.name,
-          scheduledFor: new Date(),
-          metadata: {
-            additionalContent: `
-              <p><strong>Defense Details:</strong></p>
-              <ul>
-                <li>Student: ${student.fullName}</li>
-                <li>Date: ${formattedDefenseDate}</li>
-                <li>Title: ${existingDefense.proposal.title}</li>
-                <li>Verdict: ${verdict}</li>
-                ${comments ? `<li>Comments: ${comments}</li>` : ""}
-              </ul>
-              ${correctionMessage
-                ? `
-                <p><strong>Corrections Information:</strong></p>
+        if (chairperson) {
+          await notificationService.scheduleNotification({
+            type: "EMAIL",
+            statusType: "PENDING",
+            title: "Proposal Defense Verdict Recorded",
+            message: `The verdict for the proposal defense you chaired has been recorded.`,
+            recipientCategory: "CHAIRPERSON",
+            recipientId: chairperson.id,
+            recipientEmail: chairperson.email,
+            recipientName: chairperson.name,
+            scheduledFor: new Date(),
+            metadata: {
+              additionalContent: `
+                <p><strong>Defense Details:</strong></p>
                 <ul>
-                  <li>Type of corrections: ${correctionMessage}</li>
-                  <li>Compliance report due: ${formattedComplianceDate}</li>
+                  <li>Student: ${student.fullName}</li>
+                  <li>Date: ${formattedDefenseDate}</li>
+                  <li>Title: ${existingDefense.proposal.title}</li>
+                  <li>Verdict: ${verdict}</li>
+                  ${comments ? `<li>Comments: ${comments}</li>` : ""}
                 </ul>
-              `
-                : ""
-              }
-              <p>Best regards,</p>
-              <p>UMI System</p>
-            `,
-          },
-          studentStatus: studentStatusId ? { connect: { id: studentStatusId } } : undefined,
-        });
+                ${correctionMessage
+                  ? `
+                  <p><strong>Corrections Information:</strong></p>
+                  <ul>
+                    <li>Type of corrections: ${correctionMessage}</li>
+                    <li>Compliance report due: ${formattedComplianceDate}</li>
+                  </ul>
+                `
+                  : ""
+                }
+                <p>Best regards,</p>
+                <p>UMI System</p>
+              `,
+            },
+            studentStatus: studentStatusId ? { connect: { id: studentStatusId } } : undefined,
+          });
+        }
 
         // Send immediate notification to student
         await notificationService.scheduleNotification({
@@ -5385,7 +5506,7 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
         await notificationService.scheduleNotification({
           type: "REMINDER",
           statusType: "PENDING",
-          title: "Compliance Report Reminder",
+          title: "Proposal Defense Compliance Report Reminder",
           message: `Reminder: Your compliance report is due in 2 weeks.`,
           recipientCategory: "STUDENT",
           recipientId: student.id,
@@ -5413,7 +5534,7 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
           await notificationService.scheduleNotification({
             type: "REMINDER",
             statusType: "PENDING",
-            title: "Student Compliance Report Reminder",
+            title: "Student Proposal Defense Compliance Report Reminder",
             message: `Reminder: Your student's compliance report is due in 2 weeks.`,
             recipientCategory: "SUPERVISOR",
             recipientId: supervisor.id,
@@ -5516,11 +5637,26 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
 // Controller to get all proposal defenses
 export const getProposalDefenses = async (req, res, next) => {
   try {
+    const { schoolId } = req.user;
+
+    const where = schoolId ? {
+      proposal: {
+        student: {
+          schoolId: schoolId
+        }
+      }
+    } : {};
+
     const proposalDefenses = await prisma.proposalDefense.findMany({
+      where,
       include: {
         proposal: {
           include: {
-            student: true,
+            student: {
+              include: {
+                supervisors: true
+              }
+            },
           },
         },
         panelists: true,

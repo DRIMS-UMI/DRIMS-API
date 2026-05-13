@@ -84,7 +84,7 @@ export const handleMulterError = (error, req, res, next) => {
 const router = express.Router();
 
 // Import faculty controllers
-import { loginFaculty, getFacultyProfile, updateFacultyPassword, getStudent, getAllStudents, getStudentStatuses, submitProposal, getProposal, gradeProposal, getStudentProposals, addReviewers, getReviewers, addPanelists, getPanelists, getSchoolProposals, deleteReviewer, deletePanelist, addReviewerMark, addPanelistMark, addDefenseDate, addComplianceReportDate, updateFieldLetterDate, getAllBooks, getBook, getStudentBooks,  getAllExaminers, getExaminer, updateExaminer, deleteExaminer, assignExaminersToBook, updateInternalExaminerMark, getProposalDefenses, recordProposalDefenseVerdict, scheduleProposalDefense, getProgressTrends, getStatusStatistics, getDashboardStats, getNotifications, getAllStudentsStatusReport, getStudentStatusReport, addNewPanelist, getAllSupervisors, requestPasswordReset, resetPassword, updateFacultyProfile, getChairpersons, getExternalPersons, getExternalPersonsByRole, createExternalPerson, updateExternalPerson, deleteExternalPerson, updateEthicsCommitteeDate, generateDefenseReport, getProposalDefenseReports, downloadDefenseReport, getAllFacultyMembers, getAllCampuses, getAllDepartments, getAllSchools, createSupervisor, getAssignedStudents, deleteSupervisor, updateSupervisor, getSupervisor, assignStudentsToSupervisor, changeStudentSupervisor, getStaffMembers, createReviewerFromStaff, createPanelistFromStaff, createStaffMember } from '../controllers/facultyController.js';
+import { loginFaculty, getFacultyProfile, updateFacultyPassword, getStudent, getAllStudents, getStudentStatuses, submitProposal, getProposal, gradeProposal, getStudentProposals, addReviewers, getReviewers, addPanelists, getPanelists, getSchoolProposals, deleteReviewer, deletePanelist, addReviewerMark, addPanelistMark, addDefenseDate, addComplianceReportDate, updateFieldLetterDate, getAllBooks, getBook, getStudentBooks,  getAllExaminers, getExaminer, updateExaminer, deleteExaminer, assignExaminersToBook, updateInternalExaminerMark, getProposalDefenses, recordProposalDefenseVerdict, scheduleProposalDefense, getProgressTrends, getStatusStatistics, getDashboardStats, getNotifications, getAllStudentsStatusReport, getStudentStatusReport, addNewPanelist, getAllSupervisors, requestPasswordReset, resetPassword, updateFacultyProfile, getChairpersons, getExternalPersons, getExternalPersonsByRole, createExternalPerson, updateExternalPerson, deleteExternalPerson, updateEthicsCommitteeDate, generateDefenseReport, getProposalDefenseReports, getAllProposalDefenseReports, downloadDefenseReport, getAllFacultyMembers, getAllCampuses, getAllDepartments, getAllSchools, createSupervisor, getAssignedStudents, deleteSupervisor, updateSupervisor, getSupervisor, assignStudentsToSupervisor, changeStudentSupervisor, getStaffMembers, createReviewerFromStaff, createPanelistFromStaff, createStaffMember } from '../controllers/facultyController.js';
 
 // Faculty authentication routes
 router.post('/login', loginFaculty);
@@ -182,6 +182,13 @@ router.get(
   authenticateToken,
   authorizeRoles('SCHOOL_ADMIN'),
   downloadDefenseReport
+);
+
+router.get(
+  '/defense-reports',
+  authenticateToken,
+  authorizeRoles('SCHOOL_ADMIN'),
+  getAllProposalDefenseReports
 );
 
 router.get(
