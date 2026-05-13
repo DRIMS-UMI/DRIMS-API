@@ -4121,10 +4121,22 @@ export const getAllProposals = async (req, res, next) => {
                         id: true,
                         fullName: true,
                         email: true,
+                        registrationNumber: true,
+                        supervisors: true,
+                        supervisorRoles: true,
+                        statuses: {
+                            include: {
+                                definition: true
+                            },
+                            orderBy: {
+                                updatedAt: 'desc'
+                            }
+                        },
                         campus: true,
                         school: true
                     }
                 },
+                defenses: true,
                 reviewGrades: {
                     select: {
                         id: true,
@@ -6033,9 +6045,17 @@ export const generateDefenseReport = async (req, res) => {
             });
         }
 
-        // Check if proposal exists
+        // Check if proposal exists and fetch detailed student information
         const proposal = await prisma.proposal.findUnique({
-            where: { id: proposalId }
+            where: { id: proposalId },
+            include: {
+                student: {
+                    include: {
+                        supervisors: true,
+                        school: true
+                    }
+                }
+            }
         });
 
         if (!proposal) {
@@ -6044,8 +6064,24 @@ export const generateDefenseReport = async (req, res) => {
             });
         }
 
+        const student = proposal.student;
+        const finalStudentName = studentName || student.fullName;
+        const finalRegNo = regNo || student.registrationNumber;
+        const finalTopic = topic || proposal.title;
+        const finalDepartment = department || student.school?.name || "COLLEGE OF HUMANITIES AND SOCIAL SCIENCES";
+
+        // Format supervisors with their roles if not provided by frontend
+        let finalSupervisors = supervisors;
+        if (!finalSupervisors && student.supervisors && student.supervisors.length > 0) {
+            const roles = student.supervisorRoles || {};
+            finalSupervisors = student.supervisors.map(s => {
+                const role = roles[s.id] || "Supervisor";
+                return `${role}: ${s.name}`;
+            }).join(", ");
+        }
+
         // Sanitize student name for filename
-        const sanitizedName = studentName
+        const sanitizedName = finalStudentName
             .replace(/[^a-zA-Z0-9\s]/g, '') // Remove special characters
             .replace(/\s+/g, '_') // Replace spaces with underscores
             .toLowerCase(); // Convert to lowercase
@@ -6059,13 +6095,13 @@ export const generateDefenseReport = async (req, res) => {
                 type: "defense_report",
                 title,
                 status: "completed",
-                studentName,
-                regNo,
-                topic,
-                supervisors: supervisors || "",
+                studentName: finalStudentName,
+                regNo: finalRegNo,
+                topic: finalTopic,
+                supervisors: finalSupervisors || "",
                 verdict,
                 reportDate,
-                department: department || "COLLEGE OF HUMANITIES AND SOCIAL SCIENCES",
+                department: finalDepartment,
                 fileData: reportFile.buffer, // Store the file data as BLOB
                 fileName: filename, // Use the sanitized filename
                 fileType: reportFile.mimetype,
@@ -6418,6 +6454,8 @@ export const getAllBooks = async (req, res, next) => {
                         intakePeriod: true,
                         campus: true,
                         school: true,
+                        supervisors: true,
+                        supervisorRoles: true,
                         statuses: {
                             include: {
                                 definition: true
@@ -6426,6 +6464,7 @@ export const getAllBooks = async (req, res, next) => {
 
                     }
                 },
+                vivaHistory: true,
                 statuses: {
                     include: {
                         definition: true
@@ -8361,7 +8400,11 @@ export const getProposalDefenses = async (req, res, next) => {
             include: {
                 proposal: {
                     include: {
-                        student: true
+                        student: {
+                            include: {
+                                supervisors: true
+                            }
+                        }
                     }
                 },
                 panelists: true
