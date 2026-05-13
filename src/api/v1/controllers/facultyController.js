@@ -2772,61 +2772,23 @@ export const addDefenseDate = async (req, res, next) => {
       throw error;
     }
 
-    // If type is reschedule, just update the defense date
-    if (type === "reschedule") {
-      const updatedProposal = await prisma.proposal.update({
-        where: { id: proposalId },
-        data: {
-          defenseDate: new Date(defenseDate),
-        },
-      });
+    // Start transaction for status updates and proposal update
+    const updatedProposal = await prisma.$transaction(async (tx) => {
+      // If type is reschedule, just update the defense date
+      if (type === "reschedule") {
+        return await tx.proposal.update({
+          where: { id: proposalId },
+          data: {
+            defenseDate: new Date(defenseDate),
+          },
+        });
+      }
 
-      return res.status(200).json({
-        message: "Defense date rescheduled successfully",
-        proposal: updatedProposal,
-      });
-    }
-
-    // For new defense date scheduling, continue with status updates
-    // Update current proposal status to not current
-    await prisma.proposalStatus.updateMany({
-      where: {
-        proposalId,
-        isCurrent: true,
-      },
-      data: {
-        isCurrent: false,
-        endDate: new Date(),
-      },
-    });
-
-    // Get the status definition for "waiting for proposal defense"
-    const waitingForDefenseStatus = await prisma.statusDefinition.findFirst({
-      where: {
-        name: "waiting for proposal defense",
-      },
-    });
-
-    if (!waitingForDefenseStatus) {
-      throw new Error("Status definition not found");
-    }
-
-    // Create new proposal status
-    await prisma.proposalStatus.create({
-      data: {
-        proposal: { connect: { id: proposalId } },
-        definition: { connect: { id: waitingForDefenseStatus.id } },
-        isCurrent: true,
-        startDate: new Date(),
-      },
-    });
-
-    // Update student status
-    if (proposal.student) {
-      // Set current student status to not current
-      await prisma.studentStatus.updateMany({
+      // For new defense date scheduling, continue with status updates
+      // Update current proposal status to not current
+      await tx.proposalStatus.updateMany({
         where: {
-          studentId: proposal.student.id,
+          proposalId,
           isCurrent: true,
         },
         data: {
@@ -2835,39 +2797,77 @@ export const addDefenseDate = async (req, res, next) => {
         },
       });
 
-      // Create new student status
-      await prisma.studentStatus.create({
-        data: {
-          student: { connect: { id: proposal.student.id } },
-          definition: { connect: { id: waitingForDefenseStatus.id } },
-          isCurrent: true,
-          startDate: new Date(),
-          updatedBy: { connect: { id: req.user.id } },
+      // Get the status definition for "waiting for proposal defense"
+      const statusDef = await tx.statusDefinition.findFirst({
+        where: {
+          name: "waiting for proposal defense",
         },
       });
-    }
 
-    // Update proposal with defense date
-    const updatedProposal = await prisma.proposal.update({
-      where: { id: proposalId },
-      data: {
-        defenseDate: new Date(defenseDate),
-      },
-    });
+      if (!statusDef) {
+        throw new Error("Status definition 'waiting for proposal defense' not found");
+      }
 
-    // Log activity
-    await prisma.userActivity.create({
-      data: {
-        ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
-        deviceId: req?.headers['x-device-id'] || 'Unknown',
-        browserAgent: req?.headers['user-agent'] || 'Unknown',
-        userId: req.user.id,
-        action: `Set defense date for proposal: "${proposal.title}"`,
-        entityType: "Proposal",
-        entityId: proposal.id,
-        details: `Student: ${proposal.student.fullName}, Defense Date: ${defenseDate}`,
-      },
-    });
+      // Create new proposal status
+      await tx.proposalStatus.create({
+        data: {
+          proposal: { connect: { id: proposalId } },
+          definition: { connect: { id: statusDef.id } },
+          isCurrent: true,
+          startDate: new Date(),
+        },
+      });
+
+      // Update student status
+      if (proposal.student) {
+        // Set current student status to not current
+        await tx.studentStatus.updateMany({
+          where: {
+            studentId: proposal.student.id,
+            isCurrent: true,
+          },
+          data: {
+            isCurrent: false,
+            endDate: new Date(),
+          },
+        });
+
+        // Create new student status
+        await tx.studentStatus.create({
+          data: {
+            student: { connect: { id: proposal.student.id } },
+            definition: { connect: { id: statusDef.id } },
+            isCurrent: true,
+            startDate: new Date(),
+            updatedBy: { connect: { id: req.user.id } },
+          },
+        });
+      }
+
+      // Update proposal with defense date
+      const updated = await tx.proposal.update({
+        where: { id: proposalId },
+        data: {
+          defenseDate: new Date(defenseDate),
+        },
+      });
+
+      // Log activity
+      await tx.userActivity.create({
+        data: {
+          ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+          deviceId: req?.headers['x-device-id'] || 'Unknown',
+          browserAgent: req?.headers['user-agent'] || 'Unknown',
+          userId: req.user.id,
+          action: `Set defense date for proposal: "${proposal.title}"`,
+          entityType: "Proposal",
+          entityId: proposal.id,
+          details: `Student: ${proposal.student.fullName}, Defense Date: ${defenseDate}`,
+        },
+      });
+
+      return updated;
+    }, { timeout: 20000 });
 
     res.status(200).json({
       message: "Defense date added successfully",
@@ -4692,128 +4692,126 @@ export const scheduleProposalDefense = async (req, res, next) => {
     const attemptNumber =
       currentDefenses.length > 0 ? currentDefenses[0].attempt + 1 : 1;
 
-    // If there's a current defense, mark it as not current
-    if (currentDefenses.length > 0 && currentDefenses[0].isCurrent) {
-      await prisma.proposalDefense.update({
-        where: { id: currentDefenses[0].id },
-        data: { isCurrent: false },
-      });
-    }
+    // Start transaction for all database updates
+    const { proposalDefense, waitingForDefenseStatus, studentStatus } = await prisma.$transaction(async (tx) => {
+      // If there's a current defense, mark it as not current
+      if (currentDefenses.length > 0 && currentDefenses[0].isCurrent) {
+        await tx.proposalDefense.update({
+          where: { id: currentDefenses[0].id },
+          data: { isCurrent: false },
+        });
+      }
 
-    // Create new proposal defense
-    const proposalDefense = await prisma.proposalDefense.create({
-      data: {
-        proposal: { connect: { id: proposalId } },
-        scheduledDate: new Date(scheduledDate),
-        location,
-        status: "SCHEDULED",
-        attempt: attemptNumber,
-        panelists: { connect: panelistIds.map((id) => ({ id })) },
-        isCurrent: true,
-        chairperson: chairpersonId
-          ? { connect: { id: chairpersonId } }
-          : undefined,
-        actingChairperson: actingChairpersonId
-          ? { connect: { id: actingChairpersonId } }
-          : undefined,
-        minutesSecretary: minutesSecretaryId
-          ? { connect: { id: minutesSecretaryId } }
-          : undefined,
-        reviewers: { connect: reviewerIds.map((id) => ({ id })) },
-      },
-      include: {
-        panelists: true,
-        reviewers: true,
-        chairperson: true,
-        minutesSecretary: true,
-        proposal: {
-          include: {
-            student: true,
-          },
-        },
-      },
-    });
-
-    // Update the proposal with the defense ID
-    // await prisma.proposal.update({
-    //     where: { id: proposalId },
-    //     data: {
-    //         proposalDefenseIds: {
-    //             push: proposalDefense.id
-    //         }
-    //     }
-    // });
-
-    // Find the status definition for "waiting for proposal defense"
-    const waitingForDefenseStatus = await prisma.statusDefinition.findFirst({
-      where: {
-        name: "waiting for proposal defense",
-      },
-    });
-
-    if (waitingForDefenseStatus) {
-      // Set all current proposal statuses to not current
-      await prisma.proposalStatus.updateMany({
-        where: {
-          proposalId: proposalId,
-          isCurrent: true,
-        },
-        data: {
-          isCurrent: false,
-          endDate: new Date(),
-        },
-      });
-
-      // Create new proposal status
-      await prisma.proposalStatus.create({
+      // Create new proposal defense
+      const newDefense = await tx.proposalDefense.create({
         data: {
           proposal: { connect: { id: proposalId } },
-          definition: { connect: { id: waitingForDefenseStatus.id } },
-          startDate: new Date(),
-          isActive: true,
+          scheduledDate: new Date(scheduledDate),
+          location,
+          status: "SCHEDULED",
+          attempt: attemptNumber,
+          panelists: { connect: panelistIds.map((id) => ({ id })) },
           isCurrent: true,
+          chairperson: chairpersonId
+            ? { connect: { id: chairpersonId } }
+            : undefined,
+          actingChairperson: actingChairpersonId
+            ? { connect: { id: actingChairpersonId } }
+            : undefined,
+          minutesSecretary: minutesSecretaryId
+            ? { connect: { id: minutesSecretaryId } }
+            : undefined,
+          reviewers: { connect: reviewerIds.map((id) => ({ id })) },
+        },
+        include: {
+          panelists: true,
+          reviewers: true,
+          chairperson: true,
+          minutesSecretary: true,
+          proposal: {
+            include: {
+              student: true,
+            },
+          },
         },
       });
 
-      // Update student status as well
-      // First, set all current student statuses to not current
-      await prisma.studentStatus.updateMany({
+      // Find the status definition for "waiting for proposal defense"
+      const statusDef = await tx.statusDefinition.findFirst({
         where: {
-          studentId: existingProposal.student.id,
-          isCurrent: true,
-        },
-        data: {
-          isCurrent: false,
-          endDate: new Date(),
+          name: "waiting for proposal defense",
         },
       });
 
-      // Create new student status with the same definition
-      await prisma.studentStatus.create({
+      if (statusDef) {
+        // Set all current proposal statuses to not current
+        await tx.proposalStatus.updateMany({
+          where: {
+            proposalId: proposalId,
+            isCurrent: true,
+          },
+          data: {
+            isCurrent: false,
+            endDate: new Date(),
+          },
+        });
+
+        // Create new proposal status
+        await tx.proposalStatus.create({
+          data: {
+            proposal: { connect: { id: proposalId } },
+            definition: { connect: { id: statusDef.id } },
+            startDate: new Date(),
+            isActive: true,
+            isCurrent: true,
+          },
+        });
+
+        // Update student status as well
+        // First, set all current student statuses to not current
+        await tx.studentStatus.updateMany({
+          where: {
+            studentId: existingProposal.student.id,
+            isCurrent: true,
+          },
+          data: {
+            isCurrent: false,
+            endDate: new Date(),
+          },
+        });
+
+        // Create new student status with the same definition
+        const newStudentStatus = await tx.studentStatus.create({
+          data: {
+            student: { connect: { id: existingProposal.student.id } },
+            definition: { connect: { id: statusDef.id } },
+            startDate: new Date(),
+            isActive: true,
+            isCurrent: true,
+            updatedBy: { connect: { id: req.user.id } },
+          },
+        });
+
+        return { proposalDefense: newDefense, waitingForDefenseStatus: statusDef, studentStatus: newStudentStatus };
+      }
+
+      // Log activity
+      await tx.userActivity.create({
         data: {
-          student: { connect: { id: existingProposal.student.id } },
-          definition: { connect: { id: waitingForDefenseStatus.id } },
-          startDate: new Date(),
-          isActive: true,
-          isCurrent: true,
-          updatedBy: { connect: { id: req.user.id } },
+          ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+          deviceId: req?.headers['x-device-id'] || 'Unknown',
+          browserAgent: req?.headers['user-agent'] || 'Unknown',
+          userId: req.user.id,
+          action: `Scheduled proposal defense for ${existingProposal.student?.fullName || "Unknown Student"}`,
+          entityId: newDefense.id,
+          entityType: "Proposal Defense",
         },
       });
-    }
 
-    // Log activity
-    await prisma.userActivity.create({
-      data: {
-        ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
-        deviceId: req?.headers['x-device-id'] || 'Unknown',
-        browserAgent: req?.headers['user-agent'] || 'Unknown',
-        userId: req.user.id,
-        action: `Scheduled proposal defense for ${existingProposal.student?.fullName || "Unknown Student"
-          }`,
-        entityId: proposalDefense.id,
-        entityType: "Proposal Defense",
-      },
-    });
+      return { proposalDefense: newDefense, waitingForDefenseStatus: statusDef };
+    }, { timeout: 20000 });
+
+    const studentStatusId = studentStatus?.id;
 
     // Schedule defense invitation emails
     const defenseDate = new Date(proposalDefense.scheduledDate);
@@ -4924,6 +4922,7 @@ export const scheduleProposalDefense = async (req, res, next) => {
         metadata: {
           additionalContent,
         },
+        studentStatus: studentStatusId ? { connect: { id: studentStatusId } } : undefined,
       });
     }
 
@@ -4974,6 +4973,7 @@ export const scheduleProposalDefense = async (req, res, next) => {
         metadata: {
           additionalContent,
         },
+        studentStatus: studentStatusId ? { connect: { id: studentStatusId } } : undefined,
       });
     }
 
@@ -5024,22 +5024,10 @@ export const scheduleProposalDefense = async (req, res, next) => {
         metadata: {
           additionalContent,
         },
+        studentStatus: studentStatusId ? { connect: { id: studentStatusId } } : undefined,
       });
     }
 
-    // Log activity
-    await prisma.userActivity.create({
-      data: {
-        ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
-        deviceId: req?.headers['x-device-id'] || 'Unknown',
-        browserAgent: req?.headers['user-agent'] || 'Unknown',
-        userId: req.user.id,
-        action: `Scheduled defense for proposal: "${proposal.title}"`,
-        entityType: "ProposalDefense",
-        entityId: proposalDefense.id,
-        details: `Student: ${proposal.student.fullName}, Date: ${proposalDefense.date}, Venue: ${proposalDefense.venue}`,
-      },
-    });
 
     res.status(201).json({
       message: "Proposal defense scheduled successfully",
@@ -5107,74 +5095,52 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
         defenseStatus = "COMPLETED";
     }
 
-    // Update the defense with verdict and status
-    const updatedDefense = await prisma.proposalDefense.update({
-      where: { id: defenseId },
-      data: {
-        verdict: verdict,
-        comments: comments,
-        status: defenseStatus,
-        completedAt: new Date(),
-      },
-      include: {
-        panelists: true,
-        chairperson: true,
-
-        proposal: {
-          include: {
-            student: true,
+    // Start transaction for recording verdict and updating statuses
+    const { updatedDefense: updated, studentStatus } = await prisma.$transaction(async (tx) => {
+      // Update the defense with verdict and status
+      const updated = await tx.proposalDefense.update({
+        where: { id: defenseId },
+        data: {
+          verdict: verdict,
+          comments: comments,
+          status: defenseStatus,
+          completedAt: new Date(),
+        },
+        include: {
+          panelists: true,
+          chairperson: true,
+          proposal: {
+            include: {
+              student: true,
+            },
           },
         },
-      },
-    });
-
-    // If defense status is completed, update proposal and student status
-    if (defenseStatus === "COMPLETED" || defenseStatus === "FAILED") {
-      // Get appropriate status definition based on verdict
-      const statusDefinitionName =
-        defenseStatus === "COMPLETED"
-          ? "passed-proposal graded"
-          : "failed-proposal graded";
-
-      const statusDefinition = await prisma.statusDefinition.findFirst({
-        where: { name: statusDefinitionName },
       });
 
-      if (!statusDefinition) {
-        const error = new Error(
-          `Status definition "${statusDefinitionName}" not found`
-        );
-        error.statusCode = 500;
-        throw error;
-      }
+      // If defense status is completed, update proposal and student status
+      if (defenseStatus === "COMPLETED" || defenseStatus === "FAILED") {
+        // Get appropriate status definition based on verdict
+        const statusDefinitionName =
+          defenseStatus === "COMPLETED"
+            ? "passed-proposal graded"
+            : "failed-proposal graded";
 
-      // Update proposal status
-      await prisma.proposalStatus.updateMany({
-        where: {
-          proposalId: existingDefense.proposal.id,
-          isCurrent: true,
-        },
-        data: {
-          isCurrent: false,
-          endDate: new Date(),
-        },
-      });
+        const statusDefinition = await tx.statusDefinition.findFirst({
+          where: { name: statusDefinitionName },
+        });
 
-      // Create new proposal status
-      await prisma.proposalStatus.create({
-        data: {
-          proposal: { connect: { id: existingDefense.proposal.id } },
-          definition: { connect: { id: statusDefinition.id } },
-          isCurrent: true,
-          startDate: new Date(),
-        },
-      });
+        if (!statusDefinition) {
+          const error = new Error(
+            `Status definition "${statusDefinitionName}" not found`
+          );
+          error.statusCode = 500;
+          throw error;
+        }
 
-      // Update student status if student exists
-      if (existingDefense.proposal.student) {
-        await prisma.studentStatus.updateMany({
+        // Update proposal status
+        await tx.proposalStatus.updateMany({
           where: {
-            studentId: existingDefense.proposal.student.id,
+            proposalId: existingDefense.proposal.id,
             isCurrent: true,
           },
           data: {
@@ -5183,32 +5149,75 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
           },
         });
 
-        await prisma.studentStatus.create({
+        // Create new proposal status
+        await tx.proposalStatus.create({
           data: {
-            student: { connect: { id: existingDefense.proposal.student.id } },
+            proposal: { connect: { id: existingDefense.proposal.id } },
             definition: { connect: { id: statusDefinition.id } },
             isCurrent: true,
             startDate: new Date(),
-            isActive: true,
-            updatedBy: { connect: { id: req.user.id } },
           },
         });
-      }
-    }
 
-    // Log activity
-    await prisma.userActivity.create({
-      data: {
-        ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
-        deviceId: req?.headers['x-device-id'] || 'Unknown',
-        browserAgent: req?.headers['user-agent'] || 'Unknown',
-        userId: req.user.id,
-        action: `Recorded proposal defense verdict (${verdict}) for ${existingDefense.proposal.student?.fullName || "Unknown Student"
-          }`,
-        entityId: updatedDefense.id,
-        entityType: "Proposal Defense",
-      },
-    });
+        // Update student status if student exists
+        if (existingDefense.proposal.student) {
+          await tx.studentStatus.updateMany({
+            where: {
+              studentId: existingDefense.proposal.student.id,
+              isCurrent: true,
+            },
+            data: {
+              isCurrent: false,
+              endDate: new Date(),
+            },
+          });
+
+          const newStudentStatus = await tx.studentStatus.create({
+            data: {
+              student: { connect: { id: existingDefense.proposal.student.id } },
+              definition: { connect: { id: statusDefinition.id } },
+              isCurrent: true,
+              startDate: new Date(),
+              isActive: true,
+              updatedBy: { connect: { id: req.user.id } },
+            },
+          });
+
+          // Log activity
+          await tx.userActivity.create({
+            data: {
+              ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+              deviceId: req?.headers['x-device-id'] || 'Unknown',
+              browserAgent: req?.headers['user-agent'] || 'Unknown',
+              userId: req.user.id,
+              action: `Recorded proposal defense verdict (${verdict}) for ${existingDefense.proposal.student?.fullName || "Unknown Student"}`,
+              entityId: updated.id,
+              entityType: "Proposal Defense",
+            },
+          });
+
+          return { updatedDefense: updated, studentStatus: newStudentStatus };
+        }
+      }
+
+      // Log activity for other cases
+      await tx.userActivity.create({
+        data: {
+          ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+          deviceId: req?.headers['x-device-id'] || 'Unknown',
+          browserAgent: req?.headers['user-agent'] || 'Unknown',
+          userId: req.user.id,
+          action: `Recorded proposal defense verdict (${verdict}) for ${existingDefense.proposal.student?.fullName || "Unknown Student"}`,
+          entityId: updated.id,
+          entityType: "Proposal Defense",
+        },
+      });
+
+      return { updatedDefense: updated, studentStatus: null };
+    }, { timeout: 20000 });
+
+    const studentStatusId = studentStatus?.id;
+    const updatedDefense = updated;
 
     // After updating the defense status, add notification scheduling
     if (defenseStatus === "COMPLETED" || defenseStatus === "FAILED") {
@@ -5285,6 +5294,7 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
               <p>UMI System</p>
             `,
           },
+          studentStatus: studentStatusId ? { connect: { id: studentStatusId } } : undefined,
         });
 
         // Send immediate notification to student
@@ -5323,6 +5333,7 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
               <p>UMI System</p>
             `,
           },
+          studentStatus: studentStatusId ? { connect: { id: studentStatusId } } : undefined,
         });
 
         // Send immediate notification to all supervisors
@@ -5362,6 +5373,7 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
                 <p>UMI System</p>
               `,
             },
+            studentStatus: studentStatusId ? { connect: { id: studentStatusId } } : undefined,
           });
         }
 
@@ -5393,6 +5405,7 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
               <p>UMI System</p>
             `,
           },
+          studentStatus: studentStatusId ? { connect: { id: studentStatusId } } : undefined,
         });
 
         // Reminder for all supervisors
@@ -5420,6 +5433,7 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
                 <p>UMI System</p>
               `,
             },
+            studentStatus: studentStatusId ? { connect: { id: studentStatusId } } : undefined,
           });
         }
 
@@ -5451,6 +5465,7 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
               <p>UMI System</p>
             `,
           },
+          studentStatus: studentStatusId ? { connect: { id: studentStatusId } } : undefined,
         });
 
         // Final reminder for all supervisors
@@ -5478,24 +5493,12 @@ export const recordProposalDefenseVerdict = async (req, res, next) => {
                 <p>UMI System</p>
               `,
             },
+            studentStatus: studentStatusId ? { connect: { id: studentStatusId } } : undefined,
           });
         }
       }
     }
 
-    // Log activity
-    await prisma.userActivity.create({
-      data: {
-        ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
-        deviceId: req?.headers['x-device-id'] || 'Unknown',
-        browserAgent: req?.headers['user-agent'] || 'Unknown',
-        userId: req.user.id,
-        action: `Recorded defense verdict for proposal: "${student.proposals[0].title}"`,
-        entityType: "ProposalDefense",
-        entityId: updatedDefense.id,
-        details: `Student: ${student.fullName}, Verdict: ${verdict}`,
-      },
-    });
 
     res.status(200).json({
       message: "Proposal defense verdict recorded successfully",
