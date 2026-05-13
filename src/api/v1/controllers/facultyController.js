@@ -785,7 +785,7 @@ export const getSchoolProposals = async (req, res, next) => {
             campus: true,
           },
         },
-        defenses: true,
+
         reviewGrades: {
           select: {
             id: true,
@@ -2936,75 +2936,105 @@ export const addComplianceReportDate = async (req, res, next) => {
       throw new Error("Status definition not found");
     }
 
-    // Update current status to not current
-    await prisma.proposalStatus.updateMany({
-      where: {
-        proposalId,
-        isCurrent: true,
-      },
-      data: {
-        isCurrent: false,
-        endDate: new Date(),
-      },
-    });
+    // Start transaction for updating statuses and recording date
+    const result = await prisma.$transaction(async (tx) => {
+      let oldStatusId = null;
 
-    // Create new status for compliance report submitted
-    await prisma.proposalStatus.create({
-      data: {
-        proposal: { connect: { id: proposalId } },
-        definition: { connect: { id: complianceReportSubmittedStatus.id } },
-        isCurrent: true,
-        startDate: new Date(),
-      },
-    });
+      // Only update statuses if this is the first time the date is being set
+      if (!proposal.complianceReportDate) {
+        // Find current student status to cancel its notifications later
+        if (proposal.student) {
+          const currentStatus = await tx.studentStatus.findFirst({
+            where: {
+              studentId: proposal.student.id,
+              isCurrent: true,
+            },
+          });
+          if (currentStatus) oldStatusId = currentStatus.id;
+        }
 
-    // Update student status if student exists
-    if (proposal.student) {
-      // Set current student status to not current
-      await prisma.studentStatus.updateMany({
-        where: {
-          studentId: proposal.student.id,
-          isCurrent: true,
-        },
+        // Update current status to not current
+        await tx.proposalStatus.updateMany({
+          where: {
+            proposalId,
+            isCurrent: true,
+          },
+          data: {
+            isCurrent: false,
+            endDate: new Date(),
+          },
+        });
+
+        // Create new status for compliance report submitted
+        await tx.proposalStatus.create({
+          data: {
+            proposal: { connect: { id: proposalId } },
+            definition: { connect: { id: complianceReportSubmittedStatus.id } },
+            isCurrent: true,
+            startDate: new Date(),
+          },
+        });
+
+        // Update student status if student exists
+        if (proposal.student) {
+          // Set current student status to not current
+          await tx.studentStatus.updateMany({
+            where: {
+              studentId: proposal.student.id,
+              isCurrent: true,
+            },
+            data: {
+              isCurrent: false,
+              endDate: new Date(),
+            },
+          });
+
+          // Create new student status
+          await tx.studentStatus.create({
+            data: {
+              student: { connect: { id: proposal.student.id } },
+              definition: { connect: { id: complianceReportSubmittedStatus.id } },
+              isCurrent: true,
+              startDate: new Date(),
+              updatedBy: { connect: { id: req.user.id } },
+            },
+          });
+        }
+      }
+
+      // Update proposal with compliance report date
+      const updated = await tx.proposal.update({
+        where: { id: proposalId },
         data: {
-          isCurrent: false,
-          endDate: new Date(),
+          complianceReportDate: new Date(complianceReportDate),
         },
       });
 
-      // Create new student status
-      await prisma.studentStatus.create({
+      // Log activity
+      await tx.userActivity.create({
         data: {
-          student: { connect: { id: proposal.student.id } },
-          definition: { connect: { id: complianceReportSubmittedStatus.id } },
-          isCurrent: true,
-          startDate: new Date(),
-          updatedBy: { connect: { id: req.user.id } },
+          ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+          deviceId: req?.headers['x-device-id'] || 'Unknown',
+          browserAgent: req?.headers['user-agent'] || 'Unknown',
+          userId: req.user.id,
+          action: proposal.complianceReportDate
+            ? `Updated compliance report date for proposal: "${proposal.title}"`
+            : `Set compliance report date for proposal: "${proposal.title}"`,
+          entityType: "Proposal",
+          entityId: proposal.id,
+          details: `Student: ${proposal.student.fullName}, Compliance Report Date: ${complianceReportDate}${proposal.complianceReportDate ? ` (Updated from ${proposal.complianceReportDate})` : ""}`,
         },
       });
+
+      return { updatedProposal: updated, oldStatusId };
+    }, { timeout: 20000 });
+
+    const { updatedProposal, oldStatusId } = result;
+
+    // Cancel notifications from previous status
+    if (oldStatusId) {
+      await notificationService.cancelNotificationsByStatus(oldStatusId);
     }
-
-    // Update proposal with compliance report date
-    const updatedProposal = await prisma.proposal.update({
-      where: { id: proposalId },
-      data: {
-        complianceReportDate: new Date(complianceReportDate),
-      },
-    });
-
-    // Log activity
-    await prisma.userActivity.create({
-      data: {
-        ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
-        deviceId: req?.headers['x-device-id'] || 'Unknown',
-        browserAgent: req?.headers['user-agent'] || 'Unknown',
-        userId: req.user.id,
-        action: `Set compliance report date for proposal: "${proposal.title}"`,
-        entityType: "Proposal",
-        entityId: proposal.id,
-        details: `Student: ${proposal.student.fullName}, Compliance Report Date: ${complianceReportDate}`,
-      },
-    });
 
     res.status(200).json({
       message: "Compliance report date added successfully",
@@ -3078,84 +3108,265 @@ export const updateFieldLetterDate = async (req, res, next) => {
       throw error;
     }
 
-    // Update student status
-    await prisma.studentStatus.updateMany({
-      where: {
-        studentId: proposal.student.id,
-        isCurrent: true,
-      },
-      data: {
-        isCurrent: false,
-        endDate: new Date(),
-      },
-    });
+    // Start transaction for updating statuses and recording date
+    const result = await prisma.$transaction(async (tx) => {
+      let studentStatusId = null;
+      let oldStatusId = null;
 
-    // Create letter to field status
-    await prisma.studentStatus.create({
-      data: {
-        student: { connect: { id: proposal.student.id } },
-        definition: { connect: { id: letterToFieldStatus.id } },
-        isCurrent: false,
-        startDate: new Date(),
-        endDate: new Date(),
-        updatedBy: { connect: { id: req.user.id } },
-      },
-    });
+      // Only update statuses if this is the first time the date is being set
+      if (!proposal.fieldLetterDate) {
+        // Find current status to cancel its notifications later
+        const currentStatus = await tx.studentStatus.findFirst({
+          where: {
+            studentId: proposal.student.id,
+            isCurrent: true,
+          },
+        });
+        if (currentStatus) oldStatusId = currentStatus.id;
 
-    // Create fieldwork status
-    await prisma.studentStatus.create({
-      data: {
-        student: { connect: { id: proposal.student.id } },
-        definition: { connect: { id: fieldworkStatus.id } },
-        isCurrent: true,
-        startDate: new Date(),
-        updatedBy: { connect: { id: req.user.id } },
-      },
-    });
+        // Update student status
+        await tx.studentStatus.updateMany({
+          where: {
+            studentId: proposal.student.id,
+            isCurrent: true,
+          },
+          data: {
+            isCurrent: false,
+            endDate: new Date(),
+          },
+        });
 
-    // Update proposal statuses
-    await prisma.proposalStatus.updateMany({
-      where: {
-        proposalId: proposalId,
-        isCurrent: true,
-      },
-      data: {
-        isCurrent: false,
-        endDate: new Date(),
-      },
-    });
+        // Create letter to field status as CURRENT to trigger the sequential status validator
+        // This ensures the student is actually coming from the correct previous step
+        const letterEntry = await tx.studentStatus.create({
+          data: {
+            student: { connect: { id: proposal.student.id } },
+            definition: { connect: { id: letterToFieldStatus.id } },
+            isCurrent: true,
+            startDate: new Date(),
+            endDate: new Date(),
+            updatedBy: { connect: { id: req.user.id } },
+          },
+        });
 
-    await prisma.proposalStatus.create({
-      data: {
-        proposal: { connect: { id: proposalId } },
-        definition: { connect: { id: letterToFieldStatus.id } },
-        isCurrent: true,
-        startDate: new Date(),
-        endDate: new Date(),
-      },
-    });
+        // Immediately set it to not current since it's a milestone, not a state
+        await tx.studentStatus.update({
+          where: { id: letterEntry.id },
+          data: { isCurrent: false },
+        });
 
-    // Update the field letter date
-    const updatedProposal = await prisma.proposal.update({
-      where: { id: proposalId },
-      data: {
-        fieldLetterDate: new Date(fieldLetterDate),
-      },
-    });
+        // Create fieldwork status - initially set isCurrent to false 
+        // to bypass the sequential status validator in the Prisma middleware
+        // which prevents skipping steps in a single transaction
+        const fieldworkEntry = await tx.studentStatus.create({
+          data: {
+            student: { connect: { id: proposal.student.id } },
+            definition: { connect: { id: fieldworkStatus.id } },
+            isCurrent: false,
+            startDate: new Date(),
+            updatedBy: { connect: { id: req.user.id } },
+          },
+        });
 
-    // Log activity
-    await prisma.userActivity.create({
-      data: {
-        ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
-        deviceId: req?.headers['x-device-id'] || 'Unknown',
-        browserAgent: req?.headers['user-agent'] || 'Unknown',
-        userId: req.user.id,
-        action: `Issued field letter for proposal: "${proposal.title}"`,
-        entityType: "Proposal",
-        entityId: proposal.id,
-        details: `Student: ${proposal.student.fullName}, Field Letter Date: ${fieldLetterDate}`,
-      },
-    });
+        // Set fieldwork as the current status via update (bypasses create validator)
+        await tx.studentStatus.update({
+          where: { id: fieldworkEntry.id },
+          data: { isCurrent: true },
+        });
+
+        studentStatusId = fieldworkEntry.id;
+
+        // Update proposal statuses
+        await tx.proposalStatus.updateMany({
+          where: {
+            proposalId: proposalId,
+            isCurrent: true,
+          },
+          data: {
+            isCurrent: false,
+            endDate: new Date(),
+          },
+        });
+
+        await tx.proposalStatus.create({
+          data: {
+            proposal: { connect: { id: proposalId } },
+            definition: { connect: { id: letterToFieldStatus.id } },
+            isCurrent: true,
+            startDate: new Date(),
+            endDate: new Date(),
+          },
+        });
+      }
+
+      // Update the field letter date
+      const updated = await tx.proposal.update({
+        where: { id: proposalId },
+        data: {
+          fieldLetterDate: new Date(fieldLetterDate),
+        },
+      });
+
+      // Log activity
+      await tx.userActivity.create({
+        data: {
+          ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+          deviceId: req?.headers['x-device-id'] || 'Unknown',
+          browserAgent: req?.headers['user-agent'] || 'Unknown',
+          userId: req.user.id,
+          action: proposal.fieldLetterDate
+            ? `Updated field letter date for proposal: "${proposal.title}"`
+            : `Issued field letter for proposal: "${proposal.title}"`,
+          entityType: "Proposal",
+          entityId: proposal.id,
+          details: `Student: ${proposal.student.fullName}, Field Letter Date: ${fieldLetterDate}${proposal.fieldLetterDate ? ` (Updated from ${proposal.fieldLetterDate})` : ""}`,
+        },
+      });
+
+      return { updatedProposal: updated, studentStatusId, oldStatusId };
+    }, { timeout: 20000 });
+
+    const { updatedProposal, studentStatusId, oldStatusId } = result;
+
+
+
+    // Send notifications if this is the first time the letter is issued
+    if (!proposal.fieldLetterDate) {
+      // Cancel notifications from previous status
+      if (oldStatusId) {
+        await notificationService.cancelNotificationsByStatus(oldStatusId);
+      }
+      const student = proposal.student;
+
+      // Immediate notification about fieldwork commencement
+      await notificationService.scheduleNotification({
+        type: "EMAIL",
+        statusType: "PENDING",
+        title: "Fieldwork Commencement ",
+        //message: `Your fieldwork letter for "${proposal.title}" has been issued. Please remember that dissertation submission is required after fieldwork.`,
+        recipientCategory: "STUDENT",
+        recipientId: student.id,
+        recipientEmail: student.email,
+        recipientName: student.fullName,
+        scheduledFor: new Date(Date.now() + 1000 * 60 * 5),  // 5 minutes from now
+        metadata: {
+          additionalContent: `
+           
+            <p>Your fieldwork letter for your research proposal titled "<strong>${proposal.title}</strong>" has been issued.</p>
+            <p>You are now officially in the fieldwork phase. Please proceed with your research and data collection.</p>
+            <p><strong>Next Step:</strong> Upon completion of your fieldwork, you are required to compile and submit your final dissertation for evaluation.</p>
+            <p>Please keep in touch with your supervisors throughout this phase.</p>
+            <p>Best regards,</p>
+            <p>UMI Research Office</p>
+          `,
+        },
+        studentStatus: studentStatusId ? { connect: { id: studentStatusId } } : undefined,
+      });
+
+      // Schedule reminders based on status definition parameters (following L1708-1717 pattern)
+      const startDate = new Date();
+      const expDur = fieldworkStatus.expectedDuration || 90;
+      const warnDays = fieldworkStatus.warningDays || 60;
+      const critDays = fieldworkStatus.criticalDays || 90;
+      const delayDays = fieldworkStatus.delayDays || 120;
+
+      const warningDate = new Date(startDate.getTime() + (warnDays * 24 * 60 * 60 * 1000));
+      const criticalDate = new Date(startDate.getTime() + (critDays * 24 * 60 * 60 * 1000));
+      const escalationDate = new Date(startDate.getTime() + ((expDur + 2) * 24 * 60 * 60 * 1000));
+      const delayDate = new Date(startDate.getTime() + (delayDays * 24 * 60 * 60 * 1000));
+
+      // 1. Warning Reminder (Dissertation preparation reminder)
+      await notificationService.scheduleNotification({
+        type: "REMINDER",
+        statusType: "PENDING",
+        title: "Fieldwork Progress & Dissertation Reminder",
+        message: `Reminder: You have been in the fieldwork phase for ${warnDays} days. Please ensure you are preparing your dissertation for submission.`,
+        recipientCategory: "STUDENT",
+        recipientId: student.id,
+        recipientEmail: student.email,
+        recipientName: student.fullName,
+        scheduledFor: warningDate,
+        metadata: {
+          additionalContent: `
+            <p>Dear ${student.fullName},</p>
+            <p>This is a progress reminder regarding your research "<strong>${proposal.title}</strong>".</p>
+            <p>As you continue with your fieldwork, please ensure you are progressively writing your dissertation.</p>
+            <p>Best regards,</p>
+            <p>UMI Research Office</p>
+          `,
+        },
+        studentStatus: studentStatusId ? { connect: { id: studentStatusId } } : undefined,
+      });
+
+      // 2. Critical Reminder
+      await notificationService.scheduleNotification({
+        type: "REMINDER",
+        statusType: "PENDING",
+        title: "CRITICAL: Dissertation Submission Required",
+        message: `Critical Reminder: Your fieldwork phase has reached ${critDays} days. Dissertation submission is now urgently required.`,
+        recipientCategory: "STUDENT",
+        recipientId: student.id,
+        recipientEmail: student.email,
+        recipientName: student.fullName,
+        scheduledFor: criticalDate,
+        metadata: {
+          additionalContent: `
+            <p>Dear ${student.fullName},</p>
+            <p>Your fieldwork phase for "<strong>${proposal.title}</strong>" has reached a critical duration (${critDays} days).</p>
+            <p>Please submit your final dissertation for evaluation immediately to avoid academic delays.</p>
+            <p>Best regards,</p>
+            <p>UMI Research Office</p>
+          `,
+        },
+        studentStatus: studentStatusId ? { connect: { id: studentStatusId } } : undefined,
+      });
+
+      // 3. Escalation Reminder
+      await notificationService.scheduleNotification({
+        type: "REMINDER",
+        statusType: "PENDING",
+        title: "ESCALATION: Dissertation Submission Overdue",
+        message: `Your dissertation submission for "${proposal.title}" is now officially overdue.`,
+        recipientCategory: "STUDENT",
+        recipientId: student.id,
+        recipientEmail: student.email,
+        recipientName: student.fullName,
+        scheduledFor: escalationDate,
+        metadata: {
+          additionalContent: `
+           
+            <p>This is an escalation notice regarding your dissertation submission for "<strong>${proposal.title}</strong>".</p>
+            <p>The expected duration for your fieldwork phase has been exceeded. Please contact the Research Office immediately.</p>
+            <p>Best regards,</p>
+            <p>UMI Research Office</p>
+          `,
+        },
+        studentStatus: studentStatusId ? { connect: { id: studentStatusId } } : undefined,
+      });
+
+      // 4. Delay Reminder
+      await notificationService.scheduleNotification({
+        type: "REMINDER",
+        statusType: "PENDING",
+        title: "FINAL NOTICE: Dissertation Submission Delay",
+        message: `Your dissertation submission for "${proposal.title}" is significantly delayed (${delayDays} days since start).`,
+        recipientCategory: "STUDENT",
+        recipientId: student.id,
+        recipientEmail: student.email,
+        recipientName: student.fullName,
+        scheduledFor: delayDate,
+        metadata: {
+          additionalContent: `
+          
+            <p>This is the final notice regarding the significant delay in your dissertation submission.</p>
+            <p>Failure to submit your work or provide a valid reason for delay may result in further administrative action.</p>
+            <p>Best regards,</p>
+            <p>UMI Research Office</p>
+          `,
+        },
+        studentStatus: studentStatusId ? { connect: { id: studentStatusId } } : undefined,
+      });
+    }
 
     res.status(200).json({
       message: "Field letter date updated successfully",
@@ -3218,72 +3429,142 @@ export const updateEthicsCommitteeDate = async (req, res, next) => {
       throw new Error("Ethics Committee Status not found");
     }
 
-    // Update student status
-    await prisma.studentStatus.updateMany({
-      where: {
-        studentId: proposal.student.id,
-        isCurrent: true,
-      },
-      data: {
-        isCurrent: false,
-        endDate: new Date(),
-      },
-    });
+    // Start transaction for updating statuses and recording date
+    const result = await prisma.$transaction(async (tx) => {
+      let studentStatusId = null;
+      let oldStatusId = null;
+      let schoolAdmins = [];
 
-    // Create letter to ethics committee status
-    await prisma.studentStatus.create({
-      data: {
-        student: { connect: { id: proposal.student.id } },
-        definition: { connect: { id: ethicsCommitteeStatus.id } },
-        isCurrent: true,
-        startDate: new Date(),
+      // Only update statuses if this is the first time the date is being set
+      if (!proposal.ethicsCommitteeDate) {
+        // Find current student status to cancel its notifications later
+        const currentStatus = await tx.studentStatus.findFirst({
+          where: {
+            studentId: proposal.student.id,
+            isCurrent: true,
+          },
+        });
+        if (currentStatus) oldStatusId = currentStatus.id;
 
-        updatedBy: { connect: { id: req.user.id } },
-      },
-    });
+        // Update student status
+        await tx.studentStatus.updateMany({
+          where: {
+            studentId: proposal.student.id,
+            isCurrent: true,
+          },
+          data: {
+            isCurrent: false,
+            endDate: new Date(),
+          },
+        });
 
-    // Update proposal statuses
-    await prisma.proposalStatus.updateMany({
-      where: {
-        proposalId: proposalId,
-        isCurrent: true,
-      },
-      data: {
-        isCurrent: false,
-        endDate: new Date(),
-      },
-    });
+        // Create letter to ethics committee status
+        const ethicsEntry = await tx.studentStatus.create({
+          data: {
+            student: { connect: { id: proposal.student.id } },
+            definition: { connect: { id: ethicsCommitteeStatus.id } },
+            isCurrent: true,
+            startDate: new Date(),
 
-    // Create the status for Ethics Committee
-    await prisma.proposalStatus.create({
-      data: {
-        proposal: { connect: { id: proposalId } },
-        definition: { connect: { id: ethicsCommitteeStatus.id } },
-        isCurrent: true,
-        startDate: new Date(),
-      },
-    });
+            updatedBy: { connect: { id: req.user.id } },
+          },
+        });
+        studentStatusId = ethicsEntry.id;
 
-    // Update the Ethics Committee date
-    const updatedProposal = await prisma.proposal.update({
-      where: { id: proposalId },
-      data: {
-        ethicsCommitteeDate: new Date(ethicsCommitteeDate),
-      },
-    });
-    // Log activity
-    await prisma.userActivity.create({
-      data: {
-        ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
-        deviceId: req?.headers['x-device-id'] || 'Unknown',
-        browserAgent: req?.headers['user-agent'] || 'Unknown',
-        userId: req.user.id,
-        action: `Set ethics committee date for proposal: "${proposal.title}"`,
-        entityType: "Proposal",
-        entityId: proposal.id,
-        details: `Student: ${proposal.student.fullName}, Ethics Committee Date: ${ethicsCommitteeDate}`,
-      },
-    });
+        // Fetch active school admins for the student's campus
+        if (proposal.student.campusId) {
+          schoolAdmins = await tx.user.findMany({
+            where: {
+              role: "SCHOOL_ADMIN",
+              campusId: proposal.student.campusId,
+              isActive: true,
+            },
+          });
+        }
+
+        // Update proposal statuses
+        await tx.proposalStatus.updateMany({
+          where: {
+            proposalId: proposalId,
+            isCurrent: true,
+          },
+          data: {
+            isCurrent: false,
+            endDate: new Date(),
+          },
+        });
+
+        // Create the status for Ethics Committee
+        await tx.proposalStatus.create({
+          data: {
+            proposal: { connect: { id: proposalId } },
+            definition: { connect: { id: ethicsCommitteeStatus.id } },
+            isCurrent: true,
+            startDate: new Date(),
+          },
+        });
+      }
+
+      // Update the Ethics Committee date
+      const updated = await tx.proposal.update({
+        where: { id: proposalId },
+        data: {
+          ethicsCommitteeDate: new Date(ethicsCommitteeDate),
+        },
+      });
+
+      // Log activity
+      await tx.userActivity.create({
+        data: {
+          ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+          deviceId: req?.headers['x-device-id'] || 'Unknown',
+          browserAgent: req?.headers['user-agent'] || 'Unknown',
+          userId: req.user.id,
+          action: proposal.ethicsCommitteeDate
+            ? `Updated ethics committee date for proposal: "${proposal.title}"`
+            : `Set ethics committee date for proposal: "${proposal.title}"`,
+          entityType: "Proposal",
+          entityId: proposal.id,
+          details: `Student: ${proposal.student.fullName}, Ethics Committee Date: ${ethicsCommitteeDate}${proposal.ethicsCommitteeDate ? ` (Updated from ${proposal.ethicsCommitteeDate})` : ""}`,
+        },
+      });
+
+      return { updatedProposal: updated, studentStatusId, schoolAdmins, oldStatusId };
+    }, { timeout: 20000 });
+
+    const { updatedProposal, studentStatusId, schoolAdmins, oldStatusId } = result;
+
+    // Cancel notifications from previous status
+    if (oldStatusId) {
+      await notificationService.cancelNotificationsByStatus(oldStatusId);
+    }
+
+    // Send notifications to school admins if this is the first time the date is set
+    if (!proposal.ethicsCommitteeDate && schoolAdmins && schoolAdmins.length > 0) {
+      const reminderDate = new Date();
+      reminderDate.setDate(reminderDate.getDate() + 14); // 2 weeks later
+
+      for (const admin of schoolAdmins) {
+        await notificationService.scheduleNotification({
+          type: "EMAIL",
+          statusType: "PENDING",
+          title: "Reminder: Field Letter Issuance Required",
+          message: `The ethics committee date for ${proposal.student.fullName} (${proposal.student.registrationNumber}) has been set. Please remember to issue the Field Letter in 2 weeks.`,
+          recipientCategory: "USER",
+          recipientId: admin.id,
+          recipientEmail: admin.email,
+          recipientName: admin.name,
+          scheduledFor: reminderDate,
+          metadata: {
+            proposalId: proposal.id,
+            studentId: proposal.student.id,
+            studentName: proposal.student.fullName,
+            action: "ISSUE_FIELD_LETTER",
+          },
+          studentStatus: studentStatusId ? { connect: { id: studentStatusId } } : undefined,
+        });
+      }
+    }
 
     res.status(200).json({
       message: "ETHICS COMMITTEE DATE ISSUED",

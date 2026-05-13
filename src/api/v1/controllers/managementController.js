@@ -6478,7 +6478,7 @@ export const getAllBooks = async (req, res, next) => {
                         examiner: true
                     }
                 },
-                vivaHistory: true,
+
                 submittedBy: {
                     select: {
                         id: true,
