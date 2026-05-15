@@ -3030,7 +3030,7 @@ export const createStudent = async (req, res, next) => {
 
         // Schedule welcome email with credentials for the student
 
-        const loginUrl = process.env.MANAGEMENT_PORTAL_URL || 'https://umistudent.umi.ac.ug';
+        const loginUrl = process.env.STUDENT_PORTAL_URL || 'https://drims.umi.ac.ug';
 
         await notificationService.scheduleNotification({
             type: "EMAIL",
