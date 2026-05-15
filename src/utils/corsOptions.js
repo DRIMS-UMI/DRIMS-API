@@ -1,4 +1,4 @@
-import {env} from '../env.mjs';
+import { env } from '../env.mjs';
 
 
 /* This code snippet is defining a configuration object named `corsOptions` that is used for
@@ -46,10 +46,11 @@ export const corsOptions = {
         'http://localhost:5176',
         'http://localhost:5177',
         'http://localhost:5178',
-        "https://umischool.umi.ac.ug",
-        'https://umirc.umi.ac.ug',
-        'https://umistudent.umi.ac.ug',
-        'https://umisupervisor.umi.ac.ug',
+        'http://localhost:8888',
+        "https://drimschool.umi.ac.ug",
+        'https://drimrc.umi.ac.ug',
+        'https://drims.umi.ac.ug',
+        'https://drimstaff.umi.ac.ug',
         'https://drimstudents.netlify.app',
         'https://drimsupervisor.netlify.app',
         'https://drimrc.netlify.app',
@@ -57,7 +58,7 @@ export const corsOptions = {
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id', 'x-client-ip'],
     preflightContinue: false,
     optionsSuccessStatus: 204,
 };
