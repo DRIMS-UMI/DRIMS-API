@@ -1261,7 +1261,7 @@ export const uploadDocument = async (req, res, next) => {
         student: {
           connect: { id: user.student.id }
         },
-        uploadedBy: {
+        uploadedByStudent: {
           connect: { id: userId }
         },
         supervisor: {
@@ -1273,6 +1273,12 @@ export const uploadDocument = async (req, res, next) => {
           select: {
             id: true,
             name: true
+          }
+        },
+        uploadedByStudent: {
+          select: {
+            id: true,
+            fullName: true
           }
         },
         supervisor: {
@@ -1311,7 +1317,7 @@ export const uploadDocument = async (req, res, next) => {
         fileType: document.fileType,
         fileSize: document.fileSize,
         uploadedAt: document.createdAt,
-        uploadedBy: document.uploadedBy,
+        uploadedBy: document.uploadedBy || (document.uploadedByStudent ? { id: document.uploadedByStudent.id, name: document.uploadedByStudent.fullName } : null),
         supervisor: document.supervisor,
         studentId: user.student.id,
         studentName: `${user.student.fullName}`
@@ -1390,6 +1396,12 @@ export const getStudentDocuments = async (req, res, next) => {
             name: true
           }
         },
+        uploadedByStudent: {
+          select: {
+            id: true,
+            fullName: true
+          }
+        },
         reviewedBy: {
           select: {
             id: true,
@@ -1417,7 +1429,7 @@ export const getStudentDocuments = async (req, res, next) => {
       fileType: doc.fileType,
       fileSize: doc.fileSize,
       uploadedAt: doc.createdAt,
-      uploadedBy: doc.uploadedBy,
+      uploadedBy: doc.uploadedBy || (doc.uploadedByStudent ? { id: doc.uploadedByStudent.id, name: doc.uploadedByStudent.fullName } : null),
       isReviewed: !!doc.reviewedAt,
       reviewedAt: doc.reviewedAt,
       reviewedBy: doc.reviewedBy,

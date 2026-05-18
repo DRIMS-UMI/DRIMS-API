@@ -164,6 +164,7 @@ model studentUser {
 
   student           student?
   activities        userActivity[]
+  uploadedDocuments studentDocument[] @relation("studentUploadedDocuments")
 }
 
 model student {
@@ -350,14 +351,16 @@ model studentDocument {
   fileSize        Int
   fileData        Bytes
   studentId       String   @db.ObjectId
-  uploadedById    String   @db.ObjectId
+  uploadedById    String?  @db.ObjectId
+  uploadedByStudentId String? @db.ObjectId
   reviewedById    String?  @db.ObjectId
   supervisorId    String?  @db.ObjectId  // ID of the supervisor the document is intended for
   reviewedAt      DateTime?
   reviewComments  String?
   
   student         student  @relation(fields: [studentId], references: [id])
-  uploadedBy      user     @relation("uploadedStudentDocuments", fields: [uploadedById], references: [id])
+  uploadedBy      user?    @relation("uploadedStudentDocuments", fields: [uploadedById], references: [id])
+  uploadedByStudent studentUser? @relation("studentUploadedDocuments", fields: [uploadedByStudentId], references: [id])
   reviewedBy      user?    @relation("reviewedStudentDocuments", fields: [reviewedById], references: [id])
   supervisor      user?    @relation("supervisorDocuments", fields: [supervisorId], references: [id])
   

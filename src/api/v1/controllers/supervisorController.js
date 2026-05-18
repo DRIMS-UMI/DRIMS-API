@@ -1299,6 +1299,18 @@ export const getStudentDocuments = async (req, res, next) => {
             name: true
           }
         },
+        uploadedByStudent: {
+          select: {
+            id: true,
+            fullName: true
+          }
+        },
+        student: {
+          select: {
+            id: true,
+            fullName: true
+          }
+        },
         reviewedBy: {
           select: {
             id: true,
@@ -1319,7 +1331,7 @@ export const getStudentDocuments = async (req, res, next) => {
       fileType: doc.fileType,
       fileSize: doc.fileSize,
       uploadedAt: doc.createdAt,
-      uploadedBy: doc.uploadedBy,
+      uploadedBy: doc.uploadedBy || (doc.uploadedByStudent ? { id: doc.uploadedByStudent.id, name: doc.uploadedByStudent.fullName } : null),
       isReviewed: !!doc.reviewedAt,
       reviewedAt: doc.reviewedAt,
       reviewedBy: doc.reviewedBy,
@@ -1510,6 +1522,8 @@ export const uploadReviewedDocument = async (req, res, next) => {
       });
 
       return { reviewedDocument: newReviewedDoc };
+    }, {
+      timeout: 30000 // Increase interactive transaction timeout to 30 seconds for uploading large files to MongoDB Atlas
     });
 
     res.status(201).json({
