@@ -7014,7 +7014,7 @@ export const requestPasswordReset = async (req, res, next) => {
 
     // Frontend URL for password reset
     const frontendUrl =
-      process.env.FACULTY_CLIENT_URL || "https://umischoolportal.netlify.app";
+      process.env.FACULTY_CLIENT_URL || "https://drimschool.umi.ac.ug";
     // const frontendUrl = process.env.FACULTY_CLIENT_URL || 'http://localhost:5173';
     const resetLink = `${frontendUrl}/reset-password?token=${resetToken}`;
 

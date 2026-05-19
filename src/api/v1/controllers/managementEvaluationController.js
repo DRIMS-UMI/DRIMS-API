@@ -448,7 +448,7 @@ export const recordVivaVerdict = async (req, res, next) => {
                         where: { id: newStudentStatus.id },
                         data: { isCurrent: true }
                     });
-                    
+
                     sStatusId = newStudentStatus.id;
 
                     // First, update all current book statuses to not current
@@ -832,7 +832,7 @@ export const scheduleViva = async (req, res, next) => {
                         where: { id: newStudentStatus.id },
                         data: { isCurrent: true }
                     });
-                    
+
                     sStatusId = newStudentStatus.id;
                 }
             }
@@ -2402,7 +2402,7 @@ export const requestPasswordReset = async (req, res, next) => {
         });
 
         // Frontend URL for password reset
-        const frontendUrl = process.env.FACULTY_CLIENT_URL || 'https://umircportal.netlify.app';
+        const frontendUrl = 'https://drimrc.umi.ac.ug';
         // const frontendUrl = process.env.FACULTY_CLIENT_URL || 'http://localhost:5173';
         const resetLink = `${frontendUrl}/reset-password?token=${resetToken}`;
 
