@@ -46,6 +46,8 @@ export const corsOptions = {
         'http://localhost:5176',
         'http://localhost:5177',
         'http://localhost:5178',
+        'http://localhost:5180', // Faculty Desktop Dev
+        'http://localhost:5181', // Management Desktop Dev
         'http://localhost:8888',
         "https://drimschool.umi.ac.ug",
         'https://drimrc.umi.ac.ug',
@@ -54,6 +56,10 @@ export const corsOptions = {
         'https://drimstudents.netlify.app',
         'https://drimsupervisor.netlify.app',
         'https://drimrc.netlify.app',
+        'https://drimschool.netlify.app',
+        'https://drimrcdemo.netlify.app',
+        'https://drimstudentdemo.netlify.app',
+        'https://drimstaffdemo.netlify.app',
         'https://drimschool.netlify.app'
     ],
     credentials: true,
