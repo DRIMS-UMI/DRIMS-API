@@ -60,7 +60,7 @@ export const corsOptions = {
         'https://drimrcdemo.netlify.app',
         'https://drimstudentdemo.netlify.app',
         'https://drimstaffdemo.netlify.app',
-        'https://drimschool.netlify.app'
+        'https://drimschooldemo.netlify.app'
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
