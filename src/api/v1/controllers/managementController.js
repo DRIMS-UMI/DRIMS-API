@@ -3322,12 +3322,18 @@ export const updateStudent = async (req, res, next) => {
             campusId,
             schoolId,
             departmentId,
+            courseId,
+            specializationId,
             studentUserId,
             studentUser,
             supervisorIds,
+            supervisors,
+            statuses,
             school,
             department,
             campus,
+            course,
+            specialization,
             admissionDate,
             expectedCompletionDate,
             graduatedAt,
@@ -3347,15 +3353,55 @@ export const updateStudent = async (req, res, next) => {
             return isNaN(date.getTime()) ? undefined : date;
         };
 
+        // Helper to resolve relation connects and disconnects robustly
+        const resolveRelation = (primary, secondary) => {
+            // 1. Check if either is explicitly null (request to disconnect)
+            if (primary === null || secondary === null) {
+                return { disconnect: true };
+            }
+
+            // 2. Identify the ID from primary (could be string or object)
+            let id = null;
+            if (typeof primary === 'string' && primary !== '') {
+                id = primary;
+            } else if (primary && typeof primary === 'object') {
+                // If it's already a Prisma connect/disconnect action object
+                if ('connect' in primary || 'disconnect' in primary) {
+                    return primary;
+                }
+                if (primary.id && typeof primary.id === 'string') {
+                    id = primary.id;
+                }
+            }
+
+            // 3. If primary didn't give us a valid ID string, try secondary
+            if (!id) {
+                if (typeof secondary === 'string' && secondary !== '') {
+                    id = secondary;
+                } else if (secondary && typeof secondary === 'object' && secondary.id && typeof secondary.id === 'string') {
+                    id = secondary.id;
+                }
+            }
+
+            // 4. Return connect object if we found a valid ID
+            if (id) {
+                return { connect: { id } };
+            }
+
+            return undefined;
+        };
+
         // Update student with all fields from request body
         const updatedStudent = await prisma.student.update({
             where: { id: studentId },
             data: {
                 ...restofData,
-                campus: campusId ? { connect: { id: campusId } } : undefined,
-                school: schoolId ? { connect: { id: schoolId } } : undefined,
-                department: departmentId ? { connect: { id: departmentId } } : undefined,
-                studentUser: studentUserId ? { connect: { id: studentUserId } } : undefined,
+                campus: resolveRelation(campusId, campus),
+                school: resolveRelation(schoolId, school),
+                department: resolveRelation(departmentId, department),
+                course: resolveRelation(course, courseId),
+                specialization: resolveRelation(specialization, specializationId),
+                studentUser: resolveRelation(studentUserId, studentUser),
 
                 // Handle date fields specifically
                 admissionDate: (admissionDate && admissionDate !== '') ? new Date(admissionDate) : undefined,
