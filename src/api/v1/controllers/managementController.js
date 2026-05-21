@@ -1095,6 +1095,34 @@ export const createFacultyMember = async (req, res, next) => {
             }
         });
 
+        // Schedule welcome email with credentials for the faculty member
+        const portalUrl = process.env.FACULTY_CLIENT_URL || 'https://drimschool.umi.ac.ug';
+
+        await notificationService.scheduleNotification({
+            type: "EMAIL",
+            statusType: "PENDING",
+            title: "Welcome to DRIMS Faculty Portal - Your Account Details",
+            message: "You have been added to the DRIMS platform as a faculty member. Please use the credentials below to log in:",
+            recipientCategory: "USER",
+            recipientId: user.id,
+            recipientEmail: workEmail,
+            recipientName: name,
+            scheduledFor: new Date(Date.now() + 1000 * 60 * 1), // 1 minute delay
+            metadata: {
+                additionalContent: `
+                    <div style="background-color: #e8f4fd; border-left: 4px solid #003366; padding: 15px; margin: 20px 0;">
+                        <h3>Your Login Credentials</h3>
+                        <ul>
+                            <li><strong>Portal:</strong> <a href="${portalUrl}" target="_blank">${portalUrl}</a></li>
+                            <li><strong>Email:</strong> ${workEmail}</li>
+                            <li><strong>Temporary Password:</strong> ${password}</li>
+                            <li><strong>Role:</strong> ${role}</li>
+                        </ul>
+                        <p><em>For security reasons, please change your password after your first login.</em></p>
+                    </div>
+                `
+            }
+        });
 
         res.status(201).json({
             message: 'Faculty member created successfully',
@@ -3290,20 +3318,52 @@ export const updateStudent = async (req, res, next) => {
 
         console.log(updateData)
 
-        const { campusId, schoolId, departmentId, studentUserId, studentUser, supervisorIds, school, department, campus, ...restofData } = updateData
+        const {
+            campusId,
+            schoolId,
+            departmentId,
+            studentUserId,
+            studentUser,
+            supervisorIds,
+            school,
+            department,
+            campus,
+            admissionDate,
+            expectedCompletionDate,
+            graduatedAt,
+            resultsApprovedDate,
+            resultsSentDate,
+            senateApprovalDate,
+            createdAt,
+            updatedAt,
+            ...restofData
+        } = updateData;
+
+        // Helper to parse dates robustly
+        const parseNullableDate = (val) => {
+            if (val === undefined) return undefined;
+            if (val === null || val === '') return null;
+            const date = new Date(val);
+            return isNaN(date.getTime()) ? undefined : date;
+        };
 
         // Update student with all fields from request body
         const updatedStudent = await prisma.student.update({
             where: { id: studentId },
             data: {
                 ...restofData,
-                campus: { connect: { id: campusId } },
-                school: { connect: { id: schoolId } },
-                department: { connect: { id: departmentId } },
+                campus: campusId ? { connect: { id: campusId } } : undefined,
+                school: schoolId ? { connect: { id: schoolId } } : undefined,
+                department: departmentId ? { connect: { id: departmentId } } : undefined,
                 studentUser: studentUserId ? { connect: { id: studentUserId } } : undefined,
 
                 // Handle date fields specifically
-                expectedCompletionDate: updateData.expectedCompletionDate ? new Date(updateData.expectedCompletionDate) : undefined
+                admissionDate: (admissionDate && admissionDate !== '') ? new Date(admissionDate) : undefined,
+                expectedCompletionDate: parseNullableDate(expectedCompletionDate),
+                graduatedAt: parseNullableDate(graduatedAt),
+                resultsApprovedDate: parseNullableDate(resultsApprovedDate),
+                resultsSentDate: parseNullableDate(resultsSentDate),
+                senateApprovalDate: parseNullableDate(senateApprovalDate),
             },
             include: {
                 campus: true,
