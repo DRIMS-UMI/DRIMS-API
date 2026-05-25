@@ -6,6 +6,7 @@ import emailService from "../../../services/emailService2.js";
 import { notificationService } from "../../../services/notificationService2.js";
 import mongoose from "mongoose";
 import { conn, gfs } from "../../../utils/db.mjs";
+import { sanitizeForLog } from "../../../utils/sanitizeForLog.js";
 
 // Faculty login controller
 export const loginFaculty = async (req, res, next) => {

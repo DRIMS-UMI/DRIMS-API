@@ -3,6 +3,7 @@ import emailService from '../../../services/emailService2.js';
 import { notificationService } from '../../../services/notificationService2.js';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
+import { sanitizeForLog } from '../../../utils/sanitizeForLog.js';
 /* ********** STUDENT EVALUATION ANALYTICS ********** */
 
 // Helper function to convert satisfaction enum to number

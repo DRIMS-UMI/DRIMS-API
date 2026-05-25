@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { notificationService } from '../../../services/notificationService2.js';
 import axios from 'axios';
 import crypto from 'crypto';
+import { sanitizeForLog } from '../../../utils/sanitizeForLog.js';
 
 import emailService from '../../../services/emailService2.js';
 import fs from 'fs';
@@ -938,7 +939,7 @@ export const updateSchool = async (req, res, next) => {
                     action: 'Updated School',
                     entityType: 'School',
                     entityId: updatedSchool.id,
-                    details: JSON.stringify(changes),
+                    details: sanitizeForLog(changes),
                     userId: req.user.id,
                     browserAgent: req?.headers['user-agent'] || 'Unknown',
                 }
@@ -1304,7 +1305,7 @@ export const updateFacultyMember = async (req, res, next) => {
                 action: 'UPDATE_FACULTY',
                 entityId: facultyId,
                 entityType: 'FACULTY',
-                details: JSON.stringify(changes),
+                details: sanitizeForLog(changes),
                 userId: req.user.id, // Assuming req.user contains logged in user details
 
             }
@@ -3471,7 +3472,7 @@ export const updateStudent = async (req, res, next) => {
                 entityType: "Student",
                 entityId: studentId,
                 userId: req.user?.id,
-                details: JSON.stringify(changes) // Store the tracked changes
+                details: sanitizeForLog(changes) // Store the tracked changes
             }
         });
 
@@ -8019,7 +8020,7 @@ export const updateUser = async (req, res, next) => {
                     action: `Updated user: ${existingUser.name}`,
                     entityType: 'user',
                     entityId: userId,
-                    details: JSON.stringify(changes)
+                    details: sanitizeForLog(changes)
                 }
             });
         }
@@ -10942,7 +10943,7 @@ export const updateCourse = async (req, res, next) => {
                     action: 'Updated Course',
                     entityType: 'Course',
                     entityId: updatedCourse.id,
-                    details: JSON.stringify(changes),
+                    details: sanitizeForLog(changes),
                     userId: req.user.id,
                     browserAgent: req?.headers['user-agent'] || 'Unknown',
                 }
@@ -11319,7 +11320,7 @@ export const updateSpecialization = async (req, res, next) => {
                     action: 'Updated Specialization',
                     entityType: 'Specialization',
                     entityId: updatedSpecialization.id,
-                    details: JSON.stringify(changes),
+                    details: sanitizeForLog(changes),
                     userId: req.user.id,
                     browserAgent: req?.headers['user-agent'] || 'Unknown',
                 }

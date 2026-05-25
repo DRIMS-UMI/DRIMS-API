@@ -1,6 +1,7 @@
 import prisma from "../../../utils/db.mjs";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { sanitizeForLog } from "../../../utils/sanitizeForLog.js";
 import { notificationService } from "../../../services/notificationService2.js";
 
 // Student login controller
@@ -71,6 +72,20 @@ export const loginStudent = async (req, res, next) => {
       process.env.AUTH_SECRET,
       { expiresIn: rememberMe ? "30d" : "24h" }
     );
+
+    // Log the activity
+    await prisma.userActivity.create({
+      data: {
+        ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+        deviceId: req?.headers['x-device-id'] || 'Unknown',
+        browserAgent: req?.headers['user-agent'] || 'Unknown',
+        action: 'Login',
+        entityType: 'StudentUser',
+        entityId: studentUser.id,
+        details: JSON.stringify({ role: studentUser.role, timestamp: new Date().toISOString() }),
+        studentUserId: studentUser.id
+      }
+    });
 
     res.status(200).json({
       message: "Login successful",
