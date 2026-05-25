@@ -20,3 +20,27 @@ uploads/
 
 dist/
 dist
+
+temp
+temp/*
+
+seed_status_orders.js
+list_status_orders.js
+cleanup_orphaned_notifications.js
+list_statuses.js
+notExample.js
+
+# Diagnostics and migrations
+scratch/
+check_steps.js
+check_statuses.*
+add_deregistered_status.*
+update_activities*
+notExample*
+check_supervisors*
+UMI System Process & Status Definition V2*
+UMI_API_Documentation*
+UMI_Data_Requirements*
+ACMIS_Integration_Spec*
+.DS_Store
+umidrimsdb.statusDefinition.json

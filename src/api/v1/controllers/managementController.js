@@ -101,6 +101,20 @@ export const loginSuperAdmin = async (req, res, next) => {
             { expiresIn: rememberMe ? '30d' : '24h' }
         );
 
+        // Log the activity
+        await prisma.userActivity.create({
+            data: {
+                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                deviceId: req?.headers['x-device-id'] || 'Unknown',
+                browserAgent: req?.headers['user-agent'] || 'Unknown',
+                action: 'Login',
+                entityType: 'User',
+                entityId: superAdmin.id,
+                details: JSON.stringify({ role: superAdmin.role, timestamp: new Date().toISOString() }),
+                userId: superAdmin.id
+            }
+        });
+
         res.status(200).json({
             message: 'Login successful',
             user: userData,
@@ -169,6 +183,20 @@ export const loginResearchCentreAdmin = async (req, res, next) => {
             process.env.AUTH_SECRET,
             { expiresIn: rememberMe ? '30d' : '24h' }
         );
+
+        // Log the activity
+        await prisma.userActivity.create({
+            data: {
+                ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                deviceId: req?.headers['x-device-id'] || 'Unknown',
+                browserAgent: req?.headers['user-agent'] || 'Unknown',
+                action: 'Login',
+                entityType: 'User',
+                entityId: researchAdmin.id,
+                details: JSON.stringify({ role: researchAdmin.role, timestamp: new Date().toISOString() }),
+                userId: researchAdmin.id
+            }
+        });
 
         res.status(200).json({
             message: 'Login successful',
