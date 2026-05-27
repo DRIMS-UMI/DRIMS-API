@@ -1093,8 +1093,8 @@ model researchClinicBooking {
   updatedAt   DateTime @updatedAt
   
   // Relations
-  createdBy   user     @relation("ClinicBookingCreatedBy", fields: [createdById], references: [id])
-  createdById String   @db.ObjectId
+  createdBy   user?    @relation("ClinicBookingCreatedBy", fields: [createdById], references: [id])
+  createdById String?  @db.ObjectId
   updatedBy   user?    @relation("ClinicBookingUpdatedBy", fields: [updatedById], references: [id])
   updatedById String?  @db.ObjectId
 }

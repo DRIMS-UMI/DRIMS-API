@@ -1765,16 +1765,15 @@ export const bookResearchClinicSession = async (req, res, next) => {
                     studentId,
                     clinicDayId,
                     notes,
-                    status: 'PENDING',
-                    createdById: req.user.id
+                    status: 'PENDING'
                 },
                 include: {
                     student: {
                         include: {
-                            user: {
+                            studentUser: {
                                 select: {
                                     id: true,
-                                    name: true,
+                                    fullName: true,
                                     email: true
                                 }
                             }
