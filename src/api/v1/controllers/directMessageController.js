@@ -29,7 +29,21 @@ export const listConversations = async (req, res) => {
       where: { id: { in: otherUserIds } },
       select: { id: true, name: true, email: true, role: true }
     });
-    const userMap = Object.fromEntries(users.map(u => [u.id, u]));
+
+    const studentUsers = await prisma.studentUser.findMany({
+      where: { id: { in: otherUserIds } },
+      select: { id: true, fullName: true, email: true, role: true }
+    });
+
+    const studentUsersMapped = studentUsers.map(su => ({
+      id: su.id,
+      name: su.fullName,
+      email: su.email,
+      role: su.role
+    }));
+
+    const allUsers = [...users, ...studentUsersMapped];
+    const userMap = Object.fromEntries(allUsers.map(u => [u.id, u]));
 
     // Get last messages for all conversations
     const conversationIds = conversations.map(c => c.id);
@@ -72,7 +86,7 @@ export const getOnlineUsers = async (req, res) => {
     if (!io) {
       return res.status(500).json({ error: 'Socket.IO not available' });
     }
-    
+
     const onlineUsers = Array.from(io.onlineUsers || new Set());
     res.json({ onlineUsers });
   } catch (err) {
@@ -212,7 +226,7 @@ export const sendMessage = async (req, res) => {
     const otherUserId = conversation.participants.find(pid => pid !== userId);
     const io = req.app.get('io');
     let messageDelivered = false;
-    
+
     if (io && otherUserId) {
       // Emit with the structure the frontend expects
       messageDelivered = io.emitToUser(otherUserId, 'new_message', {
@@ -226,7 +240,7 @@ export const sendMessage = async (req, res) => {
     if (!messageDelivered && otherUserId) {
       try {
         // Get recipient and sender user details
-        const [recipient, sender] = await Promise.all([
+        const [recipientUser, senderUser, recipientStudent, senderStudent] = await Promise.all([
           prisma.user.findUnique({
             where: { id: otherUserId },
             select: { id: true, name: true, email: true, role: true }
@@ -234,8 +248,19 @@ export const sendMessage = async (req, res) => {
           prisma.user.findUnique({
             where: { id: userId },
             select: { id: true, name: true, email: true, role: true }
+          }),
+          prisma.studentUser.findUnique({
+            where: { id: otherUserId },
+            select: { id: true, fullName: true, email: true, role: true }
+          }),
+          prisma.studentUser.findUnique({
+            where: { id: userId },
+            select: { id: true, fullName: true, email: true, role: true }
           })
         ]);
+
+        const recipient = recipientUser || (recipientStudent ? { ...recipientStudent, name: recipientStudent.fullName } : null);
+        const sender = senderUser || (senderStudent ? { ...senderStudent, name: senderStudent.fullName } : null);
 
         if (recipient && recipient.email && sender) {
           // Determine the conversation URL based on user role
@@ -248,8 +273,7 @@ export const sendMessage = async (req, res) => {
 
           // Send email notification
           await emailService.sendMessageNotificationEmail({
-            // to: recipient.email,
-            to: "stephaniekirathe@gmail.com",
+            to: recipient.email,
             recipientName: recipient.name,
             senderName: sender.name,
             messageText: text,
@@ -277,7 +301,7 @@ export const startConversation = async (req, res) => {
     console.log('startConversation - userId:', userId);
     console.log('startConversation - req.body:', req.body);
     console.log('startConversation - participantId:', req.body.participantId);
-    
+
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
     const { participantId } = req.body;
     if (!participantId || typeof participantId !== 'string') {
@@ -290,16 +314,26 @@ export const startConversation = async (req, res) => {
     }
 
     // Verify the participant exists
-    const participant = await prisma.user.findUnique({
+    let participant = await prisma.user.findUnique({
       where: { id: participantId },
       select: { id: true, name: true, email: true, role: true }
     });
-    
+
+    if (!participant) {
+      const studentParticipant = await prisma.studentUser.findUnique({
+        where: { id: participantId },
+        select: { id: true, fullName: true, email: true, role: true }
+      });
+      if (studentParticipant) {
+        participant = { ...studentParticipant, name: studentParticipant.fullName };
+      }
+    }
+
     if (!participant) {
       console.log('startConversation - Participant not found:', participantId);
       return res.status(400).json({ error: 'Participant not found.' });
     }
-    
+
     console.log('startConversation - Participant found:', participant);
 
     // Find all conversations with both participants
@@ -312,7 +346,7 @@ export const startConversation = async (req, res) => {
       }
     });
     console.log('startConversation - Found conversations:', conversations);
-    
+
     // Find the one with exactly 2 participants
     let conversation = conversations.find(c => c.participants.length === 2);
     console.log('startConversation - Conversation with 2 participants:', conversation);
@@ -339,10 +373,20 @@ export const startConversation = async (req, res) => {
     }
 
     // Fetch the other participant's info
-    const otherUser = await prisma.user.findUnique({
+    let otherUser = await prisma.user.findUnique({
       where: { id: participantId },
       select: { id: true, name: true, email: true, role: true }
     });
+
+    if (!otherUser) {
+      const studentOtherUser = await prisma.studentUser.findUnique({
+        where: { id: participantId },
+        select: { id: true, fullName: true, email: true, role: true }
+      });
+      if (studentOtherUser) {
+        otherUser = { ...studentOtherUser, name: studentOtherUser.fullName };
+      }
+    }
 
     // Get the last message for this conversation
     const lastMessage = await prisma.message.findFirst({
@@ -360,7 +404,7 @@ export const startConversation = async (req, res) => {
         createdAt: conversation.createdAt
       }
     };
-    
+
     console.log('startConversation - Sending response:', response);
     res.json(response);
   } catch (err) {
@@ -401,7 +445,7 @@ export const markMessagesAsRead = async (req, res, next) => {
 
     // Filter out messages already read by this user and update the rest
     const unreadMessages = messagesToUpdate.filter(msg => !msg.readBy.includes(userId));
-    
+
     if (unreadMessages.length > 0) {
       await prisma.message.updateMany({
         where: {

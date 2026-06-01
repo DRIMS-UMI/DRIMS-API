@@ -1071,7 +1071,7 @@ export const listAllStudentsForMessaging = async (req, res, next) => {
     console.log("user", user)
 
     // Find students assigned to this supervisor
-    const students = await prisma.user.findMany({
+    const students = await prisma.studentUser.findMany({
       where: {
         role: 'STUDENT',
         
@@ -1085,17 +1085,20 @@ export const listAllStudentsForMessaging = async (req, res, next) => {
       },
       select: {
         id: true,
-        name: true,
+        fullName: true,
         email: true,
         role: true,
-        title: true,
-        
       }
     });
 
-    console.log("students", students)
+    const mappedStudents = students.map(s => ({
+      ...s,
+      name: s.fullName
+    }));
 
-    res.status(200).json({ students });
+    console.log("students", mappedStudents)
+
+    res.status(200).json({ students: mappedStudents });
   } catch (error) {
     if (!error.statusCode) error.statusCode = 500;
     next(error);
