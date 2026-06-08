@@ -21,6 +21,8 @@ export const loginStudent = async (req, res, next) => {
       include: {
         student: {
           include: {
+            course: true,
+            specialization: true,
             statuses: {
               where: { isCurrent: true },
               include: { definition: true }
@@ -165,6 +167,8 @@ export const getStudentProfile = async (req, res, next) => {
     const student = await prisma.student.findUnique({
       where: { id: studentId },
       include: {
+        course: true,
+        specialization: true,
         statuses: {
           include: { definition: true },
           orderBy: { startDate: 'desc' }
@@ -457,6 +461,8 @@ export const updateStudentProfile = async (req, res, next) => {
       where: { id: studentId },
       data: safeUpdateData,
       include: {
+        course: true,
+        specialization: true,
         statuses: {
           where: { isCurrent: true },
           include: { definition: true }
@@ -558,6 +564,8 @@ export const getStudentDashboardStats = async (req, res, next) => {
     const student = await prisma.student.findUnique({
       where: { id: studentId },
       include: {
+        course: true,
+        specialization: true,
         statuses: {
           where: { isCurrent: true },
           include: { definition: true }

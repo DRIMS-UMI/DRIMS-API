@@ -2108,7 +2108,7 @@ export const assignSupervisorsToStudent = async (req, res, next) => {
                                 
                                 <p><strong>Next Steps:</strong></p>
                                 <ul>
-                                    <li>Visit the UMI Supervisor Portal</li>
+                                    <li>Visit the DRIMS Supervisor Portal : <a href="https://drimstaff.umi.ac.ug">https://drimstaff.umi.ac.ug</a></li>
                                     <li>Log in with your credentials</li>
                                     <li>Change your password immediately</li>
                                     <li>Review your assigned students</li>
@@ -7303,39 +7303,39 @@ export const updateExternalExaminerMark = async (req, res, next) => {
                         newlyFailed = true;
                         // Update the previous student status to not be current
                         await tx.studentStatus.updateMany({
-                        where: {
-                            studentId: student.id,
-                            isCurrent: true,
-                        },
-                        data: {
-                            isCurrent: false,
-                            endDate: new Date(),
-                        },
-                    });
+                            where: {
+                                studentId: student.id,
+                                isCurrent: true,
+                            },
+                            data: {
+                                isCurrent: false,
+                                endDate: new Date(),
+                            },
+                        });
 
-                    // Update the student status
-                    await tx.studentStatus.create({
-                        data: {
-                            student: { connect: { id: student.id } },
-                            definition: { connect: { id: resubmissionRequiredStatus.id } },
-                            isActive: true,
-                            startDate: new Date(),
-                            isCurrent: true,
-                            updatedBy: { connect: { id: req.user.id } },
-                        },
-                    });
+                        // Update the student status
+                        await tx.studentStatus.create({
+                            data: {
+                                student: { connect: { id: student.id } },
+                                definition: { connect: { id: resubmissionRequiredStatus.id } },
+                                isActive: true,
+                                startDate: new Date(),
+                                isCurrent: true,
+                                updatedBy: { connect: { id: req.user.id } },
+                            },
+                        });
 
-                    // Update the previous book status to not be current
-                    await tx.bookStatus.updateMany({
-                        where: {
-                            bookId: existingAssignment.bookId,
-                            isCurrent: true,
-                        },
-                        data: {
-                            isCurrent: false,
-                            endDate: new Date(),
-                        },
-                    });
+                        // Update the previous book status to not be current
+                        await tx.bookStatus.updateMany({
+                            where: {
+                                bookId: existingAssignment.bookId,
+                                isCurrent: true,
+                            },
+                            data: {
+                                isCurrent: false,
+                                endDate: new Date(),
+                            },
+                        });
 
                         // Create new book status
                         await tx.bookStatus.create({
@@ -7412,59 +7412,59 @@ export const updateExternalExaminerMark = async (req, res, next) => {
                                 },
                             });
                         } else {
-                        if (!currentBookStatus) {
-                            newlyFailed = true;
-                            // Update the previous student status to not be current
-                            await tx.studentStatus.updateMany({
-                                where: {
-                                    studentId: student.id,
-                                    isCurrent: true,
-                                },
-                                data: {
-                                    isCurrent: false,
-                                    endDate: new Date(),
-                                },
-                            });
+                            if (!currentBookStatus) {
+                                newlyFailed = true;
+                                // Update the previous student status to not be current
+                                await tx.studentStatus.updateMany({
+                                    where: {
+                                        studentId: student.id,
+                                        isCurrent: true,
+                                    },
+                                    data: {
+                                        isCurrent: false,
+                                        endDate: new Date(),
+                                    },
+                                });
 
-                            // Update the student status to indicate resubmission is required
-                            await tx.studentStatus.create({
-                                data: {
-                                    student: { connect: { id: student.id } },
-                                    definition: { connect: { id: resubmissionRequiredStatus.id } },
-                                    isActive: true,
-                                    startDate: new Date(),
-                                    isCurrent: true,
-                                    updatedBy: { connect: { id: req.user.id } },
-                                },
-                            });
+                                // Update the student status to indicate resubmission is required
+                                await tx.studentStatus.create({
+                                    data: {
+                                        student: { connect: { id: student.id } },
+                                        definition: { connect: { id: resubmissionRequiredStatus.id } },
+                                        isActive: true,
+                                        startDate: new Date(),
+                                        isCurrent: true,
+                                        updatedBy: { connect: { id: req.user.id } },
+                                    },
+                                });
 
-                            // Update the previous book status to not be current
-                            await tx.bookStatus.updateMany({
-                                where: {
-                                    bookId: existingAssignment.bookId,
-                                    isCurrent: true,
-                                },
-                                data: {
-                                    isCurrent: false,
-                                    endDate: new Date(),
-                                },
-                            });
+                                // Update the previous book status to not be current
+                                await tx.bookStatus.updateMany({
+                                    where: {
+                                        bookId: existingAssignment.bookId,
+                                        isCurrent: true,
+                                    },
+                                    data: {
+                                        isCurrent: false,
+                                        endDate: new Date(),
+                                    },
+                                });
 
-                            // Create new book status for resubmission
-                            await tx.bookStatus.create({
-                                data: {
-                                    book: { connect: { id: existingAssignment.bookId } },
-                                    definition: { connect: { id: resubmissionRequiredStatus.id } },
-                                    isActive: true,
-                                    startDate: new Date(),
-                                    isCurrent: true,
-                                },
-                            });
+                                // Create new book status for resubmission
+                                await tx.bookStatus.create({
+                                    data: {
+                                        book: { connect: { id: existingAssignment.bookId } },
+                                        definition: { connect: { id: resubmissionRequiredStatus.id } },
+                                        isActive: true,
+                                        startDate: new Date(),
+                                        isCurrent: true,
+                                    },
+                                });
+                            }
                         }
                     }
                 }
             }
-        }
 
             // Update the assignment with mark, comments and status
             const updated = await tx.examinerBookAssignment.update({
@@ -9469,7 +9469,7 @@ export const createSupervisorFromStaff = async (req, res, next) => {
                             <h1>UGANDA MANAGEMENT INSTITUTE</h1>
                         </div>
                         <div class="content">
-                            <h2>Welcome to UMI Supervisor Portal</h2>
+                            <h2>Welcome to DRIMS Supervisor Portal</h2>
                             <p>Dear ${staffMember.name},</p>
                             <p>Your supervisor account has been created successfully.</p>
                             <div class="credentials">
@@ -9480,11 +9480,11 @@ export const createSupervisorFromStaff = async (req, res, next) => {
                             <p>Please change your password after your first login.</p>
                             <p><strong>Next Steps:</strong></p>
                             <ul>
-                                <li>Log in to your supervisor portal</li>
-                                <li>Review your account details</li>
-                                <li>Update your profile if necessary</li>
-                                <li>Change your password</li>
-                                <li>Start managing your assigned students</li>
+                                <li>Visit the DRIMS Supervisor Portal : <a href="https://drimstaff.umi.ac.ug">https://drimstaff.umi.ac.ug</a></li>
+                                <li>Log in with your credentials</li>
+                                <li>Change your password immediately</li>
+                                <li>Review your assigned students</li>
+                                <li>Start managing research projects</li>
                             </ul>
                             <p><strong>Important Reminders:</strong></p>
                             <ul>
@@ -9493,10 +9493,10 @@ export const createSupervisorFromStaff = async (req, res, next) => {
                                 <li>Follow the research guidelines and deadlines</li>
                                 <li>Keep your students updated on their progress</li>
                             </ul>
-                            <p>If you have any questions or need assistance, please contact the UMI Management Team.</p>
+                            <p>If you have any questions or need assistance, please contact the Management Team.</p>
                         </div>
                         <div class="footer">
-                            <p>This is an automated message from the UMI Research Management System.</p>
+                            <p>This is an automated message from the UMI-DRIMS Research Management System.</p>
                             <p>Please do not reply to this email.</p>
                             <p>&copy; ${new Date().getFullYear()} Uganda Management Institute</p>
                         </div>
