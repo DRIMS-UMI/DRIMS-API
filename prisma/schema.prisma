@@ -48,6 +48,7 @@ model user {
   phone     String?
   designation String?
   role      Role     // Defines user roles
+  disableEmailNotifications Boolean? @default(false)
   isActive  Boolean? @default(true)
   deactivatedAt DateTime?
   deactivatedBy user? @relation("deactivatedUsers", fields: [deactivatedById], references: [id], onDelete: NoAction, onUpdate: NoAction)

@@ -295,7 +295,7 @@ export const updateLoggedInUser = async (req, res, next) => {
 export const updateUserProfile = async (req, res, next) => {
     try {
         const userId = req.user.id;
-        const { title, name, phone, designation } = req.body;
+        const { title, name, phone, designation, disableEmailNotifications } = req.body;
 
         // Update user profile
         const updatedUser = await prisma.user.update({
@@ -304,7 +304,8 @@ export const updateUserProfile = async (req, res, next) => {
                 title,
                 name,
                 phone,
-                designation
+                designation,
+                disableEmailNotifications
             }
         });
 
@@ -316,7 +317,8 @@ export const updateUserProfile = async (req, res, next) => {
             name: updatedUser.name,
             role: updatedUser.role,
             designation: updatedUser.designation,
-            phone: updatedUser.phone
+            phone: updatedUser.phone,
+            disableEmailNotifications: updatedUser.disableEmailNotifications
         };
 
         res.status(200).json({

@@ -128,7 +128,8 @@ class NotificationService {
                     return {
                         id: recipient.id,
                         email: recipient.email,
-                        name: recipient.name
+                        name: recipient.name,
+                        disableEmailNotifications: recipient.disableEmailNotifications
                     };
                 }
                 break;
@@ -289,6 +290,14 @@ class NotificationService {
 
     // Send email notification via Netlify Function
     async sendEmail(notification) {
+        if (notification.recipientCategory === 'USER' && notification.recipientId) {
+             const user = await prisma.user.findUnique({ where: { id: notification.recipientId } });
+             if (user && user.disableEmailNotifications) {
+                 console.log(`Email disabled for user ${user.email}, skipping.`);
+                 return;
+             }
+        }
+
         const template = this.generateEmailTemplate(notification);
 
         const emailData = {
@@ -308,6 +317,14 @@ class NotificationService {
 
     // Send reminder notification via Netlify Function
     async sendReminder(notification) {
+        if (notification.recipientCategory === 'USER' && notification.recipientId) {
+             const user = await prisma.user.findUnique({ where: { id: notification.recipientId } });
+             if (user && user.disableEmailNotifications) {
+                 console.log(`Reminder email disabled for user ${user.email}, skipping.`);
+                 return;
+             }
+        }
+
         const template = this.generateEmailTemplate(notification);
 
         const emailData = {
@@ -629,6 +646,11 @@ class NotificationService {
                 notificationData.recipientEmail,
                 notificationData.recipientName
             );
+
+            if (recipientDetails.disableEmailNotifications) {
+                console.log(`Immediate email disabled for ${recipientDetails.email}, skipping.`);
+                return { success: true, message: 'Email disabled by user settings' };
+            }
 
             const template = this.generateEmailTemplate({
                 ...notificationData,
