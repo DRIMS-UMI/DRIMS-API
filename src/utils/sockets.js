@@ -6,6 +6,7 @@ import jwt from 'jsonwebtoken';
 // In-memory map of userId to socket and online status
 const userSockets = new Map();
 const onlineUsers = new Set();
+const onlineAdmins = new Set(); // Track admins specifically for support widget status
 
 export function setupSocketIO(server, app) {
     const io = new Server(server, {
@@ -55,32 +56,53 @@ export function setupSocketIO(server, app) {
         return onlineUsers.has(userId);
     };
 
+    // Helper to check if any support admin is online
+    io.isSupportOnline = () => {
+        return onlineAdmins.size > 0;
+    };
+
     io.on('connection', (socket) => {
         console.log('New socket connection attempt from:', socket.handshake.address);
         
         // JWT authentication
         const token = socket.handshake.auth?.token || socket.handshake.query?.token;
-        if (!token) {
-            console.log('Socket connection rejected - no token provided');
-            socket.disconnect(true);
-            return;
-        }
+        const isGuest = socket.handshake.query?.isGuest === 'true';
         let userId;
-        try {
-            const decoded = jwt.verify(token, process.env.AUTH_SECRET);
-            userId = decoded.id;
-            console.log('Socket authenticated for user:', userId);
-        } catch (err) {
-            console.log('Socket authentication failed:', err.message);
-            socket.disconnect(true);
-            return;
+        let role;
+
+        if (isGuest) {
+            userId = socket.handshake.query?.guestId || `guest_${socket.id}`;
+            console.log('Guest socket connected:', userId);
+        } else {
+            if (!token) {
+                console.log('Socket connection rejected - no token provided');
+                socket.disconnect(true);
+                return;
+            }
+            try {
+                const decoded = jwt.verify(token, process.env.AUTH_SECRET);
+                userId = decoded.id;
+                role = decoded.role;
+                console.log('Socket authenticated for user:', userId, 'Role:', role);
+            } catch (err) {
+                console.log('Socket authentication failed:', err.message);
+                socket.disconnect(true);
+                return;
+            }
         }
         
         // Map userId to socket and mark as online
         userSockets.set(userId, socket);
         onlineUsers.add(userId);
         socket.userId = userId;
-        console.log(`User ${userId} connected with socket ${socket.id}`);
+
+        if (['SUPERADMIN', 'SCHOOL_ADMIN', 'MANAGER'].includes(role)) {
+            onlineAdmins.add(userId);
+            // Broadcast that support is online
+            io.emit('support_status_changed', { isOnline: true });
+        }
+
+        console.log(`User/Guest ${userId} connected with socket ${socket.id}`);
 
         // Join a personal room for direct messaging
         socket.join(`user_${userId}`);
@@ -146,11 +168,47 @@ export function setupSocketIO(server, app) {
             }
         });
 
+        // --- Support Ticket Events ---
+        
+        // Check initial support status
+        socket.on('check_support_status', () => {
+            socket.emit('support_status_changed', { isOnline: onlineAdmins.size > 0 });
+        });
+
+        socket.on('join_ticket', (data) => {
+            if (data && data.ticketId) {
+                socket.join(`ticket_${data.ticketId}`);
+                console.log(`Socket ${socket.id} joined ticket_${data.ticketId}`);
+            }
+        });
+
+        socket.on('leave_ticket', (data) => {
+            if (data && data.ticketId) {
+                socket.leave(`ticket_${data.ticketId}`);
+            }
+        });
+
+        socket.on('support_message', (data) => {
+            // Broadcast to the ticket room so other admins/user can see
+            if (data && data.ticketId) {
+                io.to(`ticket_${data.ticketId}`).emit('new_support_message', data);
+            }
+        });
+
+        // -----------------------------
+
         socket.on('disconnect', () => {
             userSockets.delete(userId);
             onlineUsers.delete(userId);
-            console.log(`User ${userId} disconnected from socket ${socket.id}`);
+            console.log(`User/Guest ${userId} disconnected from socket ${socket.id}`);
             
+            if (onlineAdmins.has(userId)) {
+                onlineAdmins.delete(userId);
+                if (onlineAdmins.size === 0) {
+                    io.emit('support_status_changed', { isOnline: false });
+                }
+            }
+
             // Emit user status change to all connected clients
             socket.broadcast.emit('user_status_changed', { 
                 userId, 

@@ -111,6 +111,11 @@ model user {
   // Specialization relations
   createdSpecializations specialization[] @relation("SpecializationCreatedBy")
   updatedSpecializations specialization[] @relation("SpecializationUpdatedBy")
+
+  // Support Ticketing relations
+  assignedTickets ticket[] @relation("AssignedTickets")
+  sentMessages ticketMessage[] @relation("AdminMessages")
+  createdTickets ticket[] @relation("UserCreatedTickets")
 }
 
 enum Role {
@@ -165,6 +170,10 @@ model studentUser {
   student           student?
   activities        userActivity[]
   uploadedDocuments studentDocument[] @relation("studentUploadedDocuments")
+
+  // Support Ticketing relations
+  createdTickets ticket[] @relation("StudentCreatedTickets")
+  sentMessages ticketMessage[] @relation("StudentMessages")
 }
 
 model student {
@@ -1156,4 +1165,76 @@ model specialization {
   @@index([courseId])
   @@index([schoolId])
   @@index([departmentId])
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model ticket {
+  id              String        @id @default(auto()) @map("_id") @db.ObjectId
+  ticketNumber    String        @unique
+  subject         String
+  status          TicketStatus  @default(OPEN)
+  priority        TicketPriority @default(MEDIUM)
+  
+  // Relations
+  assignedTo      user?         @relation("AssignedTickets", fields: [assignedToId], references: [id])
+  assignedToId    String?       @db.ObjectId
+
+  // For logged in staff/managers creating a ticket
+  creatorUser     user?         @relation("UserCreatedTickets", fields: [creatorUserId], references: [id])
+  creatorUserId   String?       @db.ObjectId
+
+  // For logged in students creating a ticket
+  creatorStudent  studentUser?  @relation("StudentCreatedTickets", fields: [creatorStudentId], references: [id])
+  creatorStudentId String?      @db.ObjectId
+
+  // For guest users (not logged in)
+  guestName       String?
+  guestEmail      String?
+  guestPhone      String?
+
+  messages        ticketMessage[]
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  resolvedAt      DateTime?
+}
+
+model ticketMessage {
+  id              String        @id @default(auto()) @map("_id") @db.ObjectId
+  message         String
+  isInternal      Boolean       @default(false)
+  attachmentUrl   String?
+  
+  // Relations
+  ticket          ticket        @relation(fields: [ticketId], references: [id])
+  ticketId        String        @db.ObjectId
+
+  // Sender tracking
+  senderAdmin     user?         @relation("AdminMessages", fields: [senderAdminId], references: [id])
+  senderAdminId   String?       @db.ObjectId
+
+  senderStudent   studentUser?  @relation("StudentMessages", fields: [senderStudentId], references: [id])
+  senderStudentId String?       @db.ObjectId
+
+  // For guests, we can just rely on the ticket's guest details, or store the name if we want to be explicit
+  senderName      String?       // "Admin Name" or "Guest Name"
+
+  readByAdmin     Boolean       @default(false)
+  readByUser      Boolean       @default(false)
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 }
