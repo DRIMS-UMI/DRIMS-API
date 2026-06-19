@@ -921,6 +921,8 @@ model researchRequest {
 
 enum RequestStatus {
   PENDING
+  IN_REVIEW
+  BEING_PROCESSED
   APPROVED
   REJECTED
   CANCELLED
