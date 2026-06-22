@@ -1543,6 +1543,9 @@ export const uploadReviewedDocument = async (req, res, next) => {
       timeout: 30000 // Increase interactive transaction timeout to 30 seconds for uploading large files to MongoDB Atlas
     });
 
+    // Cancel the pending 14-day document review reminder, if any
+    await notificationService.cancelDocumentReviewReminder(documentId);
+
     res.status(201).json({
       message: 'Reviewed document uploaded successfully',
       document: {

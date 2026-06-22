@@ -242,6 +242,9 @@ model student {
 
   // Add research clinic bookings
   clinicBookings researchClinicBooking[]
+
+  // Supervisor Appointments
+  supervisorAppointments supervisorAppointment[]
 }
 
 model statusDefinition {
@@ -572,6 +575,10 @@ model supervisor {
   
   // Add this relation
   notifications notification[] @relation("SupervisorNotifications")
+
+  // Supervisor Appointment relations
+  availabilities supervisorAvailability[]
+  appointments   supervisorAppointment[]
 }
 
 model fieldWork {
@@ -1240,4 +1247,47 @@ model ticketMessage {
 
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
+}
+
+model supervisorAvailability {
+  id           String      @id @default(auto()) @map("_id") @db.ObjectId
+  supervisorId String      @db.ObjectId
+  supervisor   supervisor  @relation(fields: [supervisorId], references: [id])
+  date         DateTime    // Specific date of the availability
+  startTime    String      // e.g., "09:00"
+  endTime      String      // e.g., "12:00"
+  maxStudents  Int         @default(1)
+  currentBookings Int      @default(0)
+  isActive     Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  
+  appointments supervisorAppointment[]
+}
+
+enum SupervisorAppointmentStatus {
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+model supervisorAppointment {
+  id               String      @id @default(auto()) @map("_id") @db.ObjectId
+  supervisorId     String      @db.ObjectId
+  supervisor       supervisor  @relation(fields: [supervisorId], references: [id])
+  studentId        String      @db.ObjectId
+  student          student     @relation(fields: [studentId], references: [id])
+  availabilityId   String      @db.ObjectId
+  availability     supervisorAvailability @relation(fields: [availabilityId], references: [id])
+  
+  date             DateTime    // Specific date of the appointment
+  startTime        String      // e.g., "09:00"
+  endTime          String      // e.g., "09:30"
+  status           SupervisorAppointmentStatus @default(CONFIRMED)
+  notes            String?     // Student notes
+  feedback         String?     // Supervisor feedback after appointment
+  
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
 }

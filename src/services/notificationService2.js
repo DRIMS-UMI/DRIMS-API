@@ -546,6 +546,31 @@ class NotificationService {
         });
     }
 
+    // Cancel document review reminder
+    async cancelDocumentReviewReminder(documentId) {
+        try {
+            const notifications = await prisma.notification.findMany({
+                where: {
+                    statusType: 'PENDING',
+                    type: 'REMINDER',
+                    metadata: {
+                        path: ['documentId'],
+                        equals: documentId
+                    }
+                }
+            });
+
+            for (const notification of notifications) {
+                await this.cancelNotification(notification.id);
+            }
+            if (notifications.length > 0) {
+                console.log(`Cancelled ${notifications.length} document review reminders for document ${documentId}`);
+            }
+        } catch (error) {
+            console.error(`Error cancelling review reminders for document ${documentId}:`, error);
+        }
+    }
+
     // Test Netlify function connection
     async testConnection() {
         try {

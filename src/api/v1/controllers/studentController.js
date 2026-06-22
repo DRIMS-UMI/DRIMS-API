@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { sanitizeForLog } from "../../../utils/sanitizeForLog.js";
 import { notificationService } from "../../../services/notificationService2.js";
+import emailService from "../../../services/emailService2.js";
 
 // Student login controller
 export const loginStudent = async (req, res, next) => {
@@ -180,7 +181,7 @@ export const getStudentProfile = async (req, res, next) => {
         proposals: {
           include: {
             defenses: true,
-            
+
           }
         },
         books: {
@@ -351,7 +352,7 @@ export const getStudentProposals = async (req, res, next) => {
       },
     });
 
-   
+
 
     res.status(200).json({
       proposals: proposals,
@@ -374,7 +375,7 @@ export const getStudentBooks = async (req, res, next) => {
       include: { student: true }
     });
 
-    if (!user || !user.student) { 
+    if (!user || !user.student) {
       const error = new Error("Student not found for this user");
       error.statusCode = 404;
       throw error;
@@ -421,7 +422,7 @@ export const getStudentBooks = async (req, res, next) => {
       },
     });
 
-  
+
 
     res.status(200).json({
       books,
@@ -602,17 +603,17 @@ export const getStudentDashboardStats = async (req, res, next) => {
     const stats = {
       currentStatus: student.statuses[0]?.definition?.name || "No Status",
       totalProposals: student.proposals.length,
-      completedProposals: student.proposals.filter(p => 
+      completedProposals: student.proposals.filter(p =>
         p.defenses?.some(d => d.isCurrent && d.verdict)
       ).length,
-      pendingProposals: student.proposals.filter(p => 
+      pendingProposals: student.proposals.filter(p =>
         !p.defenses?.some(d => d.isCurrent && d.verdict)
       ).length,
       totalBooks: student.books.length,
-      completedBooks: student.books.filter(b => 
+      completedBooks: student.books.filter(b =>
         b.vivaHistory?.some(v => v.isCurrent)
       ).length,
-      pendingBooks: student.books.filter(b => 
+      pendingBooks: student.books.filter(b =>
         !b.vivaHistory?.some(v => v.isCurrent)
       ).length,
       totalNotifications: student.notifications.length,
@@ -653,7 +654,7 @@ export const getStudentNotifications = async (req, res, next) => {
     const studentId = user.student.id;
 
     const notifications = await prisma.notification.findMany({
-      where: { 
+      where: {
         studentId
       },
       orderBy: { createdAt: 'desc' },
@@ -662,7 +663,7 @@ export const getStudentNotifications = async (req, res, next) => {
     });
 
     const total = await prisma.notification.count({
-      where: { 
+      where: {
         studentId
       }
     });
@@ -708,7 +709,7 @@ export const markNotificationAsRead = async (req, res, next) => {
 
     // For now, we'll just verify the notification exists and belongs to the student
     const notification = await prisma.notification.findFirst({
-      where: { 
+      where: {
         id: notificationId,
         studentId
       }
@@ -926,7 +927,7 @@ export const getResearchRequest = async (req, res, next) => {
     }
     next(error);
   }
-}; 
+};
 
 // List all supervisors for messaging
 export const listAllSupervisorsForMessaging = async (req, res, next) => {
@@ -961,7 +962,7 @@ export const listAllSupervisorsForMessaging = async (req, res, next) => {
         email: true,
         role: true,
         title: true,
-        
+
       }
     });
 
@@ -970,217 +971,217 @@ export const listAllSupervisorsForMessaging = async (req, res, next) => {
     if (!error.statusCode) error.statusCode = 500;
     next(error);
   }
-}; 
+};
 
 // Get available evaluations for student (POST_PROPOSAL_DEFENSE and POST_VIVA)
 export const getAvailableEvaluations = async (req, res, next) => {
-    try {
-        const studentId = req.user.studentId;
+  try {
+    const studentId = req.user.studentId;
 
-        if (!studentId) {
-            const error = new Error('Student ID not found');
-            error.statusCode = 400;
-            throw error;
-        }
-
-        // Get student with current status and evaluations
-        const student = await prisma.student.findUnique({
-            where: { id: studentId },
-            include: {
-                statuses: {
-                    where: { isCurrent: true },
-                    include: { definition: true }
-                },
-                evaluations: true,
-                proposals: {
-                    include: {
-                        defenses: {
-                            where: { isCurrent: true }
-                        }
-                    }
-                },
-                books: {
-                    include: {
-                        vivaHistory: {
-                            where: { isCurrent: true }
-                        }
-                    }
-                }
-            }
-        });
-
-        if (!student) {
-            const error = new Error('Student not found');
-            error.statusCode = 404;
-            throw error;
-        }
-
-        const currentStatus = student.statuses[0]?.definition?.name;
-        const availableEvaluations = [];
-
-        // Check if student is eligible for POST_PROPOSAL_DEFENSE evaluation
-        const proposalDefenseStatuses = [
-            'passed-proposal graded',
-            'compliance report submitted',
-            'letter to field issued',
-            'fieldwork',
-            'dissertation submitted'
-        ];
-
-        const hasCompletedProposalDefense = proposalDefenseStatuses.includes(currentStatus) ||
-            student.proposals.some(proposal => 
-                proposal.defenses.some(defense => 
-                    defense.verdict && defense.verdict.includes('PASS')
-                )
-            );
-
-        const hasPostProposalEvaluation = student.evaluations.some(
-            evaluation => evaluation.trigger === 'POST_PROPOSAL_DEFENSE'
-        );
-
-        if (hasCompletedProposalDefense && !hasPostProposalEvaluation) {
-            availableEvaluations.push({
-                trigger: 'POST_PROPOSAL_DEFENSE',
-                title: 'Post-Proposal Defense Evaluation',
-                description: 'Evaluate your satisfaction with research training, supervision, and proposal defense process'
-            });
-        }
-
-        // Check if student is eligible for POST_VIVA evaluation
-        const postVivaStatuses = [
-            'minutes pending',
-            'compliance report submitted',
-            'results approved',
-            'results sent to schools',
-            'results approved by senate',
-            'graduated'
-        ];
-
-        const hasCompletedViva = postVivaStatuses.includes(currentStatus) ||
-            student.books.some(book => 
-                book.vivaHistory.some(viva => 
-                    viva.verdict && (viva.verdict.includes('PASS') || viva.status === 'COMPLETED')
-                )
-            );
-
-        const hasPostVivaEvaluation = student.evaluations.some(
-            evaluation => evaluation.trigger === 'POST_VIVA'
-        );
-
-        if (hasCompletedViva && !hasPostVivaEvaluation) {
-            availableEvaluations.push({
-                trigger: 'POST_VIVA',
-                title: 'Post-Viva Evaluation',
-                description: 'Evaluate your satisfaction with the entire research process including dissertation examination'
-            });
-        }
-
-        res.status(200).json({
-            message: 'Available evaluations retrieved successfully',
-            evaluations: availableEvaluations,
-            currentStatus: currentStatus
-        });
-
-    } catch (error) {
-        console.error('Error in getAvailableEvaluations:', error);
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
+    if (!studentId) {
+      const error = new Error('Student ID not found');
+      error.statusCode = 400;
+      throw error;
     }
+
+    // Get student with current status and evaluations
+    const student = await prisma.student.findUnique({
+      where: { id: studentId },
+      include: {
+        statuses: {
+          where: { isCurrent: true },
+          include: { definition: true }
+        },
+        evaluations: true,
+        proposals: {
+          include: {
+            defenses: {
+              where: { isCurrent: true }
+            }
+          }
+        },
+        books: {
+          include: {
+            vivaHistory: {
+              where: { isCurrent: true }
+            }
+          }
+        }
+      }
+    });
+
+    if (!student) {
+      const error = new Error('Student not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const currentStatus = student.statuses[0]?.definition?.name;
+    const availableEvaluations = [];
+
+    // Check if student is eligible for POST_PROPOSAL_DEFENSE evaluation
+    const proposalDefenseStatuses = [
+      'passed-proposal graded',
+      'compliance report submitted',
+      'letter to field issued',
+      'fieldwork',
+      'dissertation submitted'
+    ];
+
+    const hasCompletedProposalDefense = proposalDefenseStatuses.includes(currentStatus) ||
+      student.proposals.some(proposal =>
+        proposal.defenses.some(defense =>
+          defense.verdict && defense.verdict.includes('PASS')
+        )
+      );
+
+    const hasPostProposalEvaluation = student.evaluations.some(
+      evaluation => evaluation.trigger === 'POST_PROPOSAL_DEFENSE'
+    );
+
+    if (hasCompletedProposalDefense && !hasPostProposalEvaluation) {
+      availableEvaluations.push({
+        trigger: 'POST_PROPOSAL_DEFENSE',
+        title: 'Post-Proposal Defense Evaluation',
+        description: 'Evaluate your satisfaction with research training, supervision, and proposal defense process'
+      });
+    }
+
+    // Check if student is eligible for POST_VIVA evaluation
+    const postVivaStatuses = [
+      'minutes pending',
+      'compliance report submitted',
+      'results approved',
+      'results sent to schools',
+      'results approved by senate',
+      'graduated'
+    ];
+
+    const hasCompletedViva = postVivaStatuses.includes(currentStatus) ||
+      student.books.some(book =>
+        book.vivaHistory.some(viva =>
+          viva.verdict && (viva.verdict.includes('PASS') || viva.status === 'COMPLETED')
+        )
+      );
+
+    const hasPostVivaEvaluation = student.evaluations.some(
+      evaluation => evaluation.trigger === 'POST_VIVA'
+    );
+
+    if (hasCompletedViva && !hasPostVivaEvaluation) {
+      availableEvaluations.push({
+        trigger: 'POST_VIVA',
+        title: 'Post-Viva Evaluation',
+        description: 'Evaluate your satisfaction with the entire research process including dissertation examination'
+      });
+    }
+
+    res.status(200).json({
+      message: 'Available evaluations retrieved successfully',
+      evaluations: availableEvaluations,
+      currentStatus: currentStatus
+    });
+
+  } catch (error) {
+    console.error('Error in getAvailableEvaluations:', error);
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
 };
 
 // Submit student evaluation
 export const submitStudentEvaluation = async (req, res, next) => {
-    try {
-        const studentId = req.user.studentId;
-        const {
-            trigger,
-            researchTrainingSatisfaction,
-            supervisionSatisfaction,
-            proposalDefenseSatisfaction,
-            dissertationExaminationSatisfaction,
-            researchTrainingComments,
-            supervisionComments,
-            proposalDefenseComments,
-            dissertationExaminationComments,
-            overallComments,
-            suggestions
-        } = req.body;
+  try {
+    const studentId = req.user.studentId;
+    const {
+      trigger,
+      researchTrainingSatisfaction,
+      supervisionSatisfaction,
+      proposalDefenseSatisfaction,
+      dissertationExaminationSatisfaction,
+      researchTrainingComments,
+      supervisionComments,
+      proposalDefenseComments,
+      dissertationExaminationComments,
+      overallComments,
+      suggestions
+    } = req.body;
 
-        if (!studentId) {
-            const error = new Error('Student ID not found');
-            error.statusCode = 400;
-            throw error;
-        }
-
-        // Validate required fields
-        if (!trigger || !researchTrainingSatisfaction || !supervisionSatisfaction || !proposalDefenseSatisfaction) {
-            const error = new Error('Trigger and basic satisfaction ratings are required');
-            error.statusCode = 400;
-            throw error;
-        }
-
-        // Validate trigger
-        if (!['POST_PROPOSAL_DEFENSE', 'POST_VIVA'].includes(trigger)) {
-            const error = new Error('Invalid evaluation trigger');
-            error.statusCode = 400;
-            throw error;
-        }
-
-        // For POST_VIVA evaluations, dissertation examination satisfaction is required
-        if (trigger === 'POST_VIVA' && !dissertationExaminationSatisfaction) {
-            const error = new Error('Dissertation examination satisfaction is required for post-viva evaluations');
-            error.statusCode = 400;
-            throw error;
-        }
-
-        // Check if evaluation already exists
-        const existingEvaluation = await prisma.studentEvaluation.findFirst({
-            where: {
-                studentId: studentId,
-                trigger: trigger
-            }
-        });
-
-        if (existingEvaluation) {
-            const error = new Error('Evaluation for this trigger already exists');
-            error.statusCode = 409;
-            throw error;
-        }
-
-        // Create the evaluation
-        const evaluation = await prisma.studentEvaluation.create({
-            data: {
-                student: { connect: { id: studentId } },
-                trigger,
-                researchTrainingSatisfaction,
-                supervisionSatisfaction,
-                proposalDefenseSatisfaction,
-                dissertationExaminationSatisfaction: trigger === 'POST_VIVA' ? dissertationExaminationSatisfaction : null,
-                researchTrainingComments,
-                supervisionComments,
-                proposalDefenseComments,
-                dissertationExaminationComments: trigger === 'POST_VIVA' ? dissertationExaminationComments : null,
-                overallComments,
-                suggestions,
-                isCompleted: true,
-                submittedAt: new Date()
-            }
-        });
-
-        res.status(201).json({
-            message: 'Evaluation submitted successfully',
-            evaluation
-        });
-
-    } catch (error) {
-        console.error('Error in submitStudentEvaluation:', error);
-        if (!error.statusCode) {
-            error.statusCode = 500;
-        }
-        next(error);
+    if (!studentId) {
+      const error = new Error('Student ID not found');
+      error.statusCode = 400;
+      throw error;
     }
+
+    // Validate required fields
+    if (!trigger || !researchTrainingSatisfaction || !supervisionSatisfaction || !proposalDefenseSatisfaction) {
+      const error = new Error('Trigger and basic satisfaction ratings are required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // Validate trigger
+    if (!['POST_PROPOSAL_DEFENSE', 'POST_VIVA'].includes(trigger)) {
+      const error = new Error('Invalid evaluation trigger');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // For POST_VIVA evaluations, dissertation examination satisfaction is required
+    if (trigger === 'POST_VIVA' && !dissertationExaminationSatisfaction) {
+      const error = new Error('Dissertation examination satisfaction is required for post-viva evaluations');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // Check if evaluation already exists
+    const existingEvaluation = await prisma.studentEvaluation.findFirst({
+      where: {
+        studentId: studentId,
+        trigger: trigger
+      }
+    });
+
+    if (existingEvaluation) {
+      const error = new Error('Evaluation for this trigger already exists');
+      error.statusCode = 409;
+      throw error;
+    }
+
+    // Create the evaluation
+    const evaluation = await prisma.studentEvaluation.create({
+      data: {
+        student: { connect: { id: studentId } },
+        trigger,
+        researchTrainingSatisfaction,
+        supervisionSatisfaction,
+        proposalDefenseSatisfaction,
+        dissertationExaminationSatisfaction: trigger === 'POST_VIVA' ? dissertationExaminationSatisfaction : null,
+        researchTrainingComments,
+        supervisionComments,
+        proposalDefenseComments,
+        dissertationExaminationComments: trigger === 'POST_VIVA' ? dissertationExaminationComments : null,
+        overallComments,
+        suggestions,
+        isCompleted: true,
+        submittedAt: new Date()
+      }
+    });
+
+    res.status(201).json({
+      message: 'Evaluation submitted successfully',
+      evaluation
+    });
+
+  } catch (error) {
+    console.error('Error in submitStudentEvaluation:', error);
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
 };
 
 // Get student's completed evaluations
@@ -1308,7 +1309,8 @@ export const uploadDocument = async (req, res, next) => {
           select: {
             id: true,
             name: true,
-            title: true
+            title: true,
+            email: true
           }
         }
       }
@@ -1365,6 +1367,67 @@ export const uploadDocument = async (req, res, next) => {
       console.log('Student event emitted:', studentEmitted);
     } else {
       console.log('Socket IO instance not available');
+    }
+
+    // Send email notification to supervisor
+    try {
+      if (document.supervisor?.email) {
+        const emailHtml = `
+          <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+              <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 8px;">
+                <h2 style="color: #23388F;">New Document Submission</h2>
+                <p>Dear ${document.supervisor.title ? document.supervisor.title + ' ' : ''}${document.supervisor.name},</p>
+                <p>Your student <strong>${user.student.fullName}</strong> has submitted a new document for your review.</p>
+                <div style="background-color: #f9f9f9; padding: 15px; border-left: 4px solid #23388F; margin: 20px 0;">
+                  <p style="margin: 5px 0;"><strong>Title:</strong> ${document.title}</p>
+                  <p style="margin: 5px 0;"><strong>Type:</strong> ${document.type}</p>
+                  <p style="margin: 5px 0;"><strong>File Name:</strong> ${document.fileName}</p>
+                </div>
+                <p>Please log in to the UMI Supervisor Portal to review the document and provide feedback.</p>
+                <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+                <p style="font-size: 12px; color: #666;">This is an automated message from the UMI Research Management System.</p>
+              </div>
+            </body>
+          </html>
+        `;
+
+        await emailService.sendEmail({
+          to: document.supervisor.email,
+          subject: `New Document Submission from ${user.student.fullName}`,
+          htmlContent: emailHtml,
+          textContent: `Dear ${document.supervisor.name}, your student ${user.student.fullName} has submitted a new document (${document.title}). Please log in to review.`
+        });
+        console.log('Document submission email sent to supervisor:', document.supervisor.email);
+      }
+    } catch (emailError) {
+      console.error('Failed to send document submission email to supervisor:', emailError);
+      // We don't fail the overall upload request if the email fails
+    }
+
+    // Schedule 14-day document review reminder
+    try {
+      const scheduledDate = new Date();
+      scheduledDate.setDate(scheduledDate.getDate() + 14);
+
+      await notificationService.scheduleNotification({
+        type: 'REMINDER',
+        statusType: 'PENDING',
+        title: 'Document Review Reminder',
+        message: `This is a reminder to review the document "${document.title}" submitted by ${user.student.fullName}. It has been 14 days since submission.`,
+        recipientCategory: 'SUPERVISOR',
+        recipientId: supervisorId,
+        scheduledFor: scheduledDate,
+        metadata: {
+          documentId: document.id,
+          additionalContent: `<p>A document submitted by your student requires your review.</p>
+                              <p><strong>Student:</strong> ${user.student.fullName}</p>
+                              <p><strong>Document:</strong> ${document.title}</p>`
+        }
+      });
+      console.log('Scheduled 14-day review reminder for document:', document.id);
+    } catch (reminderError) {
+      console.error('Failed to schedule document review reminder:', reminderError);
     }
 
     res.status(201).json({
@@ -1513,7 +1576,7 @@ export const downloadDocument = async (req, res, next) => {
 
     // Set response headers
     res.setHeader('Content-Type', document.fileType);
-    res.setHeader('Content-Disposition', `attachment; filename="${document.fileName}"`);
+    res.setHeader('Content-Disposition', `attachment; filename = "${document.fileName}"`);
     res.setHeader('Content-Length', document.fileSize);
 
     console.log('Download file data info:', {
