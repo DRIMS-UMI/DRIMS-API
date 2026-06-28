@@ -8774,7 +8774,9 @@ export const createStaffMember = async (req, res, next) => {
             name,
             title,
             email,
+            secondaryEmail,
             phone,
+            secondaryPhone,
             designation,
             specialization,
             qualifications,
@@ -8833,7 +8835,9 @@ export const createStaffMember = async (req, res, next) => {
                 name,
                 title,
                 email,
+                secondaryEmail,
                 phone,
+                secondaryPhone,
                 designation,
                 specialization,
                 qualifications,
@@ -9114,7 +9118,9 @@ export const updateStaffMember = async (req, res, next) => {
                 name,
                 title,
                 email,
+                secondaryEmail,
                 phone,
+                secondaryPhone,
                 designation,
                 specialization,
                 qualifications,
@@ -9160,7 +9166,9 @@ export const updateStaffMember = async (req, res, next) => {
                     title: updatedStaffMember.title,
                     designation: updatedStaffMember.designation,
                     workEmail: updatedStaffMember.email,
-                    primaryPhone: updatedStaffMember.phone || ''
+                    personalEmail: updatedStaffMember.secondaryEmail,
+                    primaryPhone: updatedStaffMember.phone || '',
+                    secondaryPhone: updatedStaffMember.secondaryPhone
                 }
             }).catch(e => console.error("Sync supervisor failed:", e)));
         }
@@ -9172,7 +9180,9 @@ export const updateStaffMember = async (req, res, next) => {
                     name: updatedStaffMember.name,
                     title: updatedStaffMember.title,
                     primaryEmail: updatedStaffMember.email,
-                    primaryPhone: updatedStaffMember.phone || ''
+                    secondaryEmail: updatedStaffMember.secondaryEmail,
+                    primaryPhone: updatedStaffMember.phone || '',
+                    secondaryPhone: updatedStaffMember.secondaryPhone
                 }
             }).catch(e => console.error("Sync examiner failed:", e)));
         }
@@ -9183,7 +9193,8 @@ export const updateStaffMember = async (req, res, next) => {
                 data: {
                     name: updatedStaffMember.name,
                     email: updatedStaffMember.email,
-                    primaryPhone: updatedStaffMember.phone || ''
+                    primaryPhone: updatedStaffMember.phone || '',
+                    secondaryPhone: updatedStaffMember.secondaryPhone
                 }
             }).catch(e => console.error("Sync reviewer failed:", e)));
         }
@@ -9443,7 +9454,9 @@ export const createSupervisorFromStaff = async (req, res, next) => {
                     designation: staffMember.designation,
                     role: 'SUPERVISOR',
                     workEmail: staffMember.email,
+                    personalEmail: staffMember.secondaryEmail,
                     primaryPhone: staffMember.phone,
+                    secondaryPhone: staffMember.secondaryPhone,
                     facultyType: 'supervisor',
                     school: { connect: { id: staffMember.schoolId } },
                     campus: { connect: { id: staffMember.campusId } },
@@ -9736,7 +9749,9 @@ export const createExaminerFromStaff = async (req, res, next) => {
                 data: {
                     name: staffMember.name,
                     primaryEmail: staffMember.email,
+                    secondaryEmail: staffMember.secondaryEmail,
                     primaryPhone: staffMember.phone,
+                    secondaryPhone: staffMember.secondaryPhone,
                     type: examinerType,
                     institution: staffMember.isExternal ? staffMember.externalInstitution : 'Uganda Management Institute',
                     specialization: staffMember.specialization,

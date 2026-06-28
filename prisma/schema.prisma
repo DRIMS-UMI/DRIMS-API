@@ -1020,7 +1020,9 @@ model staffMember {
   name                  String
   title                 String?
   email                 String    @unique
+  secondaryEmail        String?
   phone                 String?
+  secondaryPhone        String?
   designation           String?
   specialization        String?
   qualifications        String?
