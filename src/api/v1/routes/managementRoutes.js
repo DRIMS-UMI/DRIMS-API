@@ -183,7 +183,7 @@ router.delete('/schools/:schoolId', authenticateToken, authorizeRoles('SUPERADMI
 
 // Campus management routes
 router.post('/campuses', authenticateToken, authorizeRoles('SUPERADMIN'), createCampus);
-router.get('/campuses', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN', 'AUDITOR'), getAllCampuses);
+router.get('/campuses', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN', 'AUDITOR', 'SUPERVISOR', 'STUDENT'), getAllCampuses);
 router.get('/campuses/:campusId', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN', 'AUDITOR'), getCampus);
 router.put('/campuses/:campusId', authenticateToken, authorizeRoles('SUPERADMIN'), updateCampus);
 router.delete('/campuses/:campusId', authenticateToken, authorizeRoles('SUPERADMIN'), deleteCampus);

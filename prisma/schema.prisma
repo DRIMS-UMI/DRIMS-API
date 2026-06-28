@@ -1249,6 +1249,11 @@ model ticketMessage {
   updatedAt       DateTime      @updatedAt
 }
 
+enum MeetingType {
+  PHYSICAL
+  VIRTUAL
+}
+
 model supervisorAvailability {
   id           String      @id @default(auto()) @map("_id") @db.ObjectId
   supervisorId String      @db.ObjectId
@@ -1259,6 +1264,10 @@ model supervisorAvailability {
   maxStudents  Int         @default(1)
   currentBookings Int      @default(0)
   isActive     Boolean     @default(true)
+  meetingType  MeetingType @default(PHYSICAL)
+  location     String?     // campus ID or name
+  meetingLink  String?     // URL for virtual meetings
+  purpose      String?     // Notes / Purpose
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
   

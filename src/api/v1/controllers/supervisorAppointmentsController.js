@@ -37,7 +37,7 @@ export const getAvailabilities = async (req, res) => {
 export const addAvailability = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { date, startTime, endTime, maxStudents } = req.body;
+    const { date, startTime, endTime, maxStudents, meetingType, location, meetingLink, purpose } = req.body;
 
     const supervisor = await prisma.supervisor.findUnique({
       where: { userId },
@@ -47,22 +47,34 @@ export const addAvailability = async (req, res) => {
       return res.status(404).json({ message: 'Supervisor profile not found' });
     }
 
-    // Convert date string to DateTime object
-    const availabilityDate = new Date(date);
+    const recurringWeeks = parseInt(req.body.recurringWeeks) || 1;
+    const slotsToCreate = [];
 
-    const availability = await prisma.supervisorAvailability.create({
-      data: {
+    for (let i = 0; i < recurringWeeks; i++) {
+      const slotDate = new Date(date);
+      // Advance by i weeks
+      slotDate.setDate(slotDate.getDate() + (i * 7));
+
+      slotsToCreate.push({
         supervisorId: supervisor.id,
-        date: availabilityDate,
+        date: slotDate,
         startTime,
         endTime,
         maxStudents: parseInt(maxStudents) || 1,
         currentBookings: 0,
         isActive: true,
-      },
+        meetingType: meetingType || 'PHYSICAL',
+        location: location || null,
+        meetingLink: meetingLink || null,
+        purpose: purpose || null,
+      });
+    }
+
+    const createdCount = await prisma.supervisorAvailability.createMany({
+      data: slotsToCreate,
     });
 
-    res.status(201).json(availability);
+    res.status(201).json({ count: createdCount.count, message: 'Availability added successfully' });
   } catch (error) {
     console.error('Error adding availability:', error);
     res.status(500).json({ message: 'Server error' });
@@ -95,6 +107,8 @@ export const deleteAvailability = async (req, res) => {
 
     // If appointments exist, cancel them instead of deleting the availability
     if (availability.appointments.length > 0) {
+      const reason = req.body.reason || 'Cancelled by supervisor';
+
       await prisma.supervisorAvailability.update({
         where: { id },
         data: { isActive: false },
@@ -102,7 +116,10 @@ export const deleteAvailability = async (req, res) => {
       // Also cancel the appointments
       await prisma.supervisorAppointment.updateMany({
         where: { availabilityId: id },
-        data: { status: 'CANCELLED' }
+        data: { 
+          status: 'CANCELLED',
+          feedback: reason
+        }
       });
       return res.status(200).json({ message: 'Availability and related appointments cancelled' });
     } else {

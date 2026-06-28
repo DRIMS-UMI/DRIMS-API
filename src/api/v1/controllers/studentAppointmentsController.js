@@ -145,7 +145,8 @@ export const getStudentAppointments = async (req, res) => {
       include: {
         supervisor: {
           select: { id: true, name: true, title: true }
-        }
+        },
+        availability: true
       },
       orderBy: { date: 'asc' }
     });
@@ -153,6 +154,158 @@ export const getStudentAppointments = async (req, res) => {
     res.status(200).json(appointments);
   } catch (error) {
     console.error('Error fetching student appointments:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// Reschedule an appointment
+export const rescheduleAppointment = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { appointmentId } = req.params;
+    const { newAvailabilityId, notes } = req.body;
+
+    const studentUser = await prisma.studentUser.findFirst({
+      where: { id: userId },
+      include: { student: true }
+    });
+
+    if (!studentUser || !studentUser.student) {
+      return res.status(404).json({ message: 'Student profile not found' });
+    }
+
+    const existingAppointment = await prisma.supervisorAppointment.findUnique({
+      where: { id: appointmentId },
+    });
+
+    if (!existingAppointment || existingAppointment.studentId !== studentUser.student.id) {
+      return res.status(404).json({ message: 'Appointment not found or unauthorized' });
+    }
+
+    if (existingAppointment.status !== 'CONFIRMED') {
+      return res.status(400).json({ message: 'Only confirmed appointments can be rescheduled' });
+    }
+
+    const newAvailability = await prisma.supervisorAvailability.findUnique({
+      where: { id: newAvailabilityId },
+    });
+
+    if (!newAvailability) {
+      return res.status(404).json({ message: 'New availability not found' });
+    }
+
+    if (!newAvailability.isActive || newAvailability.currentBookings >= newAvailability.maxStudents) {
+      return res.status(400).json({ message: 'This new time slot is no longer available' });
+    }
+
+    // Check if student already booked the new slot
+    const existingBooking = await prisma.supervisorAppointment.findFirst({
+      where: {
+        studentId: studentUser.student.id,
+        supervisorId: newAvailability.supervisorId,
+        date: newAvailability.date,
+        startTime: newAvailability.startTime,
+        endTime: newAvailability.endTime,
+        status: { notIn: ['CANCELLED'] },
+        id: { not: appointmentId } // exclude the current one we are rescheduling
+      }
+    });
+
+    if (existingBooking) {
+      return res.status(400).json({ message: 'You have already booked this slot' });
+    }
+
+    // Transaction to safely reschedule
+    const result = await prisma.$transaction(async (prisma) => {
+      // 1. Decrement old availability
+      await prisma.supervisorAvailability.update({
+        where: { id: existingAppointment.availabilityId },
+        data: { currentBookings: { decrement: 1 } }
+      });
+
+      // 2. Increment new availability safely
+      await prisma.supervisorAvailability.update({
+        where: { 
+          id: newAvailabilityId,
+          currentBookings: { lt: newAvailability.maxStudents },
+          isActive: true
+        },
+        data: { currentBookings: { increment: 1 } }
+      });
+
+      // 3. Update the appointment
+      const updatedAppointment = await prisma.supervisorAppointment.update({
+        where: { id: appointmentId },
+        data: {
+          supervisorId: newAvailability.supervisorId,
+          availabilityId: newAvailabilityId,
+          date: newAvailability.date,
+          startTime: newAvailability.startTime,
+          endTime: newAvailability.endTime,
+          notes: notes !== undefined ? notes : existingAppointment.notes
+        }
+      });
+
+      return updatedAppointment;
+    });
+
+    res.status(200).json(result);
+  } catch (error) {
+    console.error('Error rescheduling appointment:', error);
+    res.status(500).json({ message: 'Server error or new slot is already full' });
+  }
+};
+
+// Cancel an appointment
+export const cancelAppointment = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { appointmentId } = req.params;
+
+    const studentUser = await prisma.studentUser.findFirst({
+      where: { id: userId },
+      include: { student: true }
+    });
+
+    if (!studentUser || !studentUser.student) {
+      return res.status(404).json({ message: 'Student profile not found' });
+    }
+
+    const existingAppointment = await prisma.supervisorAppointment.findUnique({
+      where: { id: appointmentId },
+    });
+
+    if (!existingAppointment || existingAppointment.studentId !== studentUser.student.id) {
+      return res.status(404).json({ message: 'Appointment not found or unauthorized' });
+    }
+
+    if (existingAppointment.status === 'CANCELLED') {
+      return res.status(400).json({ message: 'Appointment is already cancelled' });
+    }
+
+    // Transaction to safely cancel
+    const result = await prisma.$transaction(async (prisma) => {
+      // 1. Decrement availability
+      await prisma.supervisorAvailability.update({
+        where: { id: existingAppointment.availabilityId },
+        data: { currentBookings: { decrement: 1 } }
+      });
+
+      // 2. Update the appointment status
+      const updatedAppointment = await prisma.supervisorAppointment.update({
+        where: { id: appointmentId },
+        data: {
+          status: 'CANCELLED',
+          feedback: 'Cancelled by student'
+        }
+      });
+
+      return updatedAppointment;
+    });
+
+    res.status(200).json(result);
+  } catch (error) {
+    console.error('Error cancelling appointment:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };

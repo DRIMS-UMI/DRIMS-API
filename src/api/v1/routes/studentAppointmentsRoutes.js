@@ -15,5 +15,7 @@ router.get('/availability', studentAppointmentsController.getAvailableAppointmen
 // Appointments
 router.post('/', studentAppointmentsController.bookAppointment);
 router.get('/', studentAppointmentsController.getStudentAppointments);
+router.put('/:appointmentId/reschedule', studentAppointmentsController.rescheduleAppointment);
+router.put('/:appointmentId/cancel', studentAppointmentsController.cancelAppointment);
 
 export default router;
