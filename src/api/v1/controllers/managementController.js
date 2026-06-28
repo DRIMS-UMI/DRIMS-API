@@ -9149,6 +9149,57 @@ export const updateStaffMember = async (req, res, next) => {
             }
         });
 
+        // Synchronize roles
+        const syncPromises = [];
+
+        if (updatedStaffMember.supervisorId) {
+            syncPromises.push(prisma.supervisor.update({
+                where: { id: updatedStaffMember.supervisorId },
+                data: {
+                    name: updatedStaffMember.name,
+                    title: updatedStaffMember.title,
+                    designation: updatedStaffMember.designation,
+                    workEmail: updatedStaffMember.email,
+                    primaryPhone: updatedStaffMember.phone || ''
+                }
+            }).catch(e => console.error("Sync supervisor failed:", e)));
+        }
+
+        if (updatedStaffMember.examinerId) {
+            syncPromises.push(prisma.examiner.update({
+                where: { id: updatedStaffMember.examinerId },
+                data: {
+                    name: updatedStaffMember.name,
+                    title: updatedStaffMember.title,
+                    primaryEmail: updatedStaffMember.email,
+                    primaryPhone: updatedStaffMember.phone || ''
+                }
+            }).catch(e => console.error("Sync examiner failed:", e)));
+        }
+
+        if (updatedStaffMember.reviewerId) {
+            syncPromises.push(prisma.reviewer.update({
+                where: { id: updatedStaffMember.reviewerId },
+                data: {
+                    name: updatedStaffMember.name,
+                    email: updatedStaffMember.email,
+                    primaryPhone: updatedStaffMember.phone || ''
+                }
+            }).catch(e => console.error("Sync reviewer failed:", e)));
+        }
+
+        if (updatedStaffMember.panelistId) {
+            syncPromises.push(prisma.panelist.update({
+                where: { id: updatedStaffMember.panelistId },
+                data: {
+                    name: updatedStaffMember.name,
+                    email: updatedStaffMember.email
+                }
+            }).catch(e => console.error("Sync panelist failed:", e)));
+        }
+
+        await Promise.all(syncPromises);
+
         res.status(200).json({
             message: 'Staff member updated successfully',
             staffMember: updatedStaffMember
@@ -9362,53 +9413,60 @@ export const createSupervisorFromStaff = async (req, res, next) => {
             throw error;
         }
 
-        // Generate a random password
-        const randomPassword = crypto.randomBytes(10).toString('base64');
+        const { password } = req.body;
+
+        // Generate a random password or use provided
+        let clearPassword = password || crypto.randomBytes(10).toString('base64');
+        
         // Hash the password
-        const hashedPassword = await bcrypt.hash(randomPassword, 12);
+        const hashedPassword = await bcrypt.hash(clearPassword, 12);
 
-        // Create a new user for the supervisor
-        const newUser = await prisma.user.create({
-            data: {
-                name: staffMember.name,
-                title: staffMember.title,
-                email: staffMember.email,
-                designation: staffMember.designation,
-                password: hashedPassword,
-                role: 'SUPERVISOR',
-                phone: staffMember.phone
-            }
-        });
+        const { newSupervisor, newUser } = await prisma.$transaction(async (tx) => {
+            // Create a new user for the supervisor
+            const createdUser = await tx.user.create({
+                data: {
+                    name: staffMember.name,
+                    title: staffMember.title,
+                    email: staffMember.email,
+                    designation: staffMember.designation,
+                    password: hashedPassword,
+                    role: 'SUPERVISOR',
+                    phone: staffMember.phone
+                }
+            });
 
-        // Create the supervisor and attach the user
-        const newSupervisor = await prisma.supervisor.create({
-            data: {
-                name: staffMember.name,
-                title: staffMember.title,
-                designation: staffMember.designation,
-                role: 'SUPERVISOR',
-                workEmail: staffMember.email,
-                primaryPhone: staffMember.phone,
-                facultyType: 'supervisor',
-                school: { connect: { id: staffMember.schoolId } },
-                campus: { connect: { id: staffMember.campusId } },
-                department: { connect: { id: staffMember.departmentId } },
-                user: { connect: { id: newUser.id } }
-            },
-            include: {
-                user: true,
-                school: true,
-                campus: true,
-                department: true
-            }
-        });
+            // Create the supervisor and attach the user
+            const createdSupervisor = await tx.supervisor.create({
+                data: {
+                    name: staffMember.name,
+                    title: staffMember.title,
+                    designation: staffMember.designation,
+                    role: 'SUPERVISOR',
+                    workEmail: staffMember.email,
+                    primaryPhone: staffMember.phone,
+                    facultyType: 'supervisor',
+                    school: { connect: { id: staffMember.schoolId } },
+                    campus: { connect: { id: staffMember.campusId } },
+                    department: { connect: { id: staffMember.departmentId } },
+                    user: { connect: { id: createdUser.id } }
+                },
+                include: {
+                    user: true,
+                    school: true,
+                    campus: true,
+                    department: true
+                }
+            });
 
-        // Update the staff member to link to the supervisor
-        await prisma.staffMember.update({
-            where: { id: staffMemberId },
-            data: {
-                supervisorId: newSupervisor.id
-            }
+            // Update the staff member to link to the supervisor
+            await tx.staffMember.update({
+                where: { id: staffMemberId },
+                data: {
+                    supervisorId: createdSupervisor.id
+                }
+            });
+
+            return { newSupervisor: createdSupervisor, newUser: createdUser };
         });
 
         // Send email notification to the new supervisor
@@ -9477,7 +9535,7 @@ export const createSupervisorFromStaff = async (req, res, next) => {
                             <div class="credentials">
                                 <h3>Login Credentials</h3>
                                 <p><strong>Email:</strong> ${staffMember.email}</p>
-                                <p><strong>Temporary Password:</strong> ${randomPassword}</p>
+                                <p><strong>Temporary Password:</strong> ${clearPassword}</p>
                             </div>
                             <p>Please change your password after your first login.</p>
                             <p><strong>Next Steps:</strong></p>
@@ -9522,7 +9580,7 @@ export const createSupervisorFromStaff = async (req, res, next) => {
         res.status(201).json({
             message: 'Supervisor created successfully from staff member',
             supervisor: newSupervisor,
-            temporaryPassword: randomPassword
+            temporaryPassword: clearPassword
         });
 
     } catch (error) {
@@ -9599,22 +9657,26 @@ export const createPanelistFromStaff = async (req, res, next) => {
             throw error;
         }
 
-        // Create the panelist without user account
-        const newPanelist = await prisma.panelist.create({
-            data: {
-                name: staffMember.name,
-                email: staffMember.email,
-                // primaryPhone: staffMember.phone,
-                institution: staffMember.isExternal ? staffMember.externalInstitution : 'Uganda Management Institute',
-                // specialization: staffMember.specialization,
-                campus: staffMember.campusId ? { connect: { id: staffMember.campusId } } : undefined
-            }
-        });
+        // Create the panelist without user account inside a transaction
+        const newPanelist = await prisma.$transaction(async (tx) => {
+            const panelist = await tx.panelist.create({
+                data: {
+                    name: staffMember.name,
+                    email: staffMember.email,
+                    // primaryPhone: staffMember.phone,
+                    institution: staffMember.isExternal ? staffMember.externalInstitution : 'Uganda Management Institute',
+                    // specialization: staffMember.specialization,
+                    campus: staffMember.campusId ? { connect: { id: staffMember.campusId } } : undefined
+                }
+            });
 
-        // Connect the panelist to the staff member
-        await prisma.staffMember.update({
-            where: { id: staffMember.id },
-            data: { panelistId: newPanelist.id }
+            // Connect the panelist to the staff member
+            await tx.staffMember.update({
+                where: { id: staffMember.id },
+                data: { panelistId: panelist.id }
+            });
+
+            return panelist;
         });
 
         res.status(201).json({
@@ -9668,25 +9730,29 @@ export const createExaminerFromStaff = async (req, res, next) => {
         // Determine examiner type based on staff member type
         const examinerType = staffMember.isExternal ? 'External' : 'Internal';
 
-        // Create the examiner
-        const newExaminer = await prisma.examiner.create({
-            data: {
-                name: staffMember.name,
-                primaryEmail: staffMember.email,
-                primaryPhone: staffMember.phone,
-                type: examinerType,
-                institution: staffMember.isExternal ? staffMember.externalInstitution : 'Uganda Management Institute',
-                specialization: staffMember.specialization,
-                campus: staffMember.campusId ? { connect: { id: staffMember.campusId } } : undefined,
-                school: staffMember.schoolId ? { connect: { id: staffMember.schoolId } } : undefined,
-                department: staffMember.departmentId ? { connect: { id: staffMember.departmentId } } : undefined
-            }
-        });
+        // Create the examiner inside a transaction
+        const newExaminer = await prisma.$transaction(async (tx) => {
+            const examiner = await tx.examiner.create({
+                data: {
+                    name: staffMember.name,
+                    primaryEmail: staffMember.email,
+                    primaryPhone: staffMember.phone,
+                    type: examinerType,
+                    institution: staffMember.isExternal ? staffMember.externalInstitution : 'Uganda Management Institute',
+                    specialization: staffMember.specialization,
+                    campus: staffMember.campusId ? { connect: { id: staffMember.campusId } } : undefined,
+                    school: staffMember.schoolId ? { connect: { id: staffMember.schoolId } } : undefined,
+                    department: staffMember.departmentId ? { connect: { id: staffMember.departmentId } } : undefined
+                }
+            });
 
-        // Connect the examiner to the staff member
-        await prisma.staffMember.update({
-            where: { id: staffMember.id },
-            data: { examinerId: newExaminer.id }
+            // Connect the examiner to the staff member
+            await tx.staffMember.update({
+                where: { id: staffMember.id },
+                data: { examinerId: examiner.id }
+            });
+
+            return examiner;
         });
 
         res.status(201).json({
