@@ -4273,7 +4273,6 @@ export const getAllProposals = async (req, res, next) => {
                         school: true
                     }
                 },
-                defenses: true,
                 reviewGrades: {
                     select: {
                         id: true,
@@ -9460,9 +9459,9 @@ export const createSupervisorFromStaff = async (req, res, next) => {
                     primaryPhone: staffMember.phone,
                     secondaryPhone: staffMember.secondaryPhone,
                     facultyType: 'supervisor',
-                    school: { connect: { id: staffMember.schoolId } },
-                    campus: { connect: { id: staffMember.campusId } },
-                    department: { connect: { id: staffMember.departmentId } },
+                    school: staffMember.schoolId ? { connect: { id: staffMember.schoolId } } : undefined,
+                    campus: staffMember.campusId ? { connect: { id: staffMember.campusId } } : undefined,
+                    department: staffMember.departmentId ? { connect: { id: staffMember.departmentId } } : undefined,
                     user: { connect: { id: createdUser.id } }
                 },
                 include: {
