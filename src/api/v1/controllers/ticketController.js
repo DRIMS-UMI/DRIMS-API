@@ -50,7 +50,7 @@ export const createTicket = async (req, res, next) => {
           create: {
             message: message || "Support ticket created.",
             senderStudentId: creatorStudentId,
-            senderAdminId: creatorUserId,
+            senderAdminId: (creatorUserId && (req.user.role === 'SUPERADMIN' || req.user.role === 'MANAGER' || req.user.role === 'RESEARCH_ADMIN')) ? creatorUserId : null,
             senderName: initialSenderName,
           }
         }
@@ -187,6 +187,51 @@ export const getTicketById = async (req, res, next) => {
     res.status(200).json({
       message: "Ticket retrieved successfully",
       ticket
+    });
+  } catch (error) {
+    if (!error.statusCode) error.statusCode = 500;
+    next(error);
+  }
+};
+
+// Get tickets for the logged in supervisor/regular user
+export const getSupervisorTickets = async (req, res, next) => {
+  try {
+    if (!req.user || req.user.isStudentUser) {
+      const error = new Error("Unauthorized access");
+      error.statusCode = 401;
+      throw error;
+    }
+
+    const userId = req.user.id;
+
+    const tickets = await prisma.ticket.findMany({
+      where: {
+        creatorUserId: userId
+      },
+      include: {
+        assignedTo: { select: { id: true, name: true, email: true } },
+        creatorUser: { select: { id: true, name: true, email: true, phone: true } },
+        messages: {
+          select: {
+            id: true,
+            ticketId: true,
+            message: true,
+            senderAdmin: { select: { name: true } },
+            senderAdminId: true,
+            senderStudentId: true,
+            senderName: true,
+            createdAt: true
+          },
+          orderBy: { createdAt: "asc" }
+        }
+      },
+      orderBy: { createdAt: "desc" }
+    });
+
+    res.status(200).json({
+      message: "Tickets retrieved successfully",
+      tickets
     });
   } catch (error) {
     if (!error.statusCode) error.statusCode = 500;
