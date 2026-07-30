@@ -553,18 +553,18 @@ class NotificationService {
                 where: {
                     statusType: 'PENDING',
                     type: 'REMINDER',
-                    metadata: {
-                        path: ['documentId'],
-                        equals: documentId
-                    }
                 }
             });
 
-            for (const notification of notifications) {
+            const matching = notifications.filter(n =>
+                n.metadata && n.metadata.documentId === documentId
+            );
+
+            for (const notification of matching) {
                 await this.cancelNotification(notification.id);
             }
-            if (notifications.length > 0) {
-                console.log(`Cancelled ${notifications.length} document review reminders for document ${documentId}`);
+            if (matching.length > 0) {
+                console.log(`Cancelled ${matching.length} document review reminders for document ${documentId}`);
             }
         } catch (error) {
             console.error(`Error cancelling review reminders for document ${documentId}:`, error);

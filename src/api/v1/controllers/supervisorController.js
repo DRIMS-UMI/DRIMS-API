@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { sanitizeForLog } from "../../../utils/sanitizeForLog.js";
 import { notificationService } from "../../../services/notificationService2.js";
+import emailService from "../../../services/emailService2.js";
 
 //Supervisor login Controller
 export const loginSupervisor = async (req, res, next) => {
@@ -12,9 +13,10 @@ export const loginSupervisor = async (req, res, next) => {
 
     // Find supervisor by email
     const user = await prisma.user.findUnique({
-      where: { email,
+      where: {
+        email,
         role: "SUPERVISOR"
-       },
+      },
     });
 
     if (!user) {
@@ -109,39 +111,39 @@ export const loginSupervisor = async (req, res, next) => {
 
 // Get faculty profile controller
 export const getSupervisorProfile = async (req, res, next) => {
-    try {
-      const supervisorId = req.user.id;
-  
-      const supervisor = req.user;
-  
-      if (!supervisor) {
-        const error = new Error("Supervisor not found");
-        error.statusCode = 404;
-        throw error;
-      }
-  
-      res.status(200).json({
-        supervisor: {
-          id: supervisor.id,
-          name: supervisor.name,
-          email: supervisor.email,
-          role: supervisor.role,
-          title: supervisor.title,
-          phone: supervisor.phone,
-          designation: supervisor.designation,
-          loggedInAt: supervisor.loggedInAt,
-          department: supervisor.department,
-          createdAt: supervisor.createdAt,
-          updatedAt: supervisor.updatedAt,
-        },
-      });
-    } catch (error) {
-      if (!error.statusCode) {
-        error.statusCode = 500;
-      }
-      next(error);
+  try {
+    const supervisorId = req.user.id;
+
+    const supervisor = req.user;
+
+    if (!supervisor) {
+      const error = new Error("Supervisor not found");
+      error.statusCode = 404;
+      throw error;
     }
-  };
+
+    res.status(200).json({
+      supervisor: {
+        id: supervisor.id,
+        name: supervisor.name,
+        email: supervisor.email,
+        role: supervisor.role,
+        title: supervisor.title,
+        phone: supervisor.phone,
+        designation: supervisor.designation,
+        loggedInAt: supervisor.loggedInAt,
+        department: supervisor.department,
+        createdAt: supervisor.createdAt,
+        updatedAt: supervisor.updatedAt,
+      },
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
 
 // Update supervisor profile controller
 export const updateSupervisorProfile = async (req, res, next) => {
@@ -272,11 +274,11 @@ export const getAssignedStudents = async (req, res, next) => {
         campus: true,
         statuses: {
           where: {
-            isCurrent: true 
+            isCurrent: true
           },
           include: {
             definition: true,
-            
+
           },
           orderBy: {
             startDate: 'desc',
@@ -345,8 +347,8 @@ export const getStudentDetails = async (req, res, next) => {
         school: true,
         campus: true,
         department: true,
-       
-      
+
+
       },
     });
 
@@ -696,11 +698,13 @@ export const getStudentStatuses = async (req, res, next) => {
 
     // Check if student is assigned to this supervisor
     const student = await prisma.student.findUnique({
-      where: { id: studentId,   supervisors: {
-        some: {
-          id: supervisor?.id,
+      where: {
+        id: studentId, supervisors: {
+          some: {
+            id: supervisor?.id,
+          },
         },
-      }, },
+      },
       include: {
         supervisors: {
           where: { id: supervisor.id },
@@ -784,11 +788,13 @@ export const getStudentBooks = async (req, res, next) => {
 
     // Check if student is assigned to this supervisor
     const student = await prisma.student.findUnique({
-      where: { id: studentId, supervisors: {
-        some: {
-          id: supervisor?.id,
+      where: {
+        id: studentId, supervisors: {
+          some: {
+            id: supervisor?.id,
+          },
         },
-      }, },
+      },
       include: {
         supervisors: {
           where: { id: supervisor.id },
@@ -859,7 +865,7 @@ export const getStudentBooks = async (req, res, next) => {
   }
 };
 
- export const getAllBooks = async (req, res, next) => {
+export const getAllBooks = async (req, res, next) => {
   try {
     // Get supervisor by user id
     const userId = req.user.id;
@@ -1074,7 +1080,7 @@ export const listAllStudentsForMessaging = async (req, res, next) => {
     const students = await prisma.studentUser.findMany({
       where: {
         role: 'STUDENT',
-        
+
         student: {
           supervisors: {
             some: {
@@ -1272,14 +1278,14 @@ const getDefaultColor = (statusName) => {
     "results approved": "#14B8A6",
     "results sent to schools": "#8B5CF6",
     "results approved by senate": "#06B6D4",
-    
+
     // Book/Dissertation status colors
     "book planning": "#F59E0B", // amber
     "book writing": "#3B82F6", // blue
     "dissertation submitted": "#23388F", // dark blue
     "book under review": "#EAB308", // yellow
     "final dissertation & compliance report received": "#10B981", // emerald
-    
+
     // Proposal status colors
     "proposal received": "#6366F1", // indigo
     "proposal in review": "#8B5CF6", // violet
@@ -1305,7 +1311,7 @@ export const getStudentDocuments = async (req, res, next) => {
 
     // Get student documents that are assigned to this supervisor
     const documents = await prisma.studentDocument.findMany({
-      where: { 
+      where: {
         studentId,
         supervisorId: supervisorId
       },
@@ -1545,6 +1551,41 @@ export const uploadReviewedDocument = async (req, res, next) => {
 
     // Cancel the pending 14-day document review reminder, if any
     await notificationService.cancelDocumentReviewReminder(documentId);
+
+    // Notify student via email
+    try {
+      if (originalDocument.student?.email) {
+        const studentEmailHtml = `
+          <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+              <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 8px;">
+                <h2 style="color: #23388F;">Document Reviewed</h2>
+                <p>Dear ${originalDocument.student.fullName},</p>
+                <p>Your document <strong>"${originalDocument.title}"</strong> has been reviewed by your supervisor.</p>
+                ${reviewComments ? `
+                <div style="background-color: #f9f9f9; padding: 15px; border-left: 4px solid #23388F; margin: 20px 0;">
+                  <p style="margin: 5px 0;"><strong>Review Comments:</strong></p>
+                  <p style="margin: 5px 0;">${reviewComments}</p>
+                </div>` : ''}
+                <p>Please log in to the DRIMS Student Portal to view the reviewed document and feedback.</p>
+                <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+                <p style="font-size: 12px; color: #666;">This is an automated message from the DRIMS Research Management System.</p>
+              </div>
+            </body>
+          </html>
+        `;
+
+        await emailService.sendEmail({
+          to: originalDocument.student.email,
+          subject: `DRIMS:Document Reviewed - ${originalDocument.title}`,
+          htmlContent: studentEmailHtml,
+          textContent: `Dear ${originalDocument.student.fullName}, your document "${originalDocument.title}" has been reviewed by your supervisor.${reviewComments ? `\n\nReview Comments:\n${reviewComments}` : ''}\n\nPlease log in to the DRIMS Student Portal to view the reviewed document and feedback.`
+        });
+        console.log('Review notification email sent to student:', originalDocument.student.email);
+      }
+    } catch (emailError) {
+      console.error('Failed to send review notification to student:', emailError);
+    }
 
     res.status(201).json({
       message: 'Reviewed document uploaded successfully',
