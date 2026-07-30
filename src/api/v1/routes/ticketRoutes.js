@@ -9,7 +9,8 @@ import {
   getTicketById,
   updateTicketStatus,
   assignTicket,
-  addMessageToTicket
+  addMessageToTicket,
+  getStudentTickets
 } from '../controllers/ticketController.js';
 
 import fs from 'fs';
@@ -81,6 +82,9 @@ const router = express.Router();
 
 // Public / Guest / Student endpoints
 router.post('/', createTicketLimiter, optionalAuth, upload.single('attachment'), handleMulterError, createTicket);
+
+// Student endpoints
+router.get('/student/me', authenticateToken, getStudentTickets);
 
 // Management endpoints
 // Only SUPERADMIN and MANAGER roles can manage tickets

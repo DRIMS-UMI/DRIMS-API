@@ -10,7 +10,7 @@ const generateTicketNumber = async () => {
 // Create a new support ticket
 export const createTicket = async (req, res, next) => {
   try {
-    const { subject, message, priority, guestName, guestEmail, guestPhone } = req.body;
+    const { subject, message, priority, source, guestName, guestEmail, guestPhone } = req.body;
     let creatorUserId = null;
     let creatorStudentId = null;
 
@@ -29,11 +29,18 @@ export const createTicket = async (req, res, next) => {
 
     const ticketNumber = await generateTicketNumber();
 
+    const initialSenderName = req.user
+      ? (req.user.isStudentUser
+        ? (req.user.fullName || req.user.name || "Student")
+        : (req.user.name || "User"))
+      : (guestName || "Guest");
+
     const newTicket = await prisma.ticket.create({
       data: {
         ticketNumber,
         subject,
         priority: priority || "MEDIUM",
+        source: source || (creatorStudentId ? 'STUDENT_PORTAL' : null),
         creatorUserId,
         creatorStudentId,
         guestName,
@@ -44,7 +51,7 @@ export const createTicket = async (req, res, next) => {
             message: message || "Support ticket created.",
             senderStudentId: creatorStudentId,
             senderAdminId: creatorUserId,
-            senderName: creatorUserId || creatorStudentId ? null : guestName || "Guest",
+            senderName: initialSenderName,
           }
         }
       },
@@ -203,6 +210,32 @@ export const updateTicketStatus = async (req, res, next) => {
       data: updatedData
     });
 
+    // Notify all clients viewing this ticket of the status change
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`ticket_${id}`).emit('ticket_status_updated', {
+        ticketId: id,
+        status: ticket.status,
+        resolvedAt: ticket.resolvedAt
+      });
+
+      // Also notify the ticket creator via their personal room
+      if (ticket.creatorStudentId) {
+        io.to(`user_${ticket.creatorStudentId}`).emit('ticket_status_updated', {
+          ticketId: id,
+          status: ticket.status,
+          resolvedAt: ticket.resolvedAt
+        });
+      }
+      if (ticket.creatorUserId) {
+        io.to(`user_${ticket.creatorUserId}`).emit('ticket_status_updated', {
+          ticketId: id,
+          status: ticket.status,
+          resolvedAt: ticket.resolvedAt
+        });
+      }
+    }
+
     res.status(200).json({
       message: "Ticket status updated successfully",
       ticket
@@ -278,9 +311,62 @@ export const addMessageToTicket = async (req, res, next) => {
       }
     });
 
+    // Emit the new message to all clients viewing this ticket
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`ticket_${id}`).emit('new_support_message', { message: newMsg });
+    }
+
     res.status(201).json({
       message: "Message added successfully",
       data: newMsg
+    });
+  } catch (error) {
+    if (!error.statusCode) error.statusCode = 500;
+    next(error);
+  }
+};
+
+// Get tickets for the logged in student
+export const getStudentTickets = async (req, res, next) => {
+  try {
+    if (!req.user || !req.user.isStudentUser) {
+      const error = new Error("Unauthorized access");
+      error.statusCode = 401;
+      throw error;
+    }
+
+    const studentId = req.user.id;
+    const studentEmail = req.user.email;
+
+    const tickets = await prisma.ticket.findMany({
+      where: {
+        OR: [
+          { creatorStudentId: studentId },
+          { guestEmail: studentEmail }
+        ]
+      },
+      include: {
+        assignedTo: { select: { id: true, name: true, email: true } },
+        messages: {
+          select: {
+            id: true,
+            ticketId: true,
+            message: true,
+            senderAdmin: { select: { name: true } },
+            senderStudent: { select: { fullName: true } },
+            senderName: true,
+            createdAt: true
+          },
+          orderBy: { createdAt: "asc" }
+        }
+      },
+      orderBy: { createdAt: "desc" }
+    });
+
+    res.status(200).json({
+      message: "Tickets retrieved successfully",
+      tickets
     });
   } catch (error) {
     if (!error.statusCode) error.statusCode = 500;

@@ -1193,12 +1193,20 @@ enum TicketPriority {
   URGENT
 }
 
+enum TicketSource {
+  STUDENT_PORTAL
+  SUPERVISOR_PORTAL
+  SCHOOL_PORTAL
+  MANAGEMENT_PORTAL
+}
+
 model ticket {
   id              String        @id @default(auto()) @map("_id") @db.ObjectId
   ticketNumber    String        @unique
   subject         String
   status          TicketStatus  @default(OPEN)
   priority        TicketPriority @default(MEDIUM)
+  source          TicketSource?
   
   // Relations
   assignedTo      user?         @relation("AssignedTickets", fields: [assignedToId], references: [id])
