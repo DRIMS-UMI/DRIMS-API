@@ -1329,45 +1329,52 @@ export const uploadDocument = async (req, res, next) => {
       fileDataFirstBytes: document.fileData ? Array.from(document.fileData.slice(0, 10)) : null
     });
 
-    // Emit socket event to notify supervisor in real-time
-    const io = req.app.get('io');
-    console.log('Socket IO instance available:', !!io);
-    if (io) {
-      const documentData = {
+    // Emit socket event to notify supervisor in real-time (guarded so it can never fail the request)
+    try {
+      const io = req.app.get('io');
+      if (io) {
+        const documentData = {
+          id: document.id,
+          title: document.title,
+          description: document.description,
+          type: document.type,
+          fileName: document.fileName,
+          fileType: document.fileType,
+          fileSize: document.fileSize,
+          uploadedAt: document.createdAt,
+          uploadedBy: document.uploadedBy || (document.uploadedByStudent ? { id: document.uploadedByStudent.id, name: document.uploadedByStudent.fullName } : null),
+          supervisor: document.supervisor,
+          studentId: user.student.id,
+          studentName: `${user.student.fullName}`
+        };
+
+        io.emitToUser(supervisorId, 'new_document_uploaded', {
+          type: 'new_document_uploaded',
+          document: documentData
+        });
+
+        io.emitToUser(userId, 'document_upload_success', {
+          type: 'document_upload_success',
+          document: documentData
+        });
+      }
+    } catch (socketError) {
+      console.error('Failed to emit socket events for document upload:', socketError);
+    }
+
+    // Respond immediately so the client is never blocked by the slow side-effects below
+    res.status(201).json({
+      message: 'Document uploaded successfully',
+      document: {
         id: document.id,
         title: document.title,
-        description: document.description,
         type: document.type,
         fileName: document.fileName,
-        fileType: document.fileType,
-        fileSize: document.fileSize,
-        uploadedAt: document.createdAt,
-        uploadedBy: document.uploadedBy || (document.uploadedByStudent ? { id: document.uploadedByStudent.id, name: document.uploadedByStudent.fullName } : null),
-        supervisor: document.supervisor,
-        studentId: user.student.id,
-        studentName: `${user.student.fullName}`
-      };
+        uploadedAt: document.createdAt
+      }
+    });
 
-      console.log('Emitting socket events for document upload...');
-      console.log('Emitting to supervisor:', supervisorId);
-      console.log('Emitting to student:', userId);
-
-      // Emit to the supervisor
-      const supervisorEmitted = io.emitToUser(supervisorId, 'new_document_uploaded', {
-        type: 'new_document_uploaded',
-        document: documentData
-      });
-      console.log('Supervisor event emitted:', supervisorEmitted);
-
-      // Also emit to the student for immediate UI update
-      const studentEmitted = io.emitToUser(userId, 'document_upload_success', {
-        type: 'document_upload_success',
-        document: documentData
-      });
-      console.log('Student event emitted:', studentEmitted);
-    } else {
-      console.log('Socket IO instance not available');
-    }
+    // --- Background side-effects (email + reminder). Fire after the response ---
 
     // Send email notification to supervisor
     try {
@@ -1437,17 +1444,6 @@ export const uploadDocument = async (req, res, next) => {
     } catch (reminderError) {
       console.error('Failed to schedule document review reminder:', reminderError);
     }
-
-    res.status(201).json({
-      message: 'Document uploaded successfully',
-      document: {
-        id: document.id,
-        title: document.title,
-        type: document.type,
-        fileName: document.fileName,
-        uploadedAt: document.createdAt
-      }
-    });
 
   } catch (error) {
     if (!error.statusCode) {
@@ -1668,6 +1664,78 @@ export const deleteDocument = async (req, res, next) => {
       message: "Document deleted successfully"
     });
 
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+/**
+ * Parse the page count (cPg) stored in a legacy Word (.doc) File Information Block.
+ * Word writes cPg into the FIB on every save, so Word-authored .doc files carry
+ * an accurate page count. Returns null when the file is not a parseable .doc.
+ */
+const parseDocPageCount = (buffer) => {
+  try {
+    if (!buffer || buffer.length < 200) return null;
+
+    const wIdent = buffer.readUInt16LE(0);
+    if (wIdent !== 0xA5EC) return null;
+
+    const nFib = buffer.readUInt16LE(2);
+    const knownVersions = [0x00C1, 0x00D9, 0x0101, 0x010A, 0x010B, 0x010C, 0x010D];
+    if (!knownVersions.includes(nFib)) return null;
+
+    // FibRgW: 2-byte csw count + csw * 2 bytes of 16-bit values
+    const csw = buffer.readUInt16LE(32);
+    const fibRgWEnd = 32 + 2 + csw * 2;
+    const cslw1End = fibRgWEnd + 4;
+
+    // FibRgW97: 62 bytes for ww8 (nFib <= 0x00C1), 74 bytes for ww9+
+    const fibRgW97Len = nFib >= 0x00D9 ? 74 : 62;
+    const cslw2End = cslw1End + fibRgW97Len + 4;
+
+    // FibRgLw: 44 bytes; cPg is 4 bytes at offset 16 (after cbMac + 2 reserved + cCh)
+    const fibRgLwBase = cslw2End;
+    const cPgOffset = fibRgLwBase + 16;
+
+    if (cPgOffset + 4 > buffer.length) return null;
+
+    const cPg = buffer.readUInt32LE(cPgOffset);
+    if (cPg <= 0 || cPg > 5000) return null;
+
+    return cPg;
+  } catch (error) {
+    return null;
+  }
+};
+
+/**
+ * Pre-upload page count check for PROPOSAL documents.
+ * PDFs and DOCX are counted client-side; legacy .doc files cannot be counted in
+ * the browser, so the server reads the page count Word stored in the FIB header.
+ * @route POST /api/v1/student/documents/check-page-count
+ * @access Private (Student)
+ */
+export const checkDocumentPageCount = async (req, res, next) => {
+  try {
+    const file = req.file;
+
+    if (!file) {
+      const error = new Error('No file uploaded');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    let pageCount = null;
+
+    if (file.mimetype === 'application/msword') {
+      pageCount = parseDocPageCount(file.buffer);
+    }
+
+    res.status(200).json({ pageCount });
   } catch (error) {
     if (!error.statusCode) {
       error.statusCode = 500;

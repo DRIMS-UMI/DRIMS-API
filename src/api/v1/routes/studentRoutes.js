@@ -26,6 +26,7 @@ import {
   getStudentDocuments,
   downloadDocument,
   deleteDocument,
+  checkDocumentPageCount,
   getStudentResearchClinicBookings,
   cancelResearchClinicBooking,
   getAvailableResearchClinicDays,
@@ -114,6 +115,7 @@ router.get('/evaluations', authenticateToken, authorizeRoles('STUDENT'), getStud
 router.get('/supervisors-for-messaging', authenticateToken, authorizeRoles('STUDENT'), listAllSupervisorsForMessaging);
 
 // Document management routes
+router.post('/documents/check-page-count', authenticateToken, authorizeRoles('STUDENT'), upload.single('file'), handleMulterError, checkDocumentPageCount);
 router.post('/documents', authenticateToken, authorizeRoles('STUDENT'), upload.single('file'), handleMulterError, uploadDocument);
 router.get('/documents', authenticateToken, authorizeRoles('STUDENT'), getStudentDocuments);
 router.get('/documents/:documentId/download', authenticateToken, authorizeRoles('STUDENT'), downloadDocument);
