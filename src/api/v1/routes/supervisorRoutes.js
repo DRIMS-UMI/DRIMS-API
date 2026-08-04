@@ -23,7 +23,8 @@ import {
   getStatusStatistics,
   getStudentDocuments,
   downloadStudentDocument,
-  uploadReviewedDocument
+  uploadReviewedDocument,
+  getPendingReviews
 } from '../controllers/supervisorController.js';
 
 // Configure multer for file uploads
@@ -99,6 +100,7 @@ router.post('/documents/:documentId/review', authenticateToken, authorizeRoles('
 // Dashboard routes
 router.get('/dashboard/stats', authenticateToken, authorizeRoles('SUPERVISOR'), getDashboardStats);
 router.get('/dashboard/status-statistics', authenticateToken, authorizeRoles('SUPERVISOR'), getStatusStatistics);
+router.get('/dashboard/pending-reviews', authenticateToken, authorizeRoles('SUPERVISOR'), getPendingReviews);
 router.get('/notifications', authenticateToken, authorizeRoles('SUPERVISOR'), getNotifications);
 
 export default router; 

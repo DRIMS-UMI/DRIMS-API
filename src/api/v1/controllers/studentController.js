@@ -1656,10 +1656,56 @@ export const deleteDocument = async (req, res, next) => {
       throw error;
     }
 
+    // Guard: reviewed documents (or supervisor-reviewed files) can never be deleted
+    if (document.reviewedAt || document.type === 'REVIEWED') {
+      const error = new Error("This document has already been reviewed and can no longer be deleted.");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // Guard: documents can only be deleted within 3 hours of upload
+    const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
+    const elapsedMs = Date.now() - new Date(document.createdAt).getTime();
+    if (elapsedMs > THREE_HOURS_MS) {
+      const error = new Error("Documents can only be deleted within 3 hours of upload.");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // Cancel any pending 14-day review reminder for this document
+    try {
+      await notificationService.cancelDocumentReviewReminder(documentId);
+    } catch (reminderError) {
+      console.error('Failed to cancel review reminder for deleted document:', reminderError);
+    }
+
     // Delete document
     await prisma.studentDocument.delete({
       where: { id: documentId }
     });
+
+    // Emit socket event to notify supervisor in real-time (guarded so it can never fail the request)
+    try {
+      const io = req.app.get('io');
+      if (io && document.supervisorId) {
+        io.emitToUser(document.supervisorId, 'document_deleted', {
+          type: 'document_deleted',
+          documentId,
+          studentId,
+          studentName: user.student?.fullName || null
+        });
+      }
+      if (io && userId) {
+        io.emitToUser(userId, 'document_deleted', {
+          type: 'document_deleted',
+          documentId,
+          studentId,
+          studentName: user.student?.fullName || null
+        });
+      }
+    } catch (socketError) {
+      console.error('Failed to emit socket event for document deletion:', socketError);
+    }
 
     res.status(200).json({
       message: "Document deleted successfully"

@@ -24,20 +24,20 @@ export function setupSocketIO(server, app) {
     io.emitToUser = (userId, event, data) => {
         console.log(`Attempting to emit '${event}' to user ${userId}:`, data);
         
-        // Try direct socket emission first
+        // Prefer emitting via the user's room so ALL of their connected sockets receive the event
+        const roomName = `user_${userId}`;
+        const connectedSockets = io.sockets.adapter.rooms.get(roomName);
+        if (connectedSockets && connectedSockets.size > 0) {
+            console.log(`Emitting via room ${roomName} to user ${userId} (${connectedSockets.size} socket(s))`);
+            io.to(roomName).emit(event, data);
+            return true;
+        }
+        
+        // Fallback: emit via the single direct socket if the room is empty
         const socket = userSockets.get(userId);
         if (socket && socket.connected) {
             console.log(`Emitting via direct socket ${socket.id} to user ${userId}`);
             socket.emit(event, data);
-            return true;
-        }
-        
-        // Fallback: emit to user room
-        const roomName = `user_${userId}`;
-        const connectedSockets = io.sockets.adapter.rooms.get(roomName);
-        if (connectedSockets && connectedSockets.size > 0) {
-            console.log(`Emitting via room ${roomName} to user ${userId}`);
-            io.to(roomName).emit(event, data);
             return true;
         }
         
@@ -198,7 +198,11 @@ export function setupSocketIO(server, app) {
         // -----------------------------
 
         socket.on('disconnect', () => {
-            userSockets.delete(userId);
+            // Only remove the map entry if it belongs to this disconnecting socket,
+            // so a disconnect of one connection never nukes the entry for the user's other connections
+            if (userSockets.get(userId) === socket) {
+                userSockets.delete(userId);
+            }
             onlineUsers.delete(userId);
             console.log(`User/Guest ${userId} disconnected from socket ${socket.id}`);
             
