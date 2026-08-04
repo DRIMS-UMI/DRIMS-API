@@ -1530,7 +1530,11 @@ export const uploadReviewedDocument = async (req, res, next) => {
     const originalDocument = await prisma.studentDocument.findUnique({
       where: { id: documentId },
       include: {
-        student: true
+        student: {
+          include: {
+            studentUser: true
+          }
+        }
       }
     });
 
@@ -1594,6 +1598,29 @@ export const uploadReviewedDocument = async (req, res, next) => {
 
     // Cancel the pending 14-day document review reminder, if any
     await notificationService.cancelDocumentReviewReminder(documentId);
+
+    // Emit socket event to notify student in real-time (guarded so it can never fail the request)
+    try {
+      const io = req.app.get('io');
+      const studentUserId = originalDocument.student?.studentUser?.id;
+      if (io && studentUserId) {
+        io.emitToUser(studentUserId, 'document_reviewed', {
+          type: 'document_reviewed',
+          document: {
+            id: reviewedDocument.id,
+            title: reviewedDocument.title,
+            fileName: reviewedDocument.fileName,
+            fileType: reviewedDocument.fileType,
+            fileSize: reviewedDocument.fileSize,
+            uploadedAt: reviewedDocument.createdAt,
+            reviewedAt: reviewedDocument.reviewedAt,
+            reviewComments: reviewComments
+          }
+        });
+      }
+    } catch (socketError) {
+      console.error('Failed to emit socket event for document review:', socketError);
+    }
 
     // Notify student via email
     try {
