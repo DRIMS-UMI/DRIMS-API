@@ -1315,6 +1315,7 @@ export const getStudentDocuments = async (req, res, next) => {
         studentId,
         supervisorId: supervisorId
       },
+      omit: { fileData: true },
       include: {
         uploadedBy: {
           select: {
@@ -1370,6 +1371,48 @@ export const getStudentDocuments = async (req, res, next) => {
     if (!error.statusCode) {
       error.statusCode = 500;
     }
+    next(error);
+  }
+};
+
+// Get pending reviews for dashboard
+export const getPendingReviews = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+
+    const docs = await prisma.studentDocument.findMany({
+      where: {
+        supervisorId: userId,
+        reviewedAt: null,
+        type: { not: 'REVIEWED' }
+      },
+      omit: { fileData: true },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+      include: {
+        student: {
+          select: {
+            id: true,
+            fullName: true,
+            registrationNumber: true
+          }
+        }
+      }
+    });
+
+    const transformed = docs.map(doc => ({
+      id: doc.id,
+      title: doc.title,
+      type: doc.type,
+      fileName: doc.fileName,
+      fileSize: doc.fileSize,
+      uploadedAt: doc.createdAt,
+      student: doc.student
+    }));
+
+    res.json({ pendingReviews: transformed });
+  } catch (error) {
+    if (!error.statusCode) error.statusCode = 500;
     next(error);
   }
 };

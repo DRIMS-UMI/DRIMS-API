@@ -1479,6 +1479,7 @@ export const getStudentDocuments = async (req, res, next) => {
     // Get student documents
     const documents = await prisma.studentDocument.findMany({
       where: { studentId },
+      omit: { fileData: true },
       include: {
         uploadedBy: {
           select: {
