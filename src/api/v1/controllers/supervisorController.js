@@ -1383,12 +1383,10 @@ export const getPendingReviews = async (req, res, next) => {
     const docs = await prisma.studentDocument.findMany({
       where: {
         supervisorId: userId,
-        reviewedAt: null,
         type: { not: 'REVIEWED' }
       },
       omit: { fileData: true },
       orderBy: { createdAt: 'desc' },
-      take: 10,
       include: {
         student: {
           select: {
@@ -1400,7 +1398,9 @@ export const getPendingReviews = async (req, res, next) => {
       }
     });
 
-    const transformed = docs.map(doc => ({
+    const pending = docs.filter(doc => !doc.reviewedAt).slice(0, 10);
+
+    const transformed = pending.map(doc => ({
       id: doc.id,
       title: doc.title,
       type: doc.type,
