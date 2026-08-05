@@ -25,7 +25,7 @@ export const loginSupervisor = async (req, res, next) => {
       throw error;
     }
 
-    console.log("users", user)
+
 
     // Check if user is active
     if (!user.isActive) {
@@ -44,7 +44,7 @@ export const loginSupervisor = async (req, res, next) => {
       error.statusCode = 403;
       throw error;
     }
-    console.log("logged in")
+
 
     // Check password
     const isValidPassword = await bcrypt.compare(password, user.password);
@@ -54,7 +54,7 @@ export const loginSupervisor = async (req, res, next) => {
       throw error;
     }
 
-    console.log("password is valid")
+
 
     // Generate JWT token
     const token = jwt.sign(
@@ -958,7 +958,7 @@ export const getDashboardStats = async (req, res, next) => {
     }
     const supervisorId = getSupervisor.id;
 
-    console.log("getSupervisor", getSupervisor)
+
 
     // Get assigned students count
     const assignedStudentsCount = await prisma.student.count({
@@ -1074,7 +1074,7 @@ export const listAllStudentsForMessaging = async (req, res, next) => {
       throw error;
     }
 
-    console.log("user", user)
+
 
     // Find students assigned to this supervisor
     const students = await prisma.studentUser.findMany({
@@ -1102,7 +1102,7 @@ export const listAllStudentsForMessaging = async (req, res, next) => {
       name: s.fullName
     }));
 
-    console.log("students", mappedStudents)
+
 
     res.status(200).json({ students: mappedStudents });
   } catch (error) {
@@ -1427,7 +1427,7 @@ export const downloadStudentDocument = async (req, res, next) => {
     const supervisorId = req.user.id;
     const { documentId } = req.params;
 
-    console.log('Download request for document:', documentId);
+
 
     // Get document with student info
     const document = await prisma.studentDocument.findUnique({
@@ -1443,18 +1443,7 @@ export const downloadStudentDocument = async (req, res, next) => {
       throw error;
     }
 
-    console.log('Document found:', {
-      id: document.id,
-      title: document.title,
-      fileName: document.fileName,
-      fileType: document.fileType,
-      fileSize: document.fileSize,
-      hasFileData: !!document.fileData,
-      fileDataType: typeof document.fileData,
-      fileDataIsBuffer: Buffer.isBuffer(document.fileData),
-      fileDataLength: document.fileData?.length,
-      fileDataFirstBytes: document.fileData ? Array.from(document.fileData.slice(0, 10)) : null
-    });
+
 
     // Verify supervisor has access to this document
     if (document.supervisorId !== supervisorId) {
@@ -1468,22 +1457,9 @@ export const downloadStudentDocument = async (req, res, next) => {
     res.setHeader('Content-Disposition', `attachment; filename="${document.fileName}"`);
     res.setHeader('Content-Length', document.fileSize);
 
-    console.log('Sending file with headers:', {
-      'Content-Type': document.fileType,
-      'Content-Disposition': `attachment; filename="${document.fileName}"`,
-      'Content-Length': document.fileSize
-    });
 
-    console.log('Download file data info:', {
-      fileName: document.fileName,
-      fileType: document.fileType,
-      fileSize: document.fileSize,
-      dataType: typeof document.fileData,
-      dataIsBuffer: Buffer.isBuffer(document.fileData),
-      dataIsUint8Array: document.fileData instanceof Uint8Array,
-      dataLength: document.fileData?.length,
-      dataFirstBytes: document.fileData ? Array.from(document.fileData.slice(0, 10)) : null
-    });
+
+
 
     // Send file buffer - handle different data types
     if (Buffer.isBuffer(document.fileData)) {

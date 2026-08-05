@@ -230,7 +230,7 @@ export const getStudentStatuses = async (req, res, next) => {
       include: { student: true }
     });
 
-    console.log(user);
+
 
     if (!user || !user.student) {
       const error = new Error("Student not found for this user");
@@ -1316,18 +1316,7 @@ export const uploadDocument = async (req, res, next) => {
       }
     });
 
-    console.log('Document uploaded successfully:', {
-      id: document.id,
-      title: document.title,
-      fileName: document.fileName,
-      fileType: document.fileType,
-      fileSize: document.fileSize,
-      hasFileData: !!document.fileData,
-      fileDataType: typeof document.fileData,
-      fileDataIsBuffer: Buffer.isBuffer(document.fileData),
-      fileDataLength: document.fileData?.length,
-      fileDataFirstBytes: document.fileData ? Array.from(document.fileData.slice(0, 10)) : null
-    });
+
 
     // Emit socket event to notify supervisor in real-time (guarded so it can never fail the request)
     try {
@@ -1584,16 +1573,7 @@ export const downloadDocument = async (req, res, next) => {
     res.setHeader('Content-Disposition', `attachment; filename = "${document.fileName}"`);
     res.setHeader('Content-Length', document.fileSize);
 
-    console.log('Download file data info:', {
-      fileName: document.fileName,
-      fileType: document.fileType,
-      fileSize: document.fileSize,
-      dataType: typeof document.fileData,
-      dataIsBuffer: Buffer.isBuffer(document.fileData),
-      dataIsUint8Array: document.fileData instanceof Uint8Array,
-      dataLength: document.fileData?.length,
-      dataFirstBytes: document.fileData ? Array.from(document.fileData.slice(0, 10)) : null
-    });
+
 
     // Send file buffer - handle different data types
     if (Buffer.isBuffer(document.fileData)) {

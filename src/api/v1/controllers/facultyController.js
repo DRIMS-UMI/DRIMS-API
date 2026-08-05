@@ -1480,7 +1480,7 @@ export const getReviewers = async (req, res, next) => {
       },
     });
 
-    console.log(reviewers);
+
 
     res.status(200).json({
       message: "Reviewers retrieved successfully",
@@ -2046,7 +2046,7 @@ export const addPanelists = async (req, res, next) => {
       throw error;
     }
 
-    console.log(panelists);
+
 
     // Validate panelist objects
     for (const panelist of panelists) {
@@ -4647,7 +4647,7 @@ export const updateInternalExaminerMark = async (req, res, next) => {
           assignment.isCurrent === true
       );
 
-    console.log("externalExaminerAssignment", externalExaminerAssignment);
+
 
     const student = await prisma.student.findUnique({
       where: {
@@ -6380,7 +6380,7 @@ export const getStatusStatistics = async (req, res, next) => {
   try {
     const { schoolId, campusId } = req.user;
     const { category = "main" } = req.query;
-    console.log("category", category);
+
     let whereCondition = {};
     let stats = [];
 
@@ -7274,7 +7274,7 @@ export const getAllDepartments = async (req, res, next) => {
 // Controller for getting all schools
 export const getAllSchools = async (req, res, next) => {
   try {
-    console.log("getAllSchools");
+
     const schools = await prisma.school.findMany({
       include: {
         campus: true,

@@ -123,7 +123,7 @@ export const loginSuperAdmin = async (req, res, next) => {
         });
 
     } catch (error) {
-        console.log("error with login", error)
+
         if (!error.statusCode) {
             error.statusCode = 500;
         }
@@ -219,7 +219,7 @@ export const getLoggedInUserDetails = async (req, res, next) => {
 
         const user = req.user;
 
-        console.log(user);
+
         res.status(200).json({
             message: 'User details fetched successfully',
             user
@@ -841,7 +841,7 @@ export const deleteDepartment = async (req, res, next) => {
 export const getAllSchools = async (req, res, next) => {
     try {
 
-        console.log('getAllSchools');
+
         const schools = await prisma.school.findMany({
             include: {
                 campus: true,
@@ -2801,7 +2801,7 @@ export const createStudent = async (req, res, next) => {
             where: { registrationNumber }
         });
 
-        console.log("user", req.user);
+
         if (existingStudentUser) {
             const error = new Error('Student with this registration number already exists');
             error.statusCode = 409;
@@ -3347,7 +3347,7 @@ export const updateStudent = async (req, res, next) => {
             }
         });
 
-        console.log(updateData)
+
 
         const {
             campusId,
@@ -4802,7 +4802,7 @@ export const addPanelists = async (req, res, next) => {
             throw error;
         }
 
-        console.log(panelists);
+
 
         // Validate panelist objects
         for (const panelist of panelists) {
@@ -5719,7 +5719,7 @@ export const generateFieldLetter = async (req, res, next) => {
         const { proposalId } = req.params;
         // const { file: req.file } = req;
         const { emailTo } = req.body;
-        console.log('here')
+
         // Validate file exists
         if (!req.file) {
             const error = new Error('No DOCX file provided');
@@ -5762,7 +5762,7 @@ export const generateFieldLetter = async (req, res, next) => {
             error.statusCode = 404;
             throw error;
         }
-        console.log('here ddddd')
+
 
         // Convert DOCX to PDF using PDFNet
         let pdfBuffer;
@@ -5787,7 +5787,7 @@ export const generateFieldLetter = async (req, res, next) => {
             throw error;
         }
 
-        console.log('here')
+
         // Send email with PDF attachment
         try {
             await emailService.sendEmail({
@@ -6652,7 +6652,7 @@ export const getBook = async (req, res, next) => {
     try {
         const { bookId } = req.params;
 
-        console.log(bookId);
+
 
         const book = await prisma.book.findUnique({
             where: {
@@ -6751,7 +6751,7 @@ export const assignExaminersToBook = async (req, res, next) => {
             throw error;
         }
 
-        console.log("Assigning Assignment")
+
 
         // Check if book exists
         const book = await prisma.book.findUnique({
@@ -7829,7 +7829,7 @@ export const getAllUsers = async (req, res, next) => {
 export const deactivateUser = async (req, res, next) => {
     try {
         const { userId } = req.params;
-        console.log(userId);
+
 
         if (!userId) {
             const error = new Error('User ID is required');
@@ -9337,12 +9337,12 @@ export const getStaffMembersForSupervisor = async (req, res, next) => {
             }
         });
 
-        console.log("All internal active staff members:", allStaffMembers);
+
 
         // Now filter for those without supervisorId
         const staffMembersForSupervisor = allStaffMembers.filter(sm => !sm.supervisorId);
 
-        console.log("Staff members without supervisorId:", staffMembersForSupervisor);
+
 
         // Get the full data for these staff members
         const staffMembers = await prisma.staffMember.findMany({
@@ -9429,7 +9429,7 @@ export const createSupervisorFromStaff = async (req, res, next) => {
 
         // Generate a random password or use provided
         let clearPassword = password || crypto.randomBytes(10).toString('base64');
-        
+
         // Hash the password
         const hashedPassword = await bcrypt.hash(clearPassword, 12);
 

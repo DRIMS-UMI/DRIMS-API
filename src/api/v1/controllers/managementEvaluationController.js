@@ -1881,7 +1881,7 @@ export const getDashboardStats = async (req, res, next) => {
 export const getStatusStatistics = async (req, res, next) => {
     try {
         const { category = 'main' } = req.query;
-        console.log("category", category);
+
         let whereCondition = {};
         let stats = [];
 
@@ -2138,7 +2138,7 @@ export const getNotifications = async (req, res, next) => {
             }
         });
 
-        console.log("notifications", notifications);
+
 
         res.status(200).json({
             notifications
