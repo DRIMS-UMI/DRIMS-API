@@ -59,6 +59,23 @@ export const listConversations = async (req, res) => {
       lastMessages.map(msg => [msg.conversationId, msg])
     );
 
+    // Count unread messages per conversation for the current user
+    const unreadCounts = await prisma.message.groupBy({
+      by: ['conversationId'],
+      where: {
+        conversationId: { in: conversationIds },
+        senderId: { not: userId },
+        NOT: {
+          readBy: { has: userId }
+        }
+      },
+      _count: { _all: true }
+    });
+
+    const unreadCountMap = Object.fromEntries(
+      unreadCounts.map(row => [row.conversationId, row._count._all])
+    );
+
     // Format response
     const result = conversations.map(conv => {
       const otherId = conv.participants.find(pid => pid !== userId);
@@ -67,6 +84,7 @@ export const listConversations = async (req, res) => {
         participants: conv.participants,
         otherParticipant: userMap[otherId] || null,
         lastMessage: lastMessageMap[conv.id] || null,
+        unreadCount: unreadCountMap[conv.id] || 0,
         updatedAt: conv.updatedAt,
         createdAt: conv.createdAt
       };
