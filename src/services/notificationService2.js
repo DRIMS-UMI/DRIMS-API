@@ -718,8 +718,7 @@ class NotificationService {
                 const students = await prisma.student.findMany({
                     where: {
                         isActive: true,
-                        expectedCompletionDate: { not: null },
-                        admissionDate: { not: null }
+                        expectedCompletionDate: { not: null }
                     }
                 });
 
