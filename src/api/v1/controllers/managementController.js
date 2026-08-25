@@ -123,7 +123,64 @@ export const loginSuperAdmin = async (req, res, next) => {
         });
 
     } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
 
+/* ********** OVERDUE DOCUMENTS ********** */
+export const getOverdueDocuments = async (req, res, next) => {
+    try {
+        const documents = await prisma.studentDocument.findMany({
+            where: {
+                type: { not: 'REVIEWED' }
+            },
+            select: {
+                id: true,
+                title: true,
+                type: true,
+                fileName: true,
+                reviewedAt: true,
+                createdAt: true,
+                student: {
+                    select: {
+                        id: true,
+                        fullName: true,
+                        registrationNumber: true
+                    }
+                },
+                supervisor: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                }
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        const fourteenDaysMs = 14 * 24 * 60 * 60 * 1000;
+        const now = Date.now();
+
+        const overdueDocuments = documents
+            .filter(doc => !doc.reviewedAt && (now - new Date(doc.createdAt).getTime()) > fourteenDaysMs)
+            .map(doc => ({
+                id: doc.id,
+                title: doc.title,
+                type: doc.type,
+                fileName: doc.fileName,
+                createdAt: doc.createdAt,
+                daysOverdue: Math.floor((now - new Date(doc.createdAt).getTime()) / (1000 * 60 * 60 * 24)) - 14,
+                student: doc.student,
+                supervisor: doc.supervisor
+            }));
+
+        res.status(200).json({ message: 'Overdue documents retrieved successfully', overdueDocuments });
+    } catch (error) {
+        console.error('Error fetching overdue documents:', error);
         if (!error.statusCode) {
             error.statusCode = 500;
         }

@@ -135,7 +135,8 @@ import {
   getAllActivities,
   deregisterStudent,
   reinstateStudent,
-  fetchAcmisStudent
+  fetchAcmisStudent,
+  getOverdueDocuments
 } from '../controllers/managementController.js';
 import { getEvaluationAnalytics, getDetailedEvaluations, updateResearchRequest, getAllResearchRequests, addStudentToGraduation, resetPassword, requestPasswordReset, getNotifications, getAllStudentsStatusReport, getStudentStatusReport, getProgressTrends, getStatusStatistics, getDashboardStats, updateSenateApprovalDate, updateResultsSentDate, updateResultsApprovalDate, updateComplianceReportDate, updateMinutesSentDate, getBookVivas, getAllPanelists, addNewPanelist, scheduleViva, recordVivaVerdict, getGraduationStatistics } from "../controllers/managementEvaluationController.js"
 
@@ -310,6 +311,9 @@ router.put('/update-ethics-committee-date/:proposalId', authenticateToken, autho
 router.put('/students/:studentId/results-approved', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), updateResultsApprovalDate);
 router.put('/students/:studentId/results-sent', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), updateResultsSentDate);
 router.put('/students/:studentId/senate-approval', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), updateSenateApprovalDate);
+
+// Overdue documents route
+router.get('/documents/overdue', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN', 'AUDITOR'), getOverdueDocuments);
 
 // Dashboard routes
 router.get('/dashboard/stats', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN', 'AUDITOR'), getDashboardStats);

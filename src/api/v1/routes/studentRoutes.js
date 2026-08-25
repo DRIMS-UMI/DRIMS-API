@@ -38,9 +38,8 @@ const memoryStorage = multer.memoryStorage();
 const upload = multer({ 
   storage: memoryStorage,
   fileFilter: (req, file, cb) => {
-    // Accept PDF, DOC, DOCX files
+    // Accept DOC, DOCX files
     const allowedTypes = [
-      'application/pdf',
       'application/msword',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     ];
@@ -48,7 +47,7 @@ const upload = multer({
     if (allowedTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('Only PDF, DOC, and DOCX files are allowed!'), false);
+      cb(new Error('Only DOC and DOCX files are allowed!'), false);
     }
   },
   limits: {
