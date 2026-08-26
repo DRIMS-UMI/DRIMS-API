@@ -1493,10 +1493,12 @@ export const uploadReviewedDocument = async (req, res, next) => {
   try {
     const supervisorId = req.user.id;
     const { documentId } = req.params;
-    const { reviewComments } = req.body;
+    const { reviewComments, noDocument } = req.body;
     const file = req.file;
 
-    if (!file) {
+    const isNoDocument = noDocument === 'true';
+
+    if (!isNoDocument && !file) {
       const error = new Error('No reviewed document uploaded');
       error.statusCode = 400;
       throw error;
@@ -1534,10 +1536,10 @@ export const uploadReviewedDocument = async (req, res, next) => {
           title: `Reviewed: ${originalDocument.title}`,
           description: reviewComments || `Reviewed version of ${originalDocument.title}`,
           type: 'REVIEWED',
-          fileName: file.originalname,
-          fileType: file.mimetype,
-          fileSize: file.size,
-          fileData: file.buffer,
+          fileName: isNoDocument ? null : file.originalname,
+          fileType: isNoDocument ? null : file.mimetype,
+          fileSize: isNoDocument ? null : file.size,
+          fileData: isNoDocument ? null : file.buffer,
           student: {
             connect: { id: originalDocument.studentId }
           },
@@ -1634,7 +1636,7 @@ export const uploadReviewedDocument = async (req, res, next) => {
     }
 
     res.status(201).json({
-      message: 'Reviewed document uploaded successfully',
+      message: isNoDocument ? 'Review comments submitted successfully' : 'Reviewed document uploaded successfully',
       document: {
         id: reviewedDocument.id,
         title: reviewedDocument.title,
@@ -1645,6 +1647,433 @@ export const uploadReviewedDocument = async (req, res, next) => {
       }
     });
 
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+// ==================== GUIDELINES ====================
+
+/**
+ * @desc    Create a new guideline document
+ * @route   POST /api/v1/supervisor/guidelines
+ * @access  Private (Supervisor)
+ */
+export const createGuideline = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { title, description, comments } = req.body;
+    const file = req.file;
+
+    if (!file) {
+      const error = new Error('No file uploaded');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (!title) {
+      const error = new Error('Title is required');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // Find the supervisor record
+    const supervisor = await prisma.supervisor.findUnique({
+      where: { userId }
+    });
+
+    if (!supervisor) {
+      const error = new Error('Supervisor profile not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const guideline = await prisma.guideline.create({
+      data: {
+        title,
+        description: description || null,
+        comments: comments || null,
+        fileName: file.originalname,
+        fileType: file.mimetype,
+        fileSize: file.size,
+        fileData: file.buffer,
+        supervisorId: supervisor.id
+      },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        fileName: true,
+        fileType: true,
+        fileSize: true,
+        comments: true,
+        createdAt: true
+      }
+    });
+
+    res.status(201).json({
+      message: 'Guideline created successfully',
+      guideline
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get all guidelines created by this supervisor
+ * @route   GET /api/v1/supervisor/guidelines
+ * @access  Private (Supervisor)
+ */
+export const getSupervisorGuidelines = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+
+    const supervisor = await prisma.supervisor.findUnique({
+      where: { userId }
+    });
+
+    if (!supervisor) {
+      const error = new Error('Supervisor profile not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const guidelines = await prisma.guideline.findMany({
+      where: { supervisorId: supervisor.id },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        fileName: true,
+        fileType: true,
+        fileSize: true,
+        comments: true,
+        createdAt: true,
+        recipients: {
+          select: {
+            id: true,
+            sharedAt: true,
+            viewedAt: true,
+            student: {
+              select: {
+                id: true,
+                fullName: true,
+                registrationNumber: true,
+                email: true
+              }
+            }
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    res.status(200).json({ guidelines });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+/**
+ * @desc    Download a guideline file
+ * @route   GET /api/v1/supervisor/guidelines/:guidelineId/download
+ * @access  Private (Supervisor)
+ */
+export const downloadGuideline = async (req, res, next) => {
+  try {
+    const { guidelineId } = req.params;
+    const userId = req.user.id;
+
+    const supervisor = await prisma.supervisor.findUnique({
+      where: { userId }
+    });
+
+    if (!supervisor) {
+      const error = new Error('Supervisor profile not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const guideline = await prisma.guideline.findUnique({
+      where: { id: guidelineId }
+    });
+
+    if (!guideline) {
+      const error = new Error('Guideline not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (guideline.supervisorId !== supervisor.id) {
+      const error = new Error('Access denied');
+      error.statusCode = 403;
+      throw error;
+    }
+
+    res.set({
+      'Content-Type': guideline.fileType,
+      'Content-Disposition': `attachment; filename="${guideline.fileName}"`
+    });
+
+    res.send(Buffer.from(guideline.fileData));
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+/**
+ * @desc    Add or update comments on a guideline
+ * @route   POST /api/v1/supervisor/guidelines/:guidelineId/comments
+ * @access  Private (Supervisor)
+ */
+export const addGuidelineComment = async (req, res, next) => {
+  try {
+    const { guidelineId } = req.params;
+    const { comments } = req.body;
+    const userId = req.user.id;
+
+    const supervisor = await prisma.supervisor.findUnique({
+      where: { userId }
+    });
+
+    if (!supervisor) {
+      const error = new Error('Supervisor profile not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const guideline = await prisma.guideline.findUnique({
+      where: { id: guidelineId }
+    });
+
+    if (!guideline) {
+      const error = new Error('Guideline not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (guideline.supervisorId !== supervisor.id) {
+      const error = new Error('Access denied');
+      error.statusCode = 403;
+      throw error;
+    }
+
+    const updated = await prisma.guideline.update({
+      where: { id: guidelineId },
+      data: { comments },
+      select: {
+        id: true,
+        title: true,
+        comments: true,
+        updatedAt: true
+      }
+    });
+
+    res.status(200).json({
+      message: 'Comments updated successfully',
+      guideline: updated
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+/**
+ * @desc    Share a guideline with students
+ * @route   POST /api/v1/supervisor/guidelines/:guidelineId/share
+ * @access  Private (Supervisor)
+ */
+export const shareGuideline = async (req, res, next) => {
+  try {
+    const { guidelineId } = req.params;
+    const { studentIds, shareWithAll } = req.body;
+    const userId = req.user.id;
+
+    const supervisor = await prisma.supervisor.findUnique({
+      where: { userId }
+    });
+
+    if (!supervisor) {
+      const error = new Error('Supervisor profile not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const guideline = await prisma.guideline.findUnique({
+      where: { id: guidelineId }
+    });
+
+    if (!guideline) {
+      const error = new Error('Guideline not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (guideline.supervisorId !== supervisor.id) {
+      const error = new Error('Access denied');
+      error.statusCode = 403;
+      throw error;
+    }
+
+    // Determine which students to share with
+    let targetStudentIds = [];
+
+    if (shareWithAll) {
+      // Get all assigned students who don't already have this guideline
+      const existingRecipients = await prisma.guidelineRecipient.findMany({
+        where: { guidelineId },
+        select: { studentId: true }
+      });
+      const existingIds = new Set(existingRecipients.map(r => r.studentId));
+
+      targetStudentIds = supervisor.studentIds.filter(id => !existingIds.has(id));
+    } else if (studentIds && Array.isArray(studentIds)) {
+      // Filter out students who already have this guideline
+      const existingRecipients = await prisma.guidelineRecipient.findMany({
+        where: { guidelineId },
+        select: { studentId: true }
+      });
+      const existingIds = new Set(existingRecipients.map(r => r.studentId));
+
+      targetStudentIds = studentIds.filter(id => !existingIds.has(id));
+    }
+
+    if (targetStudentIds.length === 0) {
+      return res.status(200).json({
+        message: 'No new students to share with',
+        sharedCount: 0
+      });
+    }
+
+    // Create recipient records
+    const recipientData = targetStudentIds.map(studentId => ({
+      guidelineId,
+      studentId
+    }));
+
+    await prisma.guidelineRecipient.createMany({
+      data: recipientData
+    });
+
+    // Fetch student details for notifications
+    const students = await prisma.student.findMany({
+      where: { id: { in: targetStudentIds } },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        studentUserId: true
+      }
+    });
+
+    // Create notifications for each student
+    const notificationPromises = students.map(student => {
+      return prisma.notification.create({
+        data: {
+          type: 'SYSTEM',
+          statusType: 'SENT',
+          title: 'New Guidelines Shared',
+          message: `${supervisor.name} has shared guidelines document "${guideline.title}" with you`,
+          recipientCategory: 'STUDENT',
+          recipientEmail: student.email,
+          recipientName: student.fullName,
+          scheduledFor: new Date(),
+          sentAt: new Date(),
+          studentId: student.id,
+          metadata: {
+            guidelineId,
+            guidelineTitle: guideline.title,
+            supervisorName: supervisor.name
+          }
+        }
+      });
+    });
+
+    await Promise.allSettled(notificationPromises);
+
+    res.status(200).json({
+      message: `Guideline shared with ${targetStudentIds.length} student(s)`,
+      sharedCount: targetStudentIds.length
+    });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+/**
+ * @desc    Get recipients of a guideline
+ * @route   GET /api/v1/supervisor/guidelines/:guidelineId/recipients
+ * @access  Private (Supervisor)
+ */
+export const getGuidelineRecipients = async (req, res, next) => {
+  try {
+    const { guidelineId } = req.params;
+    const userId = req.user.id;
+
+    const supervisor = await prisma.supervisor.findUnique({
+      where: { userId }
+    });
+
+    if (!supervisor) {
+      const error = new Error('Supervisor profile not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const guideline = await prisma.guideline.findUnique({
+      where: { id: guidelineId }
+    });
+
+    if (!guideline) {
+      const error = new Error('Guideline not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (guideline.supervisorId !== supervisor.id) {
+      const error = new Error('Access denied');
+      error.statusCode = 403;
+      throw error;
+    }
+
+    const recipients = await prisma.guidelineRecipient.findMany({
+      where: { guidelineId },
+      select: {
+        id: true,
+        sharedAt: true,
+        viewedAt: true,
+        student: {
+          select: {
+            id: true,
+            fullName: true,
+            registrationNumber: true,
+            email: true
+          }
+        }
+      },
+      orderBy: { sharedAt: 'desc' }
+    });
+
+    res.status(200).json({ recipients });
   } catch (error) {
     if (!error.statusCode) {
       error.statusCode = 500;

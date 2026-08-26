@@ -2143,4 +2143,172 @@ export const cancelResearchClinicBooking = async (req, res, next) => {
     }
     next(error);
   }
+};
+
+// ==================== GUIDELINES ====================
+
+/**
+ * @desc    Get all guidelines shared with this student
+ * @route   GET /api/v1/student/guidelines
+ * @access  Private (Student)
+ */
+export const getStudentGuidelines = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+
+    const user = await prisma.studentUser.findUnique({
+      where: { id: userId },
+      include: { student: true }
+    });
+
+    if (!user || !user.student) {
+      const error = new Error("Student not found for this user");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const studentId = user.student.id;
+
+    const recipients = await prisma.guidelineRecipient.findMany({
+      where: { studentId },
+      select: {
+        id: true,
+        sharedAt: true,
+        viewedAt: true,
+        guideline: {
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            fileName: true,
+            fileType: true,
+            fileSize: true,
+            comments: true,
+            createdAt: true,
+            supervisor: {
+              select: {
+                id: true,
+                name: true,
+                workEmail: true,
+                designation: true
+              }
+            }
+          }
+        }
+      },
+      orderBy: { sharedAt: 'desc' }
+    });
+
+    res.status(200).json({ guidelines: recipients });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+/**
+ * @desc    Mark a guideline as viewed
+ * @route   PUT /api/v1/student/guidelines/:guidelineId/view
+ * @access  Private (Student)
+ */
+export const markGuidelineViewed = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { guidelineId } = req.params;
+
+    const user = await prisma.studentUser.findUnique({
+      where: { id: userId },
+      include: { student: true }
+    });
+
+    if (!user || !user.student) {
+      const error = new Error("Student not found for this user");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const studentId = user.student.id;
+
+    const recipient = await prisma.guidelineRecipient.findFirst({
+      where: { guidelineId, studentId }
+    });
+
+    if (!recipient) {
+      const error = new Error("Guideline not found or not shared with you");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (!recipient.viewedAt) {
+      await prisma.guidelineRecipient.update({
+        where: { id: recipient.id },
+        data: { viewedAt: new Date() }
+      });
+    }
+
+    res.status(200).json({ message: 'Guideline marked as viewed' });
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+/**
+ * @desc    Download a guideline file (student)
+ * @route   GET /api/v1/student/guidelines/:guidelineId/download
+ * @access  Private (Student)
+ */
+export const downloadStudentGuideline = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { guidelineId } = req.params;
+
+    const user = await prisma.studentUser.findUnique({
+      where: { id: userId },
+      include: { student: true }
+    });
+
+    if (!user || !user.student) {
+      const error = new Error("Student not found for this user");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // Verify the student has received this guideline
+    const recipient = await prisma.guidelineRecipient.findFirst({
+      where: { guidelineId, studentId: user.student.id }
+    });
+
+    if (!recipient) {
+      const error = new Error("Guideline not found or not shared with you");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const guideline = await prisma.guideline.findUnique({
+      where: { id: guidelineId }
+    });
+
+    if (!guideline) {
+      const error = new Error('Guideline not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    res.set({
+      'Content-Type': guideline.fileType,
+      'Content-Disposition': `attachment; filename="${guideline.fileName}"`
+    });
+
+    res.send(Buffer.from(guideline.fileData));
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
 }; 

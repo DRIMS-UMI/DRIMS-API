@@ -24,7 +24,13 @@ import {
   getStudentDocuments,
   downloadStudentDocument,
   uploadReviewedDocument,
-  getPendingReviews
+  getPendingReviews,
+  createGuideline,
+  getSupervisorGuidelines,
+  downloadGuideline,
+  addGuidelineComment,
+  shareGuideline,
+  getGuidelineRecipients
 } from '../controllers/supervisorController.js';
 
 // Configure multer for file uploads
@@ -102,5 +108,13 @@ router.get('/dashboard/stats', authenticateToken, authorizeRoles('SUPERVISOR'), 
 router.get('/dashboard/status-statistics', authenticateToken, authorizeRoles('SUPERVISOR'), getStatusStatistics);
 router.get('/dashboard/pending-reviews', authenticateToken, authorizeRoles('SUPERVISOR'), getPendingReviews);
 router.get('/notifications', authenticateToken, authorizeRoles('SUPERVISOR'), getNotifications);
+
+// Guidelines routes
+router.post('/guidelines', authenticateToken, authorizeRoles('SUPERVISOR'), upload.single('file'), handleMulterError, createGuideline);
+router.get('/guidelines', authenticateToken, authorizeRoles('SUPERVISOR'), getSupervisorGuidelines);
+router.get('/guidelines/:guidelineId/download', authenticateToken, authorizeRoles('SUPERVISOR'), downloadGuideline);
+router.post('/guidelines/:guidelineId/comments', authenticateToken, authorizeRoles('SUPERVISOR'), addGuidelineComment);
+router.post('/guidelines/:guidelineId/share', authenticateToken, authorizeRoles('SUPERVISOR'), shareGuideline);
+router.get('/guidelines/:guidelineId/recipients', authenticateToken, authorizeRoles('SUPERVISOR'), getGuidelineRecipients);
 
 export default router; 

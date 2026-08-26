@@ -31,6 +31,9 @@ import {
   cancelResearchClinicBooking,
   getAvailableResearchClinicDays,
   bookResearchClinicSession,
+  getStudentGuidelines,
+  markGuidelineViewed,
+  downloadStudentGuideline
 } from '../controllers/studentController.js';
 
 // Configure multer for file uploads
@@ -131,5 +134,10 @@ router.get('/research-clinic-days', authenticateToken, authorizeRoles('STUDENT')
 router.post('/research-clinic-bookings', authenticateToken, authorizeRoles('STUDENT'), bookResearchClinicSession);
 router.get('/research-clinic-bookings', authenticateToken, authorizeRoles('STUDENT'), getStudentResearchClinicBookings);
 router.put('/research-clinic-bookings/:bookingId/cancel', authenticateToken, authorizeRoles('STUDENT'), cancelResearchClinicBooking);
+
+// Guidelines routes
+router.get('/guidelines', authenticateToken, authorizeRoles('STUDENT'), getStudentGuidelines);
+router.get('/guidelines/:guidelineId/download', authenticateToken, authorizeRoles('STUDENT'), downloadStudentGuideline);
+router.put('/guidelines/:guidelineId/view', authenticateToken, authorizeRoles('STUDENT'), markGuidelineViewed);
 
 export default router; 

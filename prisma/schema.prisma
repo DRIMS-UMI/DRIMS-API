@@ -232,6 +232,7 @@ model student {
   researchRequests     researchRequest[] // Research requests made by the student
   evaluations          studentEvaluation[] // Student satisfaction evaluations
   documents            studentDocument[] // Student uploaded documents
+  guidelineRecipients  guidelineRecipient[] // Guidelines shared by supervisors
   resultsApprovedDate  DateTime?
   resultsSentDate      DateTime?
   senateApprovalDate   DateTime?
@@ -359,10 +360,10 @@ model studentDocument {
   title           String
   description     String?
   type            String   // PROPOSAL, DISSERTATION, CHAPTER, OTHER
-  fileName        String
-  fileType        String
-  fileSize        Int
-  fileData        Bytes
+  fileName        String?
+  fileType        String?
+  fileSize        Int?
+  fileData        Bytes?
   studentId       String   @db.ObjectId
   uploadedById    String?  @db.ObjectId
   uploadedByStudentId String? @db.ObjectId
@@ -379,6 +380,34 @@ model studentDocument {
   
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+}
+
+model guideline {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  title           String
+  description     String?
+  fileName        String
+  fileType        String
+  fileSize        Int
+  fileData        Bytes
+  comments        String?
+  supervisorId    String    @db.ObjectId
+  supervisor      supervisor @relation(fields: [supervisorId], references: [id])
+  recipients      guidelineRecipient[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model guidelineRecipient {
+  id              String     @id @default(auto()) @map("_id") @db.ObjectId
+  guidelineId     String     @db.ObjectId
+  guideline       guideline  @relation(fields: [guidelineId], references: [id], onDelete: Cascade)
+  studentId       String     @db.ObjectId
+  student         student    @relation(fields: [studentId], references: [id])
+  sharedAt        DateTime   @default(now())
+  viewedAt        DateTime?
+
+  @@unique([guidelineId, studentId])
 }
 
 model proposalDefenseGrade {
@@ -575,6 +604,9 @@ model supervisor {
   
   // Add this relation
   notifications notification[] @relation("SupervisorNotifications")
+
+  // Guidelines shared by this supervisor
+  guidelines     guideline[]
 
   // Supervisor Appointment relations
   availabilities supervisorAvailability[]
