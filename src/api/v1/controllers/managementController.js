@@ -9191,7 +9191,7 @@ export const updateStaffMember = async (req, res, next) => {
 
             },
             include: {
-                supervisor: true,
+                supervisor: { include: { user: true } },
                 examiner: true,
                 reviewer: true,
                 panelist: true,
@@ -9229,6 +9229,19 @@ export const updateStaffMember = async (req, res, next) => {
                     secondaryPhone: updatedStaffMember.secondaryPhone
                 }
             }).catch(e => console.error("Sync supervisor failed:", e)));
+
+            if (updatedStaffMember.supervisor?.userId) {
+                syncPromises.push(prisma.user.update({
+                    where: { id: updatedStaffMember.supervisor.userId },
+                    data: {
+                        name: updatedStaffMember.name,
+                        email: updatedStaffMember.email,
+                        phone: updatedStaffMember.phone || '',
+                        title: updatedStaffMember.title,
+                        designation: updatedStaffMember.designation,
+                    }
+                }).catch(e => console.error("Sync supervisor user account failed:", e)));
+            }
         }
 
         if (updatedStaffMember.examinerId) {
