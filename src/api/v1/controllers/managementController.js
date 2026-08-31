@@ -2599,7 +2599,13 @@ export const assignStudentsToSupervisor = async (req, res, next) => {
 export const changeStudentSupervisor = async (req, res, next) => {
     try {
         const { studentId } = req.params;
-        const { oldSupervisorId, newSupervisorId, reason } = req.body;
+        const { oldSupervisorId, newSupervisorId, reason, role } = req.body;
+
+        if (role && !['MAIN', 'CO_SUPERVISOR'].includes(role)) {
+            const error = new Error('Role must be either MAIN or CO_SUPERVISOR');
+            error.statusCode = 400;
+            throw error;
+        }
 
         // Check if student exists
         const student = await prisma.student.findUnique({
@@ -2651,10 +2657,29 @@ export const changeStudentSupervisor = async (req, res, next) => {
 
         let updatedStudent;
         await prisma.$transaction(async (tx) => {
+            // Inherit role from the old supervisor unless an explicit role was provided
+            const existingRoles = typeof student.supervisorRoles === 'object' && student.supervisorRoles !== null
+                ? student.supervisorRoles
+                : {};
+            const inheritedRole = role || existingRoles[oldSupervisorId] || 'CO_SUPERVISOR';
+            const updatedRolesMap = { ...existingRoles };
+            delete updatedRolesMap[oldSupervisorId];
+            updatedRolesMap[newSupervisorId] = inheritedRole;
+
+            // If the assigned role is MAIN, demote any other MAIN supervisor
+            if (inheritedRole === 'MAIN') {
+                for (const existingSupervisor of student.supervisors) {
+                    if (existingSupervisor.id !== newSupervisorId && updatedRolesMap[existingSupervisor.id] === 'MAIN') {
+                        updatedRolesMap[existingSupervisor.id] = 'CO_SUPERVISOR';
+                    }
+                }
+            }
+
             // Update student's supervisors (remove old, add new)
             updatedStudent = await tx.student.update({
                 where: { id: studentId },
                 data: {
+                    supervisorRoles: updatedRolesMap,
                     supervisors: {
                         disconnect: { id: oldSupervisorId },
                         connect: { id: newSupervisorId }
@@ -2689,11 +2714,11 @@ export const changeStudentSupervisor = async (req, res, next) => {
                         newSupervisorId,
                         newSupervisorName: newSupervisor.user.name,
                         reason,
-                        description: `Changed supervisor for student ${student.name} from ${oldSupervisor?.user?.name} to ${newSupervisor.user.name}`
+                        description: `Changed supervisor for student ${student.fullName} from ${oldSupervisor?.user?.name} to ${newSupervisor.user.name}`
                     })
                 }
             });
-        }, { timeout: 15000 });
+        }, { timeout: 30000 });
 
         // <p>This change was made for the following reason: ${reason}</p>
         // Send email notification to the new supervisor through notification service
@@ -2705,7 +2730,7 @@ export const changeStudentSupervisor = async (req, res, next) => {
             recipientCategory: "USER",
             recipientId: newSupervisor.user.id,
             // recipientEmail: newSupervisor.user.email,
-            recipientEmail: "stephaniekirathe@gmail.com",
+            recipientEmail: newSupervisor.user.email,
             recipientName: newSupervisor.user.name,
             scheduledFor: new Date(Date.now() + 60000), // Schedule for delivery 1 minute from now
             // scheduledFor: new Date(new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' })).getTime() + 5 * 60000), // Schedule for delivery in Uganda timezone, 5 minutes from now
@@ -2726,12 +2751,12 @@ export const changeStudentSupervisor = async (req, res, next) => {
             statusType: "PENDING",
             title: "Supervisor Change Notification",
             message: `Your supervisor has been changed from ${oldSupervisor?.user?.title} ${oldSupervisor?.user?.name} to ${newSupervisor.user.title} ${newSupervisor.user.name}. `,
-            recipientCategory: "USER",
-            recipientId: student?.user?.id,
+            recipientCategory: "STUDENT",
+            recipientId: student.id,
             // recipientEmail: student?.user?.email,
-            recipientEmail: "stephaniekirathe@gmail.com",
+            recipientEmail: student.email,
 
-            recipientName: student?.user?.name,
+            recipientName: student.fullName,
             scheduledFor: new Date(Date.now() + 60000), // Schedule for delivery 1 minute from now
             // scheduledFor: new Date(new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' })).getTime() + 60000), // Schedule for delivery in Uganda timezone, 1 minute from now
             metadata: {
@@ -2761,7 +2786,125 @@ export const changeStudentSupervisor = async (req, res, next) => {
     }
 };
 
+export const updateStudentSupervisorRole = async (req, res, next) => {
+    try {
+        const { studentId } = req.params;
+        const { supervisorId, role } = req.body;
 
+        if (!supervisorId) {
+            const error = new Error('Supervisor ID is required');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        if (!['MAIN', 'CO_SUPERVISOR'].includes(role)) {
+            const error = new Error('Role must be either MAIN or CO_SUPERVISOR');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        const student = await prisma.student.findUnique({
+            where: { id: studentId },
+            include: {
+                supervisors: true,
+                studentUser: true
+            }
+        });
+
+        if (!student) {
+            const error = new Error('Student not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        const isAssigned = student.supervisors.some(
+            supervisor => supervisor.id === supervisorId
+        );
+
+        if (!isAssigned) {
+            const error = new Error('The specified supervisor is not assigned to this student');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        const supervisor = await prisma.supervisor.findUnique({
+            where: { id: supervisorId },
+            include: { user: true }
+        });
+
+        if (!supervisor) {
+            const error = new Error('Supervisor not found');
+            error.statusCode = 404;
+            throw error;
+        }
+
+        let updatedStudent;
+        await prisma.$transaction(async (tx) => {
+            const existingRoles = typeof student.supervisorRoles === 'object' && student.supervisorRoles !== null
+                ? student.supervisorRoles
+                : {};
+
+            let updatedRolesMap = { ...existingRoles };
+
+            if (role === 'MAIN') {
+                // Demote any existing MAIN supervisor (other than this one) to CO_SUPERVISOR
+                for (const existingSupervisor of student.supervisors) {
+                    if (existingSupervisor.id !== supervisorId && updatedRolesMap[existingSupervisor.id] === 'MAIN') {
+                        updatedRolesMap[existingSupervisor.id] = 'CO_SUPERVISOR';
+                    }
+                }
+            }
+
+            updatedRolesMap[supervisorId] = role;
+
+            updatedStudent = await tx.student.update({
+                where: { id: studentId },
+                data: {
+                    supervisorRoles: updatedRolesMap
+                },
+                include: {
+                    supervisors: {
+                        include: {
+                            user: true
+                        }
+                    },
+                    campus: true,
+                    school: true,
+                    department: true
+                }
+            });
+
+            await tx.userActivity.create({
+                data: {
+                    ipAddress: req?.headers['x-client-ip'] || req?.ip || req?.headers['x-forwarded-for'] || 'Unknown',
+                    deviceId: req?.headers['x-device-id'] || 'Unknown',
+                    browserAgent: req?.headers['user-agent'] || 'Unknown',
+                    user: { connect: { id: req.user?.id } },
+                    action: 'UPDATE_SUPERVISOR_ROLE',
+                    entityType: 'Student',
+                    entityId: studentId,
+                    details: JSON.stringify({
+                        studentId,
+                        supervisorId,
+                        supervisorName: supervisor.user?.name || supervisor.name,
+                        role,
+                        description: `Updated supervisor role for student ${student.fullName}: ${supervisor.user?.name || supervisor.name} set as ${role === 'MAIN' ? 'Main Supervisor' : 'Co-Supervisor'}`
+                    })
+                }
+            });
+        }, { timeout: 30000 });
+
+        res.status(200).json({
+            message: 'Supervisor role updated successfully',
+            student: updatedStudent
+        });
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
 
 // Get students assigned to supervisor
 export const getAssignedStudents = async (req, res, next) => {

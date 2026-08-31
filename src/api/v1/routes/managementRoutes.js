@@ -41,6 +41,7 @@ import {
   assignSupervisorsToStudent,
   assignStudentsToSupervisor,
   changeStudentSupervisor,
+  updateStudentSupervisorRole,
   getAssignedStudents,
   createStudent,
   uploadStudents,
@@ -217,6 +218,8 @@ router.post('/students/:studentId/assign-supervisors', authenticateToken, author
 router.get('/supervisor/:supervisorId/students', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN', 'AUDITOR'), getAssignedStudents);
 // Change supervisor route
 router.put('/students/:studentId/change-supervisor', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), changeStudentSupervisor);
+// Update student supervisor role
+router.put('/students/:studentId/supervisor-role', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), updateStudentSupervisorRole);
 
 // Reallocation statistics route
 router.get('/reallocation-statistics', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN', 'AUDITOR'), getReallocationStatistics);

@@ -7862,7 +7862,7 @@ export const changeStudentSupervisor = async (req, res, next) => {
       recipientCategory: "USER",
       recipientId: newSupervisor.user.id,
       // recipientEmail: newSupervisor.user.email,
-      recipientEmail: "stephaniekirathe@gmail.com",
+      recipientEmail: newSupervisor.user.email,
       recipientName: newSupervisor.user.name,
       scheduledFor: new Date(Date.now() + 60000), // Schedule for delivery 1 minute from now
       // scheduledFor: new Date(new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' })).getTime() + 5 * 60000), // Schedule for delivery in Uganda timezone, 5 minutes from now
@@ -7883,12 +7883,12 @@ export const changeStudentSupervisor = async (req, res, next) => {
       statusType: "PENDING",
       title: "Supervisor Change Notification",
       message: `Your supervisor has been changed from ${oldSupervisor?.user?.title} ${oldSupervisor?.user?.name} to ${newSupervisor.user.title} ${newSupervisor.user.name}. `,
-      recipientCategory: "USER",
-      recipientId: student?.user?.id,
+      recipientCategory: "STUDENT",
+      recipientId: student.id,
       // recipientEmail: student?.user?.email,
-      recipientEmail: "stephaniekirathe@gmail.com",
+      recipientEmail: student.email,
 
-      recipientName: student?.user?.name,
+      recipientName: student.fullName,
       scheduledFor: new Date(Date.now() + 60000), // Schedule for delivery 1 minute from now
       // scheduledFor: new Date(new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Kampala' })).getTime() + 60000), // Schedule for delivery in Uganda timezone, 1 minute from now
       metadata: {
