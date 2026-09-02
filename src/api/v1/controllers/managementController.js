@@ -2970,6 +2970,31 @@ export const getAssignedStudents = async (req, res, next) => {
 // Controller for creating a new student
 
 
+export const getStudentCohorts = async (req, res, next) => {
+    try {
+        const students = await prisma.student.findMany({
+            where: {
+                cohort: {
+                    not: null
+                }
+            },
+            select: {
+                cohort: true
+            },
+            distinct: ['cohort']
+        });
+
+        const cohorts = students
+            .map(s => s.cohort)
+            .filter(c => c && c.trim() !== '')
+            .map(c => c.trim());
+
+        res.status(200).json({ cohorts });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const createStudent = async (req, res, next) => {
     let createdUser = null;
     try {
@@ -2988,6 +3013,7 @@ export const createStudent = async (req, res, next) => {
             studyMode,
             intakePeriod,
             programLevel,
+            cohort,
             specialization,
             completionTime,
             expectedCompletionDate,
@@ -3086,6 +3112,7 @@ export const createStudent = async (req, res, next) => {
                     studyMode,
                     intakePeriod,
                     programLevel,
+                    cohort,
                     specialization: specialization ? { connect: { id: specialization } } : undefined,
                     completionTime: completionTime ? parseInt(completionTime) : null,
                     admissionDate: admissionDate ? new Date(admissionDate) : new Date(),

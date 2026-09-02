@@ -50,6 +50,7 @@ import {
   deleteStudent,
   getStudent,
   getAllStudents,
+  getStudentCohorts,
   getStudentStatuses,
   createStatusDefinition,
   getAllStatusDefinitions,
@@ -229,6 +230,7 @@ router.post('/students', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEAR
 router.post('/students/upload', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), uploadStudents);
 router.put('/students/:studentId', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), updateStudent);
 router.delete('/students/:studentId', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), deleteStudent);
+router.get('/students/cohorts', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN', 'AUDITOR'), getStudentCohorts);
 router.get('/students/:studentId', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN', 'AUDITOR'), getStudent);
 router.get('/students', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN', 'AUDITOR'), getAllStudents);
 router.put('/students/:studentId/password', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), changeStudentPassword);

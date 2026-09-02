@@ -203,6 +203,7 @@ model student {
   academicYear         String?
   studyMode            String?        // "Full Time" or "Part Time"
   intakePeriod         String?
+  cohort               String?        // Optional intake cohort label e.g. "2023", "Masters 2023"
   programLevel         String?        // "Masters" or "PhD"
   specialization        specialization? @relation(fields: [specializationId], references: [id])
   specializationId      String?         @db.ObjectId
