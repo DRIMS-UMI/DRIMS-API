@@ -10952,7 +10952,7 @@ export const getReallocationStatistics = async (req, res, next) => {
 // Controller for creating a new course
 export const createCourse = async (req, res, next) => {
     try {
-        const { code, title, description, campusId } = req.body;
+        const { code, title, description, campusId, directMasters, schoolId, departmentId, duration } = req.body;
         const createdById = req.user.id;
 
         // Validate required fields
@@ -10960,6 +10960,15 @@ export const createCourse = async (req, res, next) => {
             const error = new Error('Course code, title, and campus are required');
             error.statusCode = 400;
             throw error;
+        }
+
+        // For direct masters courses, school and department are required on the course itself
+        if (directMasters) {
+            if (!schoolId || !departmentId) {
+                const error = new Error('School and department are required for direct masters courses');
+                error.statusCode = 400;
+                throw error;
+            }
         }
 
         // Check if course with same code already exists
@@ -10986,7 +10995,28 @@ export const createCourse = async (req, res, next) => {
             throw error;
         }
 
+        // Verify school and department exist if provided
+        if (schoolId) {
+            const school = await prisma.school.findUnique({
+                where: { id: schoolId }
+            });
+            if (!school) {
+                const error = new Error('School not found');
+                error.statusCode = 404;
+                throw error;
+            }
+        }
 
+        if (departmentId) {
+            const department = await prisma.department.findUnique({
+                where: { id: departmentId }
+            });
+            if (!department) {
+                const error = new Error('Department not found');
+                error.statusCode = 404;
+                throw error;
+            }
+        }
 
         // Create new course
         const course = await prisma.course.create({
@@ -10995,6 +11025,10 @@ export const createCourse = async (req, res, next) => {
                 title,
                 description: description || null,
                 campusId,
+                directMasters: directMasters || false,
+                schoolId: directMasters ? schoolId : null,
+                departmentId: directMasters ? departmentId : null,
+                duration: duration ? parseInt(duration) : null,
                 createdById
             },
             include: {
@@ -11005,6 +11039,8 @@ export const createCourse = async (req, res, next) => {
                         location: true
                     }
                 },
+                school: true,
+                department: true,
                 specializations: {
                     include: {
                         school: true,
@@ -11064,11 +11100,16 @@ export const getAllCourses = async (req, res, next) => {
         }
 
         if (schoolId) {
-            where.specializations = {
-                some: {
-                    schoolId: schoolId
+            where.OR = [
+                { schoolId: schoolId },
+                {
+                    specializations: {
+                        some: {
+                            schoolId: schoolId
+                        }
+                    }
                 }
-            };
+            ];
         }
 
         if (isActive !== undefined) {
@@ -11092,6 +11133,8 @@ export const getAllCourses = async (req, res, next) => {
                         location: true
                     }
                 },
+                school: true,
+                department: true,
                 specializations: {
                     include: {
                         school: true,
@@ -11151,7 +11194,7 @@ export const getAllCourses = async (req, res, next) => {
 export const updateCourse = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { code, title, description, campusId } = req.body;
+        const { code, title, description, campusId, directMasters, schoolId, departmentId, duration } = req.body;
         const updatedById = req.user.id;
 
         // Validate required fields
@@ -11199,14 +11242,53 @@ export const updateCourse = async (req, res, next) => {
             throw error;
         }
 
+        // Determine if this is a direct masters course
+        const isDirectMasters = directMasters ?? existingCourse.directMasters;
 
+        // For direct masters courses, school and department are required on the course itself
+        if (isDirectMasters) {
+            const newSchoolId = schoolId ?? existingCourse.schoolId;
+            const newDepartmentId = departmentId ?? existingCourse.departmentId;
+            if (!newSchoolId || !newDepartmentId) {
+                const error = new Error('School and department are required for direct masters courses');
+                error.statusCode = 400;
+                throw error;
+            }
+        }
+
+        // Verify school and department exist if provided
+        if (schoolId) {
+            const school = await prisma.school.findUnique({
+                where: { id: schoolId }
+            });
+            if (!school) {
+                const error = new Error('School not found');
+                error.statusCode = 404;
+                throw error;
+            }
+        }
+
+        if (departmentId) {
+            const department = await prisma.department.findUnique({
+                where: { id: departmentId }
+            });
+            if (!department) {
+                const error = new Error('Department not found');
+                error.statusCode = 404;
+                throw error;
+            }
+        }
 
         // Track changes
         const updateData = {
             code,
             title,
             description: description || null,
-            campusId
+            campusId,
+            directMasters: isDirectMasters,
+            schoolId: isDirectMasters ? (schoolId ?? existingCourse.schoolId) : null,
+            departmentId: isDirectMasters ? (departmentId ?? existingCourse.departmentId) : null,
+            duration: duration !== undefined ? (duration ? parseInt(duration) : null) : existingCourse.duration
         };
         const changes = [];
         Object.keys(updateData).forEach(key => {
@@ -11235,6 +11317,8 @@ export const updateCourse = async (req, res, next) => {
                         location: true
                     }
                 },
+                school: true,
+                department: true,
                 specializations: {
                     include: {
                         school: true,

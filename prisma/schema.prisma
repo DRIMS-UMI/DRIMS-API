@@ -853,6 +853,7 @@ model school {
   examiners   examiner[]
   staffMembers staffMember[]
   specializations specialization[]
+  courses     course[]
 }
 
 model campus {
@@ -884,6 +885,7 @@ model department {
   examiners   examiner[]
   staffMembers staffMember[]
   specializations specialization[]
+  courses     course[]
 }
 
 model facultyMember {
@@ -1159,12 +1161,19 @@ model course {
   title       String
   description String?
   isActive    Boolean  @default(true)
+  directMasters Boolean @default(false)
+  duration    Int?
   
   // Relations
   campus      campus   @relation(fields: [campusId], references: [id])
   campusId    String   @db.ObjectId
   specializations specialization[]
 
+  // School and department belong on the course when directMasters = true
+  school      school?   @relation(fields: [schoolId], references: [id])
+  schoolId    String?   @db.ObjectId
+  department  department? @relation(fields: [departmentId], references: [id])
+  departmentId String?  @db.ObjectId
 
   
   // Audit fields
@@ -1179,6 +1188,8 @@ model course {
   students    student[]
   
   @@index([campusId])
+  @@index([schoolId])
+  @@index([departmentId])
 }
 
 model specialization {
