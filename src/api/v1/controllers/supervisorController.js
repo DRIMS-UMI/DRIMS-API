@@ -295,8 +295,41 @@ export const getAssignedStudents = async (req, res, next) => {
       },
     });
 
+    const documentRows = await prisma.studentDocument.findMany({
+      where: {
+        supervisorId: userId,
+        type: { not: 'REVIEWED' },
+      },
+      select: {
+        studentId: true,
+        reviewedAt: true,
+        createdAt: true,
+      },
+    });
+
+    const now = Date.now();
+    const fourteenDaysMs = 14 * 24 * 60 * 60 * 1000;
+
+    const documentSummaryMap = {};
+    for (const doc of documentRows) {
+      const summary = documentSummaryMap[doc.studentId] || { total: 0, pending: 0, overdue: 0 };
+      summary.total += 1;
+      if (!doc.reviewedAt) {
+        summary.pending += 1;
+        if (now - new Date(doc.createdAt).getTime() > fourteenDaysMs) {
+          summary.overdue += 1;
+        }
+      }
+      documentSummaryMap[doc.studentId] = summary;
+    }
+
+    const studentsWithDocs = students.map((student) => ({
+      ...student,
+      documentSummary: documentSummaryMap[student.id] || { total: 0, pending: 0, overdue: 0 },
+    }));
+
     res.status(200).json({
-      students,
+      students: studentsWithDocs,
     });
   } catch (error) {
     if (!error.statusCode) {
