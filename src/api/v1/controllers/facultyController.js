@@ -7746,7 +7746,8 @@ export const deleteSupervisor = async (req, res, next) => {
 export const changeStudentSupervisor = async (req, res, next) => {
   try {
     const { studentId } = req.params;
-    const { oldSupervisorId, newSupervisorId, reason } = req.body;
+    const { oldSupervisorId, newSupervisorId, reason, isCorrection } = req.body;
+    const isCorrectionFlag = isCorrection === true || isCorrection === 'true';
 
     // Check if student exists
     const student = await prisma.student.findUnique({
@@ -7837,7 +7838,7 @@ export const changeStudentSupervisor = async (req, res, next) => {
         deviceId: req?.headers['x-device-id'] || 'Unknown',
         browserAgent: req?.headers['user-agent'] || 'Unknown',
         user: { connect: { id: req.user?.id } },
-        action: "CHANGE_SUPERVISOR",
+        action: isCorrectionFlag ? "CORRECT_SUPERVISOR_ASSIGNMENT" : "CHANGE_SUPERVISOR",
         entityType: "Student",
         entityId: studentId,
         details: JSON.stringify({
@@ -7847,6 +7848,7 @@ export const changeStudentSupervisor = async (req, res, next) => {
           newSupervisorId,
           newSupervisorName: newSupervisor.user.name,
           reason,
+          isCorrection: isCorrectionFlag,
           description: `Changed supervisor for student ${student.fullName} from ${oldSupervisor?.user?.name} to ${newSupervisor.user.name}`,
         }),
       },
