@@ -152,9 +152,6 @@ const upload = multer({
     } else {
       cb(new Error('Only .docx files are allowed!'), false);
     }
-  },
-  limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB limit
   }
 });
 

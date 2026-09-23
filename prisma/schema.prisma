@@ -348,7 +348,8 @@ model letterDocument {
   id          String   @id @default(auto()) @map("_id") @db.ObjectId
   name        String
   type        String
-  file        Bytes
+  file        Bytes?
+  fileGridFSId String?
   proposalId  String   @db.ObjectId
   uploadedById String  @db.ObjectId
   proposal    proposal @relation(fields: [proposalId], references: [id])
@@ -772,7 +773,8 @@ model proposalDefenseReport {
   department  String?
 
   // Store the document file directly in MongoDB
-   fileData    Bytes     // Store file as binary data
+   fileData    Bytes?    // Store file as binary data
+  fileGridFSId String?
   fileName    String?
   fileType    String?  // MIME type (e.g., "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
   

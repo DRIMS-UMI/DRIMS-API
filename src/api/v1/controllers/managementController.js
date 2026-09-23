@@ -5,6 +5,7 @@ import { notificationService } from '../../../services/notificationService2.js';
 import axios from 'axios';
 import crypto from 'crypto';
 import { sanitizeForLog } from '../../../utils/sanitizeForLog.js';
+import { storeFileToGridFS, openGridFSStream, deleteFromGridFS } from '../../../utils/gridfs.mjs';
 
 import emailService from '../../../services/emailService2.js';
 import fs from 'fs';
@@ -5945,6 +5946,7 @@ export const addComplianceReportDate = async (req, res, next) => {
 /** to be deleted */
 // Generate and send field letter controller
 export const generateFieldLetter = async (req, res, next) => {
+    let storedFileId = null;
     try {
         const { proposalId } = req.params;
         // const { file: req.file } = req;
@@ -6035,6 +6037,17 @@ export const generateFieldLetter = async (req, res, next) => {
             console.error('Failed to send email:', emailError);
         }
 
+        // Upload the PDF to GridFS instead of storing inline in MongoDB
+        storedFileId = await storeFileToGridFS(pdfBuffer, {
+            filename: `field-letter-${proposal.student.fullName}.pdf`,
+            contentType: 'application/pdf',
+            metadata: {
+                proposalId,
+                uploadedBy: req.user.id,
+                documentType: 'FIELD_LETTER'
+            }
+        });
+
         // Database transaction
         const updatedProposal = await prisma.$transaction(async (prisma) => {
             // Update student status
@@ -6077,7 +6090,8 @@ export const generateFieldLetter = async (req, res, next) => {
                 data: {
                     name: `field-letter-${proposal.student.fullName}.pdf`,
                     type: 'FIELD_LETTER',
-                    file: pdfBuffer,
+                    file: null,
+                    fileGridFSId: storedFileId.toString(),
                     proposal: { connect: { id: proposalId } },
                     uploadedBy: { connect: { id: req.user.id } }
                 }
@@ -6121,6 +6135,13 @@ export const generateFieldLetter = async (req, res, next) => {
 
     } catch (error) {
         console.error('Error in generateFieldLetter:', error);
+        if (storedFileId) {
+            try {
+                await deleteFromGridFS(storedFileId);
+            } catch (cleanupError) {
+                console.log('GridFS cleanup failed:', cleanupError.message);
+            }
+        }
         if (!error.statusCode) {
             error.statusCode = 500;
         }
@@ -6455,26 +6476,50 @@ export const generateDefenseReport = async (req, res) => {
         // Generate filename using sanitized student name
         const filename = `Proposal_Defense_Report_${sanitizedName}.docx`;
 
-        // Create defense report record with file data
-        const defenseReport = await prisma.proposalDefenseReport.create({
-            data: {
-                type: "defense_report",
-                title,
-                status: "completed",
-                studentName: finalStudentName,
-                regNo: finalRegNo,
-                topic: finalTopic,
-                supervisors: finalSupervisors || "",
-                verdict,
-                reportDate,
-                department: finalDepartment,
-                fileData: reportFile.buffer, // Store the file data as BLOB
-                fileName: filename, // Use the sanitized filename
-                fileType: reportFile.mimetype,
-                proposal: { connect: { id: proposalId } },
-                generatedBy: { connect: { id: req.user.id } }
+        // Upload file to GridFS instead of storing inline in MongoDB
+        const storedFileId = await storeFileToGridFS(reportFile.buffer, {
+            filename,
+            contentType: reportFile.mimetype,
+            metadata: {
+                proposalId,
+                generatedBy: req.user.id,
+                originalname: reportFile.originalname,
+                documentType: 'DEFENSE_REPORT'
             }
         });
+
+        // Create defense report record with file data
+        let defenseReport;
+        try {
+            defenseReport = await prisma.proposalDefenseReport.create({
+                data: {
+                    type: "defense_report",
+                    title,
+                    status: "completed",
+                    studentName: finalStudentName,
+                    regNo: finalRegNo,
+                    topic: finalTopic,
+                    supervisors: finalSupervisors || "",
+                    verdict,
+                    reportDate,
+                    department: finalDepartment,
+                    fileData: null,
+                    fileGridFSId: storedFileId.toString(),
+                    fileName: filename, // Use the sanitized filename
+                    fileType: reportFile.mimetype,
+                    proposal: { connect: { id: proposalId } },
+                    generatedBy: { connect: { id: req.user.id } }
+                }
+            });
+        } catch (error) {
+            // Best-effort cleanup of the uploaded GridFS file if the create failed
+            try {
+                await deleteFromGridFS(storedFileId);
+            } catch (cleanupError) {
+                console.log('GridFS cleanup failed:', cleanupError.message);
+            }
+            throw error;
+        }
 
         // Log activity
         await prisma.userActivity.create({
@@ -6577,12 +6622,13 @@ export const downloadDefenseReport = async (req, res) => {
             where: { id: reportId },
             select: {
                 fileData: true,
+                fileGridFSId: true,
                 fileName: true,
                 fileType: true
             }
         });
 
-        if (!report || !report.fileData) {
+        if (!report || (!report.fileData && !report.fileGridFSId)) {
             return res.status(404).json({
                 message: 'Defense report not found or file data is missing'
             });
@@ -6592,7 +6638,22 @@ export const downloadDefenseReport = async (req, res) => {
         res.setHeader('Content-Type', report.fileType || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
         res.setHeader('Content-Disposition', `attachment; filename="${report.fileName}"`);
 
-        // Send the file data
+        if (report.fileGridFSId) {
+            // New storage: stream from GridFS
+            const stream = await openGridFSStream(report.fileGridFSId);
+            stream.on('error', (error) => {
+                console.log('Error streaming defense report from GridFS:', error.message);
+                if (!res.headersSent) {
+                    res.status(500).json({ message: 'Failed to stream file' });
+                } else {
+                    res.end();
+                }
+            });
+            stream.pipe(res);
+            return;
+        }
+
+        // Legacy storage: file stored inline in the document
         res.send(Buffer.from(report.fileData));
 
     } catch (error) {

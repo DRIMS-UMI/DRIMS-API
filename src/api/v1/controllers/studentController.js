@@ -4,7 +4,7 @@ import jwt from "jsonwebtoken";
 import { sanitizeForLog } from "../../../utils/sanitizeForLog.js";
 import { notificationService } from "../../../services/notificationService2.js";
 import emailService from "../../../services/emailService2.js";
-import { openGridFSStream } from "../../../utils/gridfs.mjs";
+import { openGridFSStream, storeFileToGridFS, deleteFromGridFS } from "../../../utils/gridfs.mjs";
 
 // Student login controller
 export const loginStudent = async (req, res, next) => {
@@ -1273,49 +1273,73 @@ export const uploadDocument = async (req, res, next) => {
       throw error;
     }
 
-    // Create document record
-    const document = await prisma.studentDocument.create({
-      data: {
-        title,
-        description: description || null,
-        type: documentType,
-        fileName: file.originalname,
-        fileType: file.mimetype,
-        fileSize: file.size,
-        fileData: file.buffer,
-        student: {
-          connect: { id: user.student.id }
-        },
-        uploadedByStudent: {
-          connect: { id: userId }
-        },
-        supervisor: {
-          connect: { id: supervisorId }
-        }
-      },
-      include: {
-        uploadedBy: {
-          select: {
-            id: true,
-            name: true
-          }
-        },
-        uploadedByStudent: {
-          select: {
-            id: true,
-            fullName: true
-          }
-        },
-        supervisor: {
-          select: {
-            id: true,
-            name: true,
-            title: true,
-            email: true
-          }
-        }
+    // Upload file to GridFS instead of storing inline in MongoDB
+    const storedFileId = await storeFileToGridFS(file.buffer, {
+      filename: file.originalname,
+      contentType: file.mimetype,
+      metadata: {
+        studentId: user.student.id,
+        supervisorId,
+        uploadedBy: userId,
+        originalname: file.originalname,
+        documentType
       }
     });
+
+    let document;
+    try {
+      document = await prisma.studentDocument.create({
+        data: {
+          title,
+          description: description || null,
+          type: documentType,
+          fileName: file.originalname,
+          fileType: file.mimetype,
+          fileSize: file.size,
+          fileData: null,
+          fileGridFSId: storedFileId.toString(),
+          student: {
+            connect: { id: user.student.id }
+          },
+          uploadedByStudent: {
+            connect: { id: userId }
+          },
+          supervisor: {
+            connect: { id: supervisorId }
+          }
+        },
+        include: {
+          uploadedBy: {
+            select: {
+              id: true,
+              name: true
+            }
+          },
+          uploadedByStudent: {
+            select: {
+              id: true,
+              fullName: true
+            }
+          },
+          supervisor: {
+            select: {
+              id: true,
+              name: true,
+              title: true,
+              email: true
+            }
+          }
+        }
+      });
+    } catch (error) {
+      // Best-effort cleanup of the uploaded GridFS file if the create failed
+      try {
+        await deleteFromGridFS(storedFileId);
+      } catch (cleanupError) {
+        console.log('GridFS cleanup failed:', cleanupError.message);
+      }
+      throw error;
+    }
 
 
 
