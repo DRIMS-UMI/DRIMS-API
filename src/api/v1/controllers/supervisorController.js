@@ -5,6 +5,7 @@ import crypto from "crypto";
 import { sanitizeForLog } from "../../../utils/sanitizeForLog.js";
 import { notificationService } from "../../../services/notificationService2.js";
 import emailService from "../../../services/emailService2.js";
+import { storeFileToGridFS, openGridFSStream, deleteFromGridFS } from "../../../utils/gridfs.mjs";
 
 //Supervisor login Controller
 export const loginSupervisor = async (req, res, next) => {
@@ -1494,18 +1495,37 @@ export const downloadStudentDocument = async (req, res, next) => {
 
 
 
+    if (document.fileGridFSId) {
+      // New storage: stream from GridFS
+      const stream = await openGridFSStream(document.fileGridFSId);
+      stream.on('error', (error) => {
+        console.log('Error streaming file from GridFS:', error.message);
+        if (!res.headersSent) {
+          res.status(500).json({ message: 'Failed to stream file' });
+        } else {
+          res.end();
+        }
+      });
+      stream.pipe(res);
+      return;
+    }
+
+    // Legacy storage: file stored inline in the document
+    if (!document.fileData) {
+      const error = new Error('File data not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
     // Send file buffer - handle different data types
     if (Buffer.isBuffer(document.fileData)) {
       // If it's already a Buffer, send it directly
-      console.log('Sending as Buffer');
       res.send(document.fileData);
     } else if (document.fileData instanceof Uint8Array) {
       // If it's a Uint8Array, convert to Buffer
-      console.log('Converting Uint8Array to Buffer');
       res.send(Buffer.from(document.fileData));
     } else {
       // For other types, try to convert to Buffer
-      console.log('Converting to Buffer');
       res.send(Buffer.from(document.fileData));
     }
 
@@ -1562,50 +1582,80 @@ export const uploadReviewedDocument = async (req, res, next) => {
       throw error;
     }
 
-    const { reviewedDocument } = await prisma.$transaction(async (tx) => {
-      // Create reviewed document
-      const newReviewedDoc = await tx.studentDocument.create({
-        data: {
-          title: `Reviewed: ${originalDocument.title}`,
-          description: reviewComments || `Reviewed version of ${originalDocument.title}`,
-          type: 'REVIEWED',
-          fileName: isNoDocument ? null : file.originalname,
-          fileType: isNoDocument ? null : file.mimetype,
-          fileSize: isNoDocument ? null : file.size,
-          fileData: isNoDocument ? null : file.buffer,
-          student: {
-            connect: { id: originalDocument.studentId }
-          },
-          supervisor: {
-            connect: { id: supervisorId }
-          },
-          uploadedBy: {
-            connect: { id: supervisorId }
-          },
-          reviewedBy: {
-            connect: { id: supervisorId }
-          },
-          reviewedAt: new Date(),
-          reviewComments: reviewComments
+    // Upload file to GridFS before the transaction so the transaction stays fast
+    let fileGridFSId = null;
+    if (!isNoDocument) {
+      const storedFileId = await storeFileToGridFS(file.buffer, {
+        filename: file.originalname,
+        contentType: file.mimetype,
+        metadata: {
+          originalDocumentId: documentId,
+          uploadedBy: supervisorId,
+          originalname: file.originalname,
+          documentType: 'REVIEWED'
         }
       });
+      fileGridFSId = storedFileId.toString();
+    }
 
-      // Update original document to mark as reviewed
-      await tx.studentDocument.update({
-        where: { id: documentId },
-        data: {
-          reviewedAt: new Date(),
-          reviewedBy: {
-            connect: { id: supervisorId }
-          },
-          reviewComments: reviewComments
+    let reviewedDocument;
+    try {
+      ({ reviewedDocument } = await prisma.$transaction(async (tx) => {
+        // Create reviewed document
+        const newReviewedDoc = await tx.studentDocument.create({
+          data: {
+            title: `Reviewed: ${originalDocument.title}`,
+            description: reviewComments || `Reviewed version of ${originalDocument.title}`,
+            type: 'REVIEWED',
+            fileName: isNoDocument ? null : file.originalname,
+            fileType: isNoDocument ? null : file.mimetype,
+            fileSize: isNoDocument ? null : file.size,
+            fileData: null,
+            fileGridFSId,
+            student: {
+              connect: { id: originalDocument.studentId }
+            },
+            supervisor: {
+              connect: { id: supervisorId }
+            },
+            uploadedBy: {
+              connect: { id: supervisorId }
+            },
+            reviewedBy: {
+              connect: { id: supervisorId }
+            },
+            reviewedAt: new Date(),
+            reviewComments: reviewComments
+          }
+        });
+
+        // Update original document to mark as reviewed
+        await tx.studentDocument.update({
+          where: { id: documentId },
+          data: {
+            reviewedAt: new Date(),
+            reviewedBy: {
+              connect: { id: supervisorId }
+            },
+            reviewComments: reviewComments
+          }
+        });
+
+        return { reviewedDocument: newReviewedDoc };
+      }, {
+        timeout: 30000
+      }));
+    } catch (error) {
+      // Best-effort cleanup of the uploaded GridFS file if the transaction failed
+      if (fileGridFSId) {
+        try {
+          await deleteFromGridFS(fileGridFSId);
+        } catch (cleanupError) {
+          console.log('GridFS cleanup failed:', cleanupError.message);
         }
-      });
-
-      return { reviewedDocument: newReviewedDoc };
-    }, {
-      timeout: 30000 // Increase interactive transaction timeout to 30 seconds for uploading large files to MongoDB Atlas
-    });
+      }
+      throw error;
+    }
 
     // Cancel the pending 14-day document review reminder, if any
     await notificationService.cancelDocumentReviewReminder(documentId);
@@ -1724,28 +1774,50 @@ export const createGuideline = async (req, res, next) => {
       throw error;
     }
 
-    const guideline = await prisma.guideline.create({
-      data: {
-        title,
-        description: description || null,
-        comments: comments || null,
-        fileName: file.originalname,
-        fileType: file.mimetype,
-        fileSize: file.size,
-        fileData: file.buffer,
-        supervisorId: supervisor.id
-      },
-      select: {
-        id: true,
-        title: true,
-        description: true,
-        fileName: true,
-        fileType: true,
-        fileSize: true,
-        comments: true,
-        createdAt: true
+    // Upload file to GridFS instead of storing inline in MongoDB
+    const storedFileId = await storeFileToGridFS(file.buffer, {
+      filename: file.originalname,
+      contentType: file.mimetype,
+      metadata: {
+        uploadedBy: userId,
+        originalname: file.originalname,
+        documentType: 'GUIDELINE'
       }
     });
+
+    let guideline;
+    try {
+      guideline = await prisma.guideline.create({
+        data: {
+          title,
+          description: description || null,
+          comments: comments || null,
+          fileName: file.originalname,
+          fileType: file.mimetype,
+          fileSize: file.size,
+          fileData: null,
+          fileGridFSId: storedFileId.toString(),
+          supervisorId: supervisor.id
+        },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          fileName: true,
+          fileType: true,
+          fileSize: true,
+          comments: true,
+          createdAt: true
+        }
+      });
+    } catch (error) {
+      try {
+        await deleteFromGridFS(storedFileId);
+      } catch (cleanupError) {
+        console.log('GridFS cleanup failed:', cleanupError.message);
+      }
+      throw error;
+    }
 
     res.status(201).json({
       message: 'Guideline created successfully',
@@ -1857,6 +1929,28 @@ export const downloadGuideline = async (req, res, next) => {
       'Content-Type': guideline.fileType,
       'Content-Disposition': `attachment; filename="${guideline.fileName}"`
     });
+
+    if (guideline.fileGridFSId) {
+      // New storage: stream from GridFS
+      const stream = await openGridFSStream(guideline.fileGridFSId);
+      stream.on('error', (error) => {
+        console.log('Error streaming guideline from GridFS:', error.message);
+        if (!res.headersSent) {
+          res.status(500).json({ message: 'Failed to stream file' });
+        } else {
+          res.end();
+        }
+      });
+      stream.pipe(res);
+      return;
+    }
+
+    // Legacy storage: file stored inline in the document
+    if (!guideline.fileData) {
+      const error = new Error('File data not found');
+      error.statusCode = 404;
+      throw error;
+    }
 
     res.send(Buffer.from(guideline.fileData));
   } catch (error) {

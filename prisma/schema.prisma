@@ -365,6 +365,7 @@ model studentDocument {
   fileType        String?
   fileSize        Int?
   fileData        Bytes?
+  fileGridFSId    String?
   studentId       String   @db.ObjectId
   uploadedById    String?  @db.ObjectId
   uploadedByStudentId String? @db.ObjectId
@@ -390,7 +391,8 @@ model guideline {
   fileName        String
   fileType        String
   fileSize        Int
-  fileData        Bytes
+  fileData        Bytes?
+  fileGridFSId    String?
   comments        String?
   supervisorId    String    @db.ObjectId
   supervisor      supervisor @relation(fields: [supervisorId], references: [id])

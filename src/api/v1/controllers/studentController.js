@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import { sanitizeForLog } from "../../../utils/sanitizeForLog.js";
 import { notificationService } from "../../../services/notificationService2.js";
 import emailService from "../../../services/emailService2.js";
+import { openGridFSStream } from "../../../utils/gridfs.mjs";
 
 // Student login controller
 export const loginStudent = async (req, res, next) => {
@@ -1575,18 +1576,37 @@ export const downloadDocument = async (req, res, next) => {
 
 
 
+    if (document.fileGridFSId) {
+      // New storage: stream from GridFS
+      const stream = await openGridFSStream(document.fileGridFSId);
+      stream.on('error', (error) => {
+        console.log('Error streaming file from GridFS:', error.message);
+        if (!res.headersSent) {
+          res.status(500).json({ message: 'Failed to stream file' });
+        } else {
+          res.end();
+        }
+      });
+      stream.pipe(res);
+      return;
+    }
+
+    // Legacy storage: file stored inline in the document
+    if (!document.fileData) {
+      const error = new Error('File data not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
     // Send file buffer - handle different data types
     if (Buffer.isBuffer(document.fileData)) {
       // If it's already a Buffer, send it directly
-      console.log('Sending as Buffer');
       res.send(document.fileData);
     } else if (document.fileData instanceof Uint8Array) {
       // If it's a Uint8Array, convert to Buffer
-      console.log('Converting Uint8Array to Buffer');
       res.send(Buffer.from(document.fileData));
     } else {
       // For other types, try to convert to Buffer
-      console.log('Converting to Buffer');
       res.send(Buffer.from(document.fileData));
     }
 
@@ -2303,6 +2323,28 @@ export const downloadStudentGuideline = async (req, res, next) => {
       'Content-Type': guideline.fileType,
       'Content-Disposition': `attachment; filename="${guideline.fileName}"`
     });
+
+    if (guideline.fileGridFSId) {
+      // New storage: stream from GridFS
+      const stream = await openGridFSStream(guideline.fileGridFSId);
+      stream.on('error', (error) => {
+        console.log('Error streaming guideline from GridFS:', error.message);
+        if (!res.headersSent) {
+          res.status(500).json({ message: 'Failed to stream file' });
+        } else {
+          res.end();
+        }
+      });
+      stream.pipe(res);
+      return;
+    }
+
+    // Legacy storage: file stored inline in the document
+    if (!guideline.fileData) {
+      const error = new Error('File data not found');
+      error.statusCode = 404;
+      throw error;
+    }
 
     res.send(Buffer.from(guideline.fileData));
   } catch (error) {
