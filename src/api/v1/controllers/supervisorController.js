@@ -1738,6 +1738,164 @@ export const uploadReviewedDocument = async (req, res, next) => {
   }
 };
 
+/**
+ * @desc    Delete a reviewed document uploaded by the supervisor
+ * @route   DELETE /api/v1/supervisor/documents/:documentId/review/:reviewId
+ * @access  Private (Supervisor)
+ */
+export const deleteReviewedDocument = async (req, res, next) => {
+  try {
+    const supervisorId = req.user.id;
+    const { documentId, reviewId } = req.params;
+
+    // Get the reviewed document
+    const reviewDocument = await prisma.studentDocument.findFirst({
+      where: { id: reviewId }
+    });
+
+    if (!reviewDocument || reviewDocument.type !== 'REVIEWED') {
+      const error = new Error("Reviewed document not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // Only the supervisor who uploaded this review can delete it
+    if (reviewDocument.reviewedById !== supervisorId) {
+      const error = new Error("Access denied - you can only delete reviews you uploaded");
+      error.statusCode = 403;
+      throw error;
+    }
+
+    // Get the original document and verify the review belongs to it
+    const originalDocument = await prisma.studentDocument.findFirst({
+      where: { id: documentId },
+      include: {
+        student: {
+          include: {
+            studentUser: true
+          }
+        }
+      }
+    });
+
+    if (!originalDocument) {
+      const error = new Error("Original document not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (
+      originalDocument.studentId !== reviewDocument.studentId ||
+      originalDocument.title !== reviewDocument.title.replace(/^Reviewed: /, '')
+    ) {
+      const error = new Error("Reviewed document does not match the original document");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    let reverted = false;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.studentDocument.delete({
+        where: { id: reviewId }
+      });
+
+      // Count remaining reviews linked to the original document
+      const remainingReviews = await tx.studentDocument.count({
+        where: {
+          studentId: originalDocument.studentId,
+          type: 'REVIEWED',
+          title: reviewDocument.title
+        }
+      });
+
+      // Revert to unreviewed if this was the only review
+      if (remainingReviews === 0) {
+        await tx.studentDocument.update({
+          where: { id: documentId },
+          data: {
+            reviewedAt: null,
+            reviewedById: null,
+            reviewComments: null
+          }
+        });
+        reverted = true;
+      }
+    }, {
+      timeout: 30000
+    });
+
+    // Best-effort cleanup of the GridFS file (comments-only reviews have no file)
+    if (reviewDocument.fileGridFSId && reviewDocument.fileName) {
+      try {
+        await deleteFromGridFS(reviewDocument.fileGridFSId);
+      } catch (cleanupError) {
+        console.error('GridFS cleanup failed after review deletion:', cleanupError.message);
+      }
+    }
+
+    // Re-schedule the 14-day review reminder if the document reverted to unreviewed
+    if (reverted) {
+      try {
+        const supervisor = await prisma.supervisor.findUnique({
+          where: { userId: supervisorId }
+        });
+
+        if (supervisor) {
+          const scheduledDate = new Date();
+          scheduledDate.setDate(scheduledDate.getDate() + 14);
+
+          await notificationService.scheduleNotification({
+            type: 'REMINDER',
+            statusType: 'PENDING',
+            title: 'DRIMS: Document Review Reminder',
+            message: `This is a reminder to review the document "${originalDocument.title}". It has been 14 days since the previous review was removed.`,
+            recipientCategory: 'SUPERVISOR',
+            recipientId: supervisor.id,
+            scheduledFor: scheduledDate,
+            metadata: {
+              documentId: documentId,
+              additionalContent: `<p>A document submitted by your student is waiting for your review.</p>
+                                  <p><strong>Document:</strong> ${originalDocument.title}</p>`
+            }
+          });
+          console.log('Re-scheduled 14-day review reminder for document:', documentId);
+        }
+      } catch (reminderError) {
+        console.error('Failed to re-schedule document review reminder:', reminderError);
+      }
+    }
+
+    // Emit socket event to notify the student in real-time (guarded so it can never fail the request)
+    try {
+      const io = req.app.get('io');
+      const studentUserId = originalDocument.student?.studentUser?.id;
+      if (io && studentUserId) {
+        io.emitToUser(studentUserId, 'document_deleted', {
+          type: 'document_deleted',
+          documentId: reviewId,
+          originalDocumentId: documentId,
+          studentId: originalDocument.studentId,
+          reverted
+        });
+      }
+    } catch (socketError) {
+      console.error('Failed to emit socket event for review deletion:', socketError);
+    }
+
+    res.status(200).json({
+      message: reverted ? 'Reviewed document deleted. Document is now pending review again.' : 'Reviewed document deleted successfully.',
+      reverted
+    });
+
+  } catch (error) {
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
 // ==================== GUIDELINES ====================
 
 /**

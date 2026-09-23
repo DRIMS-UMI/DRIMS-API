@@ -24,6 +24,7 @@ import {
   getStudentDocuments,
   downloadStudentDocument,
   uploadReviewedDocument,
+  deleteReviewedDocument,
   getPendingReviews,
   createGuideline,
   getSupervisorGuidelines,
@@ -94,6 +95,7 @@ router.get('/books', authenticateToken, authorizeRoles('SUPERVISOR'), getAllBook
 router.get('/students/:studentId/documents', authenticateToken, authorizeRoles('SUPERVISOR'), getStudentDocuments);
 router.get('/documents/:documentId/download', authenticateToken, authorizeRoles('SUPERVISOR'), downloadStudentDocument);
 router.post('/documents/:documentId/review', authenticateToken, authorizeRoles('SUPERVISOR'), upload.single('file'), handleMulterError, uploadReviewedDocument);
+router.delete('/documents/:documentId/review/:reviewId', authenticateToken, authorizeRoles('SUPERVISOR'), deleteReviewedDocument);
 
 // Dashboard routes
 router.get('/dashboard/stats', authenticateToken, authorizeRoles('SUPERVISOR'), getDashboardStats);

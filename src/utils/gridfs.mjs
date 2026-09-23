@@ -16,7 +16,7 @@ const getBucket = () => new mongoose.mongo.GridFSBucket(conn.db, { bucketName: B
 export const storeFileToGridFS = async (buffer, { filename, contentType, metadata = {} }) => {
   await gridFSReady;
   return new Promise((resolve, reject) => {
-    const uploadStream = getBucket().openUploadStream(filename, { contentType, metadata });
+    const uploadStream = getBucket().openUploadStream(filename, { contentType, metadata, chunkSizeBytes: 4 * 1024 * 1024 });
     uploadStream.on('error', reject);
     uploadStream.on('finish', () => resolve(uploadStream.id));
     uploadStream.end(buffer);
