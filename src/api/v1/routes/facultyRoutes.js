@@ -1,6 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import authenticateToken from '../middleware/authentication.js';
+import selfService from '../middleware/selfService.js';
 import authorizeRoles from '../middleware/roleAuthorization.js';
 import { GridFsStorage } from "multer-gridfs-storage";
 import mongoose from "mongoose";
@@ -76,15 +77,16 @@ export const handleMulterError = (error, req, res, next) => {
 const router = express.Router();
 
 // Import faculty controllers
-import { loginFaculty, getFacultyProfile, updateFacultyPassword, getStudent, getAllStudents, getStudentStatuses, submitProposal, getProposal, gradeProposal, getStudentProposals, addReviewers, getReviewers, addPanelists, getPanelists, getSchoolProposals, deleteReviewer, deletePanelist, addReviewerMark, addPanelistMark, addDefenseDate, addComplianceReportDate, updateFieldLetterDate, getAllBooks, getBook, getStudentBooks,  getAllExaminers, getExaminer, updateExaminer, deleteExaminer, assignExaminersToBook, updateInternalExaminerMark, getProposalDefenses, recordProposalDefenseVerdict, scheduleProposalDefense, getProgressTrends, getStatusStatistics, getDashboardStats, getNotifications, getAllStudentsStatusReport, getStudentStatusReport, addNewPanelist, getAllSupervisors, requestPasswordReset, resetPassword, updateFacultyProfile, getChairpersons, getExternalPersons, getExternalPersonsByRole, createExternalPerson, updateExternalPerson, deleteExternalPerson, updateEthicsCommitteeDate, generateDefenseReport, getProposalDefenseReports, getAllProposalDefenseReports, downloadDefenseReport, getAllFacultyMembers, getAllCampuses, getAllDepartments, getAllSchools, createSupervisor, getAssignedStudents, deleteSupervisor, updateSupervisor, getSupervisor, assignStudentsToSupervisor, changeStudentSupervisor, getStaffMembers, createReviewerFromStaff, createPanelistFromStaff, createStaffMember } from '../controllers/facultyController.js';
+import { loginFaculty, logoutFaculty, getFacultyProfile, updateFacultyPassword, getStudent, getAllStudents, getStudentStatuses, submitProposal, getProposal, gradeProposal, getStudentProposals, addReviewers, getReviewers, addPanelists, getPanelists, getSchoolProposals, deleteReviewer, deletePanelist, addReviewerMark, addPanelistMark, addDefenseDate, addComplianceReportDate, updateFieldLetterDate, getAllBooks, getBook, getStudentBooks,  getAllExaminers, getExaminer, updateExaminer, deleteExaminer, assignExaminersToBook, updateInternalExaminerMark, getProposalDefenses, recordProposalDefenseVerdict, scheduleProposalDefense, getProgressTrends, getStatusStatistics, getDashboardStats, getNotifications, getAllStudentsStatusReport, getStudentStatusReport, addNewPanelist, getAllSupervisors, requestPasswordReset, resetPassword, updateFacultyProfile, getChairpersons, getExternalPersons, getExternalPersonsByRole, createExternalPerson, updateExternalPerson, deleteExternalPerson, updateEthicsCommitteeDate, generateDefenseReport, getProposalDefenseReports, getAllProposalDefenseReports, downloadDefenseReport, getAllFacultyMembers, getAllCampuses, getAllDepartments, getAllSchools, createSupervisor, getAssignedStudents, deleteSupervisor, updateSupervisor, getSupervisor, assignStudentsToSupervisor, changeStudentSupervisor, getStaffMembers, createReviewerFromStaff, createPanelistFromStaff, createStaffMember } from '../controllers/facultyController.js';
 
 // Faculty authentication routes
 router.post('/login', loginFaculty);
+router.post('/logout', authenticateToken, selfService, logoutFaculty);
 
 // Protected faculty routes
-router.get('/profile', authenticateToken, getFacultyProfile);
-router.put('/password', authenticateToken, updateFacultyPassword);
-router.put('/profile', authenticateToken, updateFacultyProfile);
+router.get('/profile', authenticateToken, selfService, getFacultyProfile);
+router.put('/password', authenticateToken, selfService, updateFacultyPassword);
+router.put('/profile', authenticateToken, selfService, updateFacultyProfile);
 // Student management routes
 router.get('/students/:studentId', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), getStudent);
 router.get('/students', authenticateToken, authorizeRoles('SCHOOL_ADMIN'), getAllStudents);

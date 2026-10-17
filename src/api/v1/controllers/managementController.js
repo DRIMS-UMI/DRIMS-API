@@ -1,6 +1,8 @@
 import bcrypt from 'bcryptjs';
 import prisma from '../../../utils/db.mjs';
 import jwt from 'jsonwebtoken';
+import { signSessionToken } from '../../../utils/sessionConfig.js';
+import { revokeToken, revokeUserSessions } from '../../../utils/sessionRevocation.js';
 import { notificationService } from '../../../services/notificationService2.js';
 import axios from 'axios';
 import crypto from 'crypto';
@@ -97,11 +99,7 @@ export const loginSuperAdmin = async (req, res, next) => {
             loggedInAt: new Date(),
         };
 
-        const token = jwt.sign(
-            userData,
-            process.env.AUTH_SECRET,
-            { expiresIn: rememberMe ? '30d' : '24h' }
-        );
+        const token = signSessionToken(userData, rememberMe);
 
         // Log the activity
         await prisma.userActivity.create({
@@ -123,6 +121,19 @@ export const loginSuperAdmin = async (req, res, next) => {
             token
         });
 
+    } catch (error) {
+        if (!error.statusCode) {
+            error.statusCode = 500;
+        }
+        next(error);
+    }
+};
+
+// Controller for logging out management users (invalidates the token server-side)
+export const logoutManagement = async (req, res, next) => {
+    try {
+        await revokeToken(req.user);
+        res.status(200).json({ message: 'Logged out successfully' });
     } catch (error) {
         if (!error.statusCode) {
             error.statusCode = 500;
@@ -237,11 +248,7 @@ export const loginResearchCentreAdmin = async (req, res, next) => {
             loggedInAt: new Date(),
         };
 
-        const token = jwt.sign(
-            userData,
-            process.env.AUTH_SECRET,
-            { expiresIn: rememberMe ? '30d' : '24h' }
-        );
+        const token = signSessionToken(userData, rememberMe);
 
         // Log the activity
         await prisma.userActivity.create({
@@ -8148,6 +8155,9 @@ export const deactivateUser = async (req, res, next) => {
                 deactivatedBy: req.user ? { connect: { id: req.user.id } } : undefined
             }
         });
+
+        // Sign the user out everywhere
+        await revokeUserSessions(userId, 'USER_DEACTIVATED');
 
         // Remove password from response
         const { password: _, ...userWithoutPassword } = deactivatedUser;

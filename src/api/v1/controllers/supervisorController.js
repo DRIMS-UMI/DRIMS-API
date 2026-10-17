@@ -1,6 +1,8 @@
 import prisma from "../../../utils/db.mjs";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { signSessionToken } from "../../../utils/sessionConfig.js";
+import { revokeToken } from "../../../utils/sessionRevocation.js";
 import crypto from "crypto";
 import { sanitizeForLog } from "../../../utils/sanitizeForLog.js";
 import { notificationService } from "../../../services/notificationService2.js";
@@ -58,8 +60,7 @@ export const loginSupervisor = async (req, res, next) => {
 
 
     // Generate JWT token
-    const token = jwt.sign(
-      {
+    const token = signSessionToken({
         id: user.id,
         title: user.title,
         email: user.email,
@@ -68,10 +69,7 @@ export const loginSupervisor = async (req, res, next) => {
         designation: user.designation,
         loggedInAt: new Date(),
         phone: user.phone,
-      },
-      process.env.AUTH_SECRET,
-      { expiresIn: rememberMe ? "30d" : "24h" }
-    );
+      }, rememberMe);
 
     // Log the activity
     await prisma.userActivity.create({
@@ -232,8 +230,7 @@ export const changePassword = async (req, res, next) => {
 // Logout controller
 export const logoutSupervisor = async (req, res, next) => {
   try {
-    // In a real application, you might want to blacklist the token
-    // For now, we'll just return a success message
+    await revokeToken(req.user);
     res.status(200).json({
       message: "Logged out successfully",
     });

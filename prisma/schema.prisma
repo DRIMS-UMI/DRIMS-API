@@ -1358,3 +1358,50 @@ model supervisorAppointment {
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
 }
+
+// ********** SYSTEM REPORT INSTRUMENTATION **********
+
+enum SecurityEventType {
+  UNAUTHENTICATED   // No token supplied
+  INVALID_TOKEN     // Token failed signature verification
+  TOKEN_EXPIRED
+  TOKEN_REVOKED     // Token was logged out or its user deactivated
+  RBAC_DENIED       // Authenticated, but role not allowed on endpoint
+  READONLY_BLOCKED  // AUDITOR attempted a write
+  LOGIN_FAILED
+  RATE_LIMITED
+}
+
+model securityEvent {
+  id           String            @id @default(auto()) @map("_id") @db.ObjectId
+  type         SecurityEventType
+  method       String
+  path         String            // Request path without query string
+  endpoint     String?           // Route pattern, e.g. /api/v1/management/schools/:schoolId
+  statusCode   Int
+  userId       String?
+  role         String?
+  allowedRoles String[]
+  attemptedEmail String?         // Login attempts only
+  ipAddress    String?
+  deviceId     String?
+  browserAgent String?
+  timestamp    DateTime          @default(now())
+
+  @@index([timestamp])
+  @@index([type, timestamp])
+}
+
+// Server-side session invalidation. Either a single token (jti) or every token
+// a user was issued before revokedBefore.
+model sessionRevocation {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  jti           String?
+  userId        String?
+  revokedBefore DateTime?
+  reason        String    // LOGOUT, USER_DEACTIVATED
+  expiresAt     DateTime  // After this the entry is irrelevant (token would have expired anyway)
+  createdAt     DateTime  @default(now())
+
+  @@index([expiresAt])
+}

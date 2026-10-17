@@ -3,6 +3,7 @@ import multer from 'multer';
 import readOnlyMiddleware from '../middleware/readOnlyMiddleware.mjs';
 import authenticateToken from '../middleware/authentication.js';
 import authorizeRoles from '../middleware/roleAuthorization.js';
+import selfService from '../middleware/selfService.js';
 import {
   registerSuperAdmin,
   loginSuperAdmin,
@@ -138,7 +139,8 @@ import {
   deregisterStudent,
   reinstateStudent,
   fetchAcmisStudent,
-  getOverdueDocuments
+  getOverdueDocuments,
+  logoutManagement
 } from '../controllers/managementController.js';
 import { getEvaluationAnalytics, getDetailedEvaluations, updateResearchRequest, getAllResearchRequests, addStudentToGraduation, resetPassword, requestPasswordReset, getNotifications, getAllStudentsStatusReport, getStudentStatusReport, getProgressTrends, getStatusStatistics, getDashboardStats, updateSenateApprovalDate, updateResultsSentDate, updateResultsApprovalDate, updateComplianceReportDate, updateMinutesSentDate, getBookVivas, getAllPanelists, addNewPanelist, scheduleViva, recordVivaVerdict, getGraduationStatistics } from "../controllers/managementEvaluationController.js"
 
@@ -168,8 +170,11 @@ router.post('/login/super-admin', loginSuperAdmin);
 // Research Centre Admin login route
 router.post('/login/research-centre-admin', loginResearchCentreAdmin);
 
+// Logout (revokes the token server-side)
+router.post('/logout', authenticateToken, selfService, logoutManagement);
+
 // Get logged in user details route
-router.get('/user/details', authenticateToken, getLoggedInUserDetails);
+router.get('/user/details', authenticateToken, selfService, getLoggedInUserDetails);
 
 // Apply read-only middleware to all subsequent routes
 router.use(readOnlyMiddleware);
@@ -374,8 +379,8 @@ router.post('/request-password-reset', requestPasswordReset);
 router.post('/reset-password', resetPassword);
 
 // User profile routes
-router.put('/profile', authenticateToken, updateUserProfile);
-router.put('/profile/password', authenticateToken, changePassword);
+router.put('/profile', authenticateToken, selfService, updateUserProfile);
+router.put('/profile/password', authenticateToken, selfService, changePassword);
 
 // Graduation routes
 router.get('/graduation', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN', 'AUDITOR'), getGraduationStatistics);

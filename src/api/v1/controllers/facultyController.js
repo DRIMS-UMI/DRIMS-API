@@ -1,6 +1,8 @@
 import prisma from "../../../utils/db.mjs";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { signSessionToken } from "../../../utils/sessionConfig.js";
+import { revokeToken } from "../../../utils/sessionRevocation.js";
 import crypto from "crypto";
 import emailService from "../../../services/emailService2.js";
 import { notificationService } from "../../../services/notificationService2.js";
@@ -60,8 +62,7 @@ export const loginFaculty = async (req, res, next) => {
     });
 
     // Generate JWT token
-    const token = jwt.sign(
-      {
+    const token = signSessionToken({
         id: user.id,
         title: user.title,
         email: user.email,
@@ -72,10 +73,7 @@ export const loginFaculty = async (req, res, next) => {
         phone: user.phone,
         schoolId: faculty?.school?.id,
         campusId: faculty?.campus?.id
-      },
-      process.env.AUTH_SECRET,
-      { expiresIn: rememberMe ? "30d" : "24h" }
-    );
+      }, rememberMe);
 
     // Log the activity
     await prisma.userActivity.create({
@@ -8339,6 +8337,19 @@ export const createPanelistFromStaff = async (req, res, next) => {
 
   } catch (error) {
     console.error('Error in createPanelistFromStaff:', error);
+    if (!error.statusCode) {
+      error.statusCode = 500;
+    }
+    next(error);
+  }
+};
+
+// Controller for logging out faculty members (invalidates the token server-side)
+export const logoutFaculty = async (req, res, next) => {
+  try {
+    await revokeToken(req.user);
+    res.status(200).json({ message: "Logged out successfully" });
+  } catch (error) {
     if (!error.statusCode) {
       error.statusCode = 500;
     }

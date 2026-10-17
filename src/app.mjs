@@ -4,7 +4,8 @@ import api from './api/index.mjs';
 import compression from "compression";
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
-import rateLimit from 'express-rate-limit';
+import { apiLimiter, authLimiter } from './utils/rateLimits.js';
+import { securityEventRecorder } from './utils/securityEvents.js';
 import {corsOptions} from './utils/corsOptions.js';
 import swaggerUi from 'swagger-ui-express';
 import swaggerJSDoc from 'swagger-jsdoc';
@@ -95,13 +96,6 @@ export default function customizeApp(app) {
     // `corsOptions` is an object that contains the configuration for the CORS middleware.
     app.use(cors(corsOptions));
 
-    // Rate Limiting
-    // app.use(
-    //     rateLimit({
-    //         windowMs: 15 * 60 * 1000, // 15 minutes
-    //         limit: 100, //limit each IP to 100 requests per windowMs
-    //     })
-    // );
 
     // Parse Cookies
     app.use(cookieParser());
@@ -166,6 +160,13 @@ export default function customizeApp(app) {
         res.setHeader("Content-Type", "application/json");
         res.send(swaggerDocument)
     })
+
+    // Persist auth failures, RBAC denials and rate-limit hits for the system report
+    app.use('/api', securityEventRecorder);
+
+    // Rate Limiting (see utils/rateLimits.js)
+    app.use('/api', authLimiter);
+    app.use('/api', apiLimiter);
 
     // API Routes
     app.use('/api', api);

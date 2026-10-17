@@ -4,6 +4,7 @@ import {env} from './env.mjs';
 import customizeApp from './app.mjs';
 import {setupSocketIO} from './utils/sockets.js';
 import {notificationService} from './services/notificationService2.js';
+import {startSessionRevocationSync} from './utils/sessionRevocation.js';
 
 const app = express();
 
@@ -21,6 +22,9 @@ app.start = async () => {
     const port = env.PORT || 5000;
     app.set('port', port);
     customizeApp(app);
+
+    // Must be loaded before requests are served so revoked tokens are rejected
+    await startSessionRevocationSync();
 
     // Initialize notification service
     await notificationService.initializeScheduledNotifications();

@@ -1,6 +1,8 @@
 import prisma from "../../../utils/db.mjs";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { signSessionToken } from "../../../utils/sessionConfig.js";
+import { revokeToken } from "../../../utils/sessionRevocation.js";
 import { sanitizeForLog } from "../../../utils/sanitizeForLog.js";
 import { notificationService } from "../../../services/notificationService2.js";
 import emailService from "../../../services/emailService2.js";
@@ -62,8 +64,7 @@ export const loginStudent = async (req, res, next) => {
     }
 
     // Generate JWT token
-    const token = jwt.sign(
-      {
+    const token = signSessionToken({
         id: studentUser.id, // studentUser ID
         email: studentUser.email,
         name: studentUser.fullName,
@@ -72,10 +73,7 @@ export const loginStudent = async (req, res, next) => {
         loggedInAt: new Date(),
         studentId: studentUser.student?.id,
         isStudentUser: true // Flag to distinguish from regular users
-      },
-      process.env.AUTH_SECRET,
-      { expiresIn: rememberMe ? "30d" : "24h" }
-    );
+      }, rememberMe);
 
     // Log the activity
     await prisma.userActivity.create({
@@ -737,8 +735,7 @@ export const markNotificationAsRead = async (req, res, next) => {
 // Logout student
 export const logoutStudent = async (req, res, next) => {
   try {
-    // In a real application, you might want to invalidate the token
-    // For now, we'll just return a success message
+    await revokeToken(req.user);
     res.status(200).json({
       message: "Logged out successfully"
     });
