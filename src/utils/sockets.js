@@ -1,6 +1,8 @@
 import { Server } from 'socket.io';
 import { corsOptions } from './corsOptions.js';
 import jwt from 'jsonwebtoken';
+import { isTokenRevoked } from './sessionRevocation.js';
+import { findTicketForAccessCheck, canAccessTicket } from './ticketAccess.js';
 // import { env } from '../env.mjs';
 
 // In-memory map of userId to socket and online status
@@ -69,9 +71,12 @@ export function setupSocketIO(server, app) {
         const isGuest = socket.handshake.query?.isGuest === 'true';
         let userId;
         let role;
+        let user = null;
 
         if (isGuest) {
-            userId = socket.handshake.query?.guestId || `guest_${socket.id}`;
+            // Always server-generated: a client-supplied id would let a guest join another
+            // user's personal room (user_<id>) and receive their messages.
+            userId = `guest_${socket.id}`;
             console.log('Guest socket connected:', userId);
         } else {
             if (!token) {
@@ -81,6 +86,8 @@ export function setupSocketIO(server, app) {
             }
             try {
                 const decoded = jwt.verify(token, process.env.AUTH_SECRET);
+                if (isTokenRevoked(decoded)) throw new Error('token revoked');
+                user = decoded;
                 userId = decoded.id;
                 role = decoded.role;
                 console.log('Socket authenticated for user:', userId, 'Role:', role);
@@ -175,10 +182,19 @@ export function setupSocketIO(server, app) {
             socket.emit('support_status_changed', { isOnline: onlineAdmins.size > 0 });
         });
 
-        socket.on('join_ticket', (data) => {
-            if (data && data.ticketId) {
-                socket.join(`ticket_${data.ticketId}`);
-                console.log(`Socket ${socket.id} joined ticket_${data.ticketId}`);
+        // Same rule as POST /tickets/:id/messages: ticket admins, the creator, or a guest with the ticket's key
+        socket.on('join_ticket', async (data) => {
+            if (!data?.ticketId) return;
+            try {
+                const ticket = await findTicketForAccessCheck(data.ticketId);
+                if (!canAccessTicket(ticket, user, data.guestToken)) {
+                    socket.emit('ticket_access_denied', { ticketId: data.ticketId });
+                    return;
+                }
+                socket.join(`ticket_${ticket.id}`);
+                console.log(`Socket ${socket.id} joined ticket_${ticket.id}`);
+            } catch (error) {
+                console.error('join_ticket failed:', error?.message);
             }
         });
 
@@ -188,12 +204,8 @@ export function setupSocketIO(server, app) {
             }
         });
 
-        socket.on('support_message', (data) => {
-            // Broadcast to the ticket room so other admins/user can see
-            if (data && data.ticketId) {
-                io.to(`ticket_${data.ticketId}`).emit('new_support_message', data);
-            }
-        });
+        // No client 'support_message' relay: it let any socket inject messages into any ticket room.
+        // POST /tickets/:id/messages already broadcasts new_support_message after saving.
 
         // -----------------------------
 

@@ -1,4 +1,5 @@
 import prisma from "../../../utils/db.mjs";
+import { createGuestAccessToken } from "../../../utils/ticketAccess.js";
 import { notificationService } from "../../../services/notificationService2.js";
 
 // Utility to generate a unique ticket number
@@ -29,6 +30,9 @@ export const createTicket = async (req, res, next) => {
 
     const ticketNumber = await generateTicketNumber();
 
+    // Guests have no login, so they get a per-ticket access key for follow-up messages.
+    const guestAccess = req.user ? null : createGuestAccessToken();
+
     const initialSenderName = req.user
       ? (req.user.isStudentUser
         ? (req.user.fullName || req.user.name || "Student")
@@ -46,6 +50,7 @@ export const createTicket = async (req, res, next) => {
         guestName,
         guestEmail,
         guestPhone,
+        guestAccessTokenHash: guestAccess?.hash,
         messages: {
           create: {
             message: message || "Support ticket created.",
@@ -69,7 +74,9 @@ export const createTicket = async (req, res, next) => {
 
     res.status(201).json({
       message: "Ticket created successfully",
-      ticket: newTicket
+      ticket: newTicket,
+      // Only returned here, once. The widget sends it back as the x-ticket-token header.
+      ...(guestAccess ? { guestAccessToken: guestAccess.token } : {})
     });
 
     const io = req.app.get('io');
@@ -315,7 +322,8 @@ export const assignTicket = async (req, res, next) => {
 // Add a message to a ticket
 export const addMessageToTicket = async (req, res, next) => {
   try {
-    const { id } = req.params;
+    // requireTicketAccess has already loaded the ticket and checked the caller may post to it
+    const { id } = req.ticket;
     const { message } = req.body;
     const file = req.file;
 
@@ -335,8 +343,7 @@ export const addMessageToTicket = async (req, res, next) => {
       }
     } else {
       // It's a guest
-      const ticket = await prisma.ticket.findUnique({ where: { id } });
-      if (ticket) senderName = ticket.guestName || "Guest";
+      senderName = req.ticket.guestName || "Guest";
     }
 
     let attachmentUrl = null;

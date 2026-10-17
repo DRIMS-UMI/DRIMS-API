@@ -22,7 +22,10 @@ import { validateStatusTransition } from './statusValidator.js';
  * Prisma client instance
  * @type {PrismaClient}
  */
-const basePrisma = new PrismaClient();
+const basePrisma = new PrismaClient({
+  // Never return secrets unless a query explicitly opts in with omit: { field: false }
+  omit: { ticket: { guestAccessTokenHash: true } },
+});
 
 const prisma = basePrisma.$extends({
   query: {

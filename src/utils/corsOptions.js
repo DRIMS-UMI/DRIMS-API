@@ -64,7 +64,7 @@ export const corsOptions = {
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id', 'x-client-ip'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id', 'x-client-ip', 'x-ticket-token'],
     preflightContinue: false,
     optionsSuccessStatus: 204,
 };

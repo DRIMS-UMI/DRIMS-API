@@ -1272,6 +1272,9 @@ model ticket {
   guestName       String?
   guestEmail      String?
   guestPhone      String?
+  // SHA-256 of the secret handed to a guest when they open a ticket; proves the guest owns it.
+  // Omitted from every query by default (see utils/db.mjs).
+  guestAccessTokenHash String?
 
   messages        ticketMessage[]
 
