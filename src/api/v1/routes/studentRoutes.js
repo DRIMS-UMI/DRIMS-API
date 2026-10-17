@@ -115,12 +115,6 @@ router.get('/documents', authenticateToken, authorizeRoles('STUDENT'), getStuden
 router.get('/documents/:documentId/download', authenticateToken, authorizeRoles('STUDENT'), downloadDocument);
 router.delete('/documents/:documentId', authenticateToken, authorizeRoles('STUDENT'), deleteDocument);
 
-// Document routes
-router.get('/students/:studentId/documents', authenticateToken, getStudentDocuments);
-router.post('/students/:studentId/documents', authenticateToken, uploadDocument);
-router.get('/students/:studentId/documents/:documentId/download', authenticateToken, downloadDocument);
-router.delete('/students/:studentId/documents/:documentId', authenticateToken, deleteDocument);
-
 // Research Clinic routes
 router.get('/research-clinic-days', authenticateToken, authorizeRoles('STUDENT'), getAvailableResearchClinicDays);
 router.post('/research-clinic-bookings', authenticateToken, authorizeRoles('STUDENT'), bookResearchClinicSession);

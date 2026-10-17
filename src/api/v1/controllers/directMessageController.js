@@ -1,4 +1,5 @@
 import prisma from "../../../utils/db.mjs";
+import { canDirectMessage, DM_NOT_ALLOWED_MESSAGE } from "../../../utils/dmPolicy.js";
 import emailService from "../../../services/emailService2.js";
 import { env } from "../../../env.mjs";
 
@@ -220,6 +221,13 @@ export const sendMessage = async (req, res) => {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
+    // Re-check on every send: the pair may no longer be assigned (e.g. supervisor changed).
+    // History stays readable; only new messages are blocked.
+    const otherIds = conversation.participants.filter((id) => id !== userId);
+    if (otherIds.length !== 1 || !(await canDirectMessage(userId, otherIds[0]))) {
+      return res.status(403).json({ error: DM_NOT_ALLOWED_MESSAGE });
+    }
+
     // Create the message
     const message = await prisma.message.create({
       data: {
@@ -350,6 +358,10 @@ export const startConversation = async (req, res) => {
     if (!participant) {
       console.log('startConversation - Participant not found:', participantId);
       return res.status(400).json({ error: 'Participant not found.' });
+    }
+
+    if (!(await canDirectMessage(userId, participantId))) {
+      return res.status(403).json({ error: DM_NOT_ALLOWED_MESSAGE });
     }
 
     console.log('startConversation - Participant found:', participant);
