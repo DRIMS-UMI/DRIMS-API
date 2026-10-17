@@ -4,7 +4,9 @@ import {env} from './env.mjs';
 import customizeApp from './app.mjs';
 import {setupSocketIO} from './utils/sockets.js';
 import {notificationService} from './services/notificationService2.js';
+import {startHeartbeat} from './utils/heartbeat.js';
 import {startSessionRevocationSync} from './utils/sessionRevocation.js';
+import {startUptimeSync} from './utils/uptimeSync.js';
 
 const app = express();
 
@@ -53,6 +55,10 @@ app.start = async () => {
             typeof addr === 'string' ? `pipe ${addr}` : `port ${addr?.port}`;
         console.log(`Server listening on ${bind}`);
         console.info('Server started ✅');
+
+        // System report instrumentation
+        startHeartbeat();
+        startUptimeSync();
     });
 
     if (process.env.NODE_ENV !== 'test') {

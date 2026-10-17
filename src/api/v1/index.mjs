@@ -8,7 +8,9 @@ import directMessageRoutes from './routes/directMessageRoutes.js'
 import ticketRoutes from './routes/ticketRoutes.js'
 import supervisorAppointmentsRoutes from './routes/supervisorAppointmentsRoutes.js'
 import studentAppointmentsRoutes from './routes/studentAppointmentsRoutes.js'
+import systemRoutes from './routes/systemRoutes.js'
 import { requestLogger } from "./middleware/requestLogger.mjs";
+import { registerMountedRouters } from "../../utils/routeRegistry.js";
 
 const router = express.Router();
 
@@ -21,9 +23,13 @@ const endpoints = [
     {path: '/messages', router: directMessageRoutes},
     {path: '/tickets', router: ticketRoutes},
     {path: '/supervisor/appointments', router: supervisorAppointmentsRoutes},
-    {path: '/student/appointments', router: studentAppointmentsRoutes}
+    {path: '/student/appointments', router: studentAppointmentsRoutes},
+    {path: '/system', router: systemRoutes}
 ];
 
 endpoints.forEach((endpoint)=> router.use(endpoint.path, requestLogger, endpoint.router));
+
+// Exposed to the system report's RBAC matrix
+registerMountedRouters('/api/v1', endpoints);
 
 export default router;

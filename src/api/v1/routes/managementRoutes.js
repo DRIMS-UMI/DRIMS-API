@@ -142,6 +142,7 @@ import {
   getOverdueDocuments,
   logoutManagement
 } from '../controllers/managementController.js';
+import { getSystemReport, createBackupRecord } from '../controllers/systemReportController.js';
 import { getEvaluationAnalytics, getDetailedEvaluations, updateResearchRequest, getAllResearchRequests, addStudentToGraduation, resetPassword, requestPasswordReset, getNotifications, getAllStudentsStatusReport, getStudentStatusReport, getProgressTrends, getStatusStatistics, getDashboardStats, updateSenateApprovalDate, updateResultsSentDate, updateResultsApprovalDate, updateComplianceReportDate, updateMinutesSentDate, getBookVivas, getAllPanelists, addNewPanelist, scheduleViva, recordVivaVerdict, getGraduationStatistics } from "../controllers/managementEvaluationController.js"
 
 const memoryStorage = multer.memoryStorage();
@@ -294,6 +295,10 @@ router.put('/users/:userId/reactivate', authenticateToken, authorizeRoles('SUPER
 
 // Activity logs route
 router.get('/activities', authenticateToken, authorizeRoles('SUPERADMIN', 'AUDITOR'), getAllActivities);
+
+// System activity & status report
+router.get('/system-report', authenticateToken, authorizeRoles('SUPERADMIN', 'AUDITOR'), getSystemReport);
+router.post('/system-report/backups', authenticateToken, authorizeRoles('SUPERADMIN'), createBackupRecord);
 
 // Viva management routes
 router.post('/books/:bookId/viva', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), scheduleViva);

@@ -1364,6 +1364,17 @@ model supervisorAppointment {
 
 // ********** SYSTEM REPORT INSTRUMENTATION **********
 
+// One row per server process per minute. Gaps between rows = downtime.
+model systemHeartbeat {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  instanceId       String
+  environment      String   // NODE_ENV, so dev servers sharing a database don't skew production uptime
+  processStartedAt DateTime
+  timestamp        DateTime @default(now())
+
+  @@index([environment, timestamp])
+}
+
 enum SecurityEventType {
   UNAUTHENTICATED   // No token supplied
   INVALID_TOKEN     // Token failed signature verification
@@ -1395,6 +1406,49 @@ model securityEvent {
   @@index([type, timestamp])
 }
 
+enum BackupRecordType {
+  SCHEDULED_DUMP  // Run of mongodb_backup.sh on the droplet (reported via /system/backups/ingest)
+  SNAPSHOT        // Provider-side automatic backup (legacy)
+  MANUAL_EXPORT   // e.g. a one-off mongodump
+  RESTORE_TEST    // Backup restored into a non-production cluster and verified
+}
+
+// Result of each stage of a scheduled backup run
+enum BackupStepStatus {
+  OK
+  FAILED
+  SKIPPED   // stage not configured for this run
+  MISMATCH  // verify only: restored copy's document counts differ from the dump
+}
+
+enum BackupRecordStatus {
+  SUCCESS
+  FAILED
+}
+
+model backupRecord {
+  id           String             @id @default(auto()) @map("_id") @db.ObjectId
+  type         BackupRecordType
+  status       BackupRecordStatus
+  performedAt  DateTime
+  sizeGb       Float?
+  notes        String?
+  recordedById String?            @db.ObjectId
+  recordedByName String?
+  // Scheduled backup runs only (mongodb_backup.sh)
+  source         String?           // BACKUP_SCRIPT | MANUAL
+  archiveName    String?           // Unique per run; used to make re-sent runs idempotent
+  offsiteStatus  BackupStepStatus? // rclone copy (Google Drive / Spaces)
+  mirrorStatus   BackupStepStatus? // mongorestore into the Atlas mirror
+  verifyStatus   BackupStepStatus? // Atlas document counts vs the dump
+  verifyDetails  String?
+  durationSeconds Int?
+  createdAt    DateTime           @default(now())
+
+  @@index([performedAt])
+  @@index([archiveName])
+}
+
 // Server-side session invalidation. Either a single token (jti) or every token
 // a user was issued before revokedBefore.
 model sessionRevocation {
@@ -1407,4 +1461,32 @@ model sessionRevocation {
   createdAt     DateTime  @default(now())
 
   @@index([expiresAt])
+}
+
+// Outages seen by the DigitalOcean Uptime check (outside-in view of the public API URL).
+// DigitalOcean only exposes the most recent outage, so it is polled and each one stored here.
+model uptimeOutage {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  source          String    // DIGITALOCEAN
+  checkId         String
+  region          String
+  startedAt       DateTime
+  endedAt         DateTime? // null while ongoing
+  durationSeconds Int?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([checkId, startedAt])
+}
+
+// Hourly proof that the DigitalOcean uptime poller was running (and every failed poll),
+// so the report knows which periods the external check covers.
+model uptimeCheckPoll {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  checkId   String
+  ok        Boolean
+  error     String?
+  timestamp DateTime @default(now())
+
+  @@index([checkId, timestamp])
 }

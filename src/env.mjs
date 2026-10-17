@@ -17,6 +17,11 @@ export const env = createEnv({
         STUDENT_CLIENT_URL: z.string().optional().default('https://drims.umi.ac.ug'),
         SUPERVISOR_CLIENT_URL: z.string().optional().default('https://drimstaff.umi.ac.ug'),
         FACULTY_CLIENT_URL: z.string().optional().default('https://drimschool.umi.ac.ug'),
+        // Optional: DigitalOcean Uptime check polled for the system report's external availability
+        DO_API_TOKEN: z.string().optional(),
+        DO_UPTIME_CHECK_ID: z.string().optional(),
+        // Optional: shared key mongodb_backup.sh uses to report runs to /api/v1/system/backups/ingest
+        BACKUP_INGEST_KEY: z.string().min(32).optional(),
     },
     runtimeEnv: process.env,
 })
