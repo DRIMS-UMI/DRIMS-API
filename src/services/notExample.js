@@ -1,4 +1,4 @@
-import { notificationService } from '../../../services/notificationService';
+import { notificationService } from '../../../services/notificationService2';
 
 export const scheduleNotification = async (req, res, next) => {
   try {
