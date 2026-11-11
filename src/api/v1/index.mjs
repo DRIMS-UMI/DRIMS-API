@@ -15,19 +15,19 @@ import { registerMountedRouters } from "../../utils/routeRegistry.js";
 const router = express.Router();
 
 const endpoints = [
-    {path: '/management', router: managementRoutes},
-    {path: '/faculty', router: facultyRoutes},
-    {path: '/supervisor', router: supervisorRoutes},
-    {path: '/student', router: studentRoutes},
-    {path: '/email', router: emailRoutes},
-    {path: '/messages', router: directMessageRoutes},
-    {path: '/tickets', router: ticketRoutes},
-    {path: '/supervisor/appointments', router: supervisorAppointmentsRoutes},
-    {path: '/student/appointments', router: studentAppointmentsRoutes},
-    {path: '/system', router: systemRoutes}
+    { path: '/management', router: managementRoutes },
+    { path: '/faculty', router: facultyRoutes },
+    { path: '/supervisor', router: supervisorRoutes },
+    { path: '/student', router: studentRoutes },
+    { path: '/email', router: emailRoutes },
+    { path: '/messages', router: directMessageRoutes },
+    { path: '/tickets', router: ticketRoutes },
+    { path: '/supervisor/appointments', router: supervisorAppointmentsRoutes },
+    { path: '/student/appointments', router: studentAppointmentsRoutes },
+    { path: '/system', router: systemRoutes }
 ];
 
-endpoints.forEach((endpoint)=> router.use(endpoint.path, requestLogger, endpoint.router));
+endpoints.forEach((endpoint) => router.use(endpoint.path, requestLogger, endpoint.router));
 
 // Exposed to the system report's RBAC matrix
 registerMountedRouters('/api/v1', endpoints);
