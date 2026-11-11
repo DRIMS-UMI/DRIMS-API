@@ -7,6 +7,7 @@ import { revokeUserSessions } from "../../../utils/sessionRevocation.js";
 /*
  * Student forgot-password.
  * - Students identify themselves by registration number (not email: emails aren't unique).
+ *   An unknown or deactivated registration number is reported as such (product decision).
  * - The emailed token is 32 random bytes; only its SHA-256 is stored. 30 minutes, single use,
  *   and a new request replaces the previous link.
  * - Per account: one request every 2 minutes, at most 5 a day (admin-sent links included).
@@ -21,7 +22,9 @@ const sha256 = (value) => crypto.createHash("sha256").update(String(value)).dige
 const today = () => new Date().toISOString().slice(0, 10);
 const studentPortalUrl = () => (process.env.STUDENT_CLIENT_URL || "https://drims.umi.ac.ug").replace(/\/+$/, "");
 
-const GENERIC_MESSAGE = "If an account matches that registration number, a password reset link has been sent to the email on file.";
+const SENT_MESSAGE = "A password reset link has been sent to the email on your account.";
+const NOT_FOUND_MESSAGE = "No student account was found with that registration number. Check it and try again.";
+const DEACTIVATED_MESSAGE = "This student account has been deactivated. Please contact the administrator.";
 
 /** j***@gmail.com */
 export const maskEmail = (email) => {
@@ -161,9 +164,11 @@ export const requestStudentPasswordReset = async (req, res, next) => {
     }
 
     const studentUser = await findByRegistrationNumber(registrationNumber);
-    // Unknown or deactivated accounts get the same answer and nothing is sent
-    if (!studentUser || studentUser.isActive === false) {
-      return res.status(200).json({ message: GENERIC_MESSAGE });
+    if (!studentUser) {
+      return res.status(404).json({ message: NOT_FOUND_MESSAGE });
+    }
+    if (studentUser.isActive === false) {
+      return res.status(403).json({ message: DEACTIVATED_MESSAGE });
     }
 
     const maskedEmail = maskEmail(studentUser.email);
@@ -188,7 +193,18 @@ export const requestStudentPasswordReset = async (req, res, next) => {
       details: JSON.stringify({ emailed: result.ok, reason: result.ok ? undefined : result.reason }),
     }, req);
 
-    res.status(200).json({ message: GENERIC_MESSAGE, maskedEmail });
+    if (!result.ok && result.reason === "NO_EMAIL") {
+      return res.status(409).json({
+        message: "Your account has no email address on file, so we can't send a reset link. Open the support chat and we'll help you.",
+      });
+    }
+    if (!result.ok && result.reason === "EMAIL_FAILED") {
+      return res.status(502).json({
+        message: "We couldn't send the reset email just now. Please try again in a few minutes.",
+      });
+    }
+
+    res.status(200).json({ message: SENT_MESSAGE, maskedEmail });
   } catch (error) {
     if (!error.statusCode) error.statusCode = 500;
     next(error);
