@@ -168,6 +168,13 @@ model studentUser {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
+  // Forgot-password: SHA-256 of the emailed token (never the token itself; omitted from queries in utils/db.mjs)
+  passwordResetTokenHash    String?
+  passwordResetExpiresAt    DateTime?
+  passwordResetRequestedAt  DateTime?
+  passwordResetRequestDay   String?   // YYYY-MM-DD the count below belongs to
+  passwordResetRequestCount Int?
+
   student           student?
   activities        userActivity[]
   uploadedDocuments studentDocument[] @relation("studentUploadedDocuments")

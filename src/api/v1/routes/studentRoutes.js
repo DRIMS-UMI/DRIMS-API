@@ -2,6 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import authenticateToken from '../middleware/authentication.js';
 import authorizeRoles from '../middleware/roleAuthorization.js';
+import { requestStudentPasswordReset, resetStudentPassword } from '../controllers/studentPasswordResetController.js';
 import { 
   loginStudent,
   getLoggedInUser,
@@ -69,6 +70,10 @@ const router = express.Router();
 
 // Authentication routes
 router.post('/login', loginStudent);
+
+// Forgot password (public; rate limited in utils/rateLimits.js)
+router.post('/request-password-reset', requestStudentPasswordReset);
+router.post('/reset-password', resetStudentPassword);
 router.post('/logout', authenticateToken, authorizeRoles('STUDENT'), logoutStudent);
 
 // User information routes

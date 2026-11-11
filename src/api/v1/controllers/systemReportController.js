@@ -534,6 +534,13 @@ const buildSecurity = async ({ start, end, now, instrumentationSince }) => {
     const range = { gte: start, lt: end };
 
     const inWindow = { timestamp: { $gte: ext(start), $lt: ext(end) } };
+    const resetCount = (action) => prisma.userActivity.count({ where: { action, timestamp: range } });
+    const passwordResetsPromise = Promise.all([
+        resetCount('Password Reset Requested'),
+        resetCount('Sent Student Password Reset Link'),
+        resetCount('Password Reset Completed'),
+    ]).then(([requested, sentByAdmin, completed]) => ({ requested, sentByAdmin, completed }));
+
     const [byType, byEndpoint, failedByIp, rbacByRole, daily, logouts, deactivationRevocations] = await Promise.all([
         groupCount(prisma.securityEvent, inWindow, ['type']),
         groupCount(prisma.securityEvent,
@@ -592,6 +599,7 @@ const buildSecurity = async ({ start, end, now, instrumentationSince }) => {
             rateLimits: RATE_LIMITS,
             logouts,
             deactivationRevocations,
+            passwordResets: await passwordResetsPromise,
         },
     };
 };

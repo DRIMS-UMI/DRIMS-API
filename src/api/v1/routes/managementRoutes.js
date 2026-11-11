@@ -143,6 +143,7 @@ import {
   logoutManagement
 } from '../controllers/managementController.js';
 import { getSystemReport, createBackupRecord } from '../controllers/systemReportController.js';
+import { adminSendStudentPasswordReset } from '../controllers/studentPasswordResetController.js';
 import { getEvaluationAnalytics, getDetailedEvaluations, updateResearchRequest, getAllResearchRequests, addStudentToGraduation, resetPassword, requestPasswordReset, getNotifications, getAllStudentsStatusReport, getStudentStatusReport, getProgressTrends, getStatusStatistics, getDashboardStats, updateSenateApprovalDate, updateResultsSentDate, updateResultsApprovalDate, updateComplianceReportDate, updateMinutesSentDate, getBookVivas, getAllPanelists, addNewPanelist, scheduleViva, recordVivaVerdict, getGraduationStatistics } from "../controllers/managementEvaluationController.js"
 
 const memoryStorage = multer.memoryStorage();
@@ -237,6 +238,7 @@ router.get('/students/cohorts', authenticateToken, authorizeRoles('SUPERADMIN', 
 router.get('/students/:studentId', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN', 'AUDITOR'), getStudent);
 router.get('/students', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN', 'AUDITOR'), getAllStudents);
 router.put('/students/:studentId/password', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), changeStudentPassword);
+router.post('/students/:studentId/send-password-reset', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), adminSendStudentPasswordReset);
 router.get('/students/:studentId/statuses', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN', 'AUDITOR'), getStudentStatuses);
 router.get('/acmis/student', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), fetchAcmisStudent);
 router.post('/students/:studentId/deregister', authenticateToken, authorizeRoles('SUPERADMIN', 'RESEARCH_ADMIN'), deregisterStudent);

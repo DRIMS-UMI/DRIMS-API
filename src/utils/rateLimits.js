@@ -50,7 +50,7 @@ const loginPerEmailLimiter = rateLimit({
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     skipSuccessfulRequests: true,
-    keyGenerator: (req) => `${clientIp(req)}:${String(req.body?.email || '').toLowerCase()}`,
+    keyGenerator: (req) => `${clientIp(req)}:${String(req.body?.email || req.body?.registrationNumber || '').trim().toLowerCase()}`,
     handler: rejected('Too many failed attempts. Please wait 15 minutes before trying again.'),
 });
 
